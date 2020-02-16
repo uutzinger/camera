@@ -93,7 +93,7 @@ class rtspCapture(Thread):
         if plat == "Windows":
             # gst = 'rtspsrc location=' + self._rtsp + ' latency=400 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false'
             # self.capture = cv2.VideoCapture(gst)
-            self.capture = cv2.VideoCapture(self._rtsp)
+            self.capture = cv2.VideoCapture(self._rtsp) # uses ffmpeg subsystem, but windows subsystem does not handle circular bufers
         elif plat == "Linux":
             if platform.machine() == 'aarch64': # Jetson Nano
                 gst ='rtspsrc location=' + self._rtsp + ' latency=10 ! rtph264depay ! h264parse ! omxh264dec ! nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! appsink sync=false'
