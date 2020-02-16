@@ -71,29 +71,45 @@ class rtspCapture(Thread):
         """
         Open up the camera so we can begin capturing 
         For testing:
-        gst-launch-1.0 rtspsrc location=rtsp://localhost:1181/camera ! fakesink
-        gst-launch-1.0 playbin uri=rtsp://localhost:1181/camera
-        gst-launch-1.0 rtspsrc location=rtsp://localhost:1181/camera latency=100 ! rtph264depay ! h264parse ! v4l2h264dec capture-io-mode=4 ! v4l2convert output-io-mode=5 capture-io-mode=4 ! autovideosink sync=false
-        gst-launch-1.0 rtspsrc location=rtsp://user:pass@192.168.81.32:554/live/ch00_0 ! rtph264depay ! h264parse ! decodebin ! autovideosink
-
+            Anywhere:
+                gst-launch-1.0 rtspsrc location=rtsp://localhost:1181/camera ! fakesink
+            Windows:
+                Install gstreamer from https://gstreamer.freedesktop.org/data/pkg/windows/
+                and select 	gstreamer-1.0-msvc-x86_64-_latestversion_.msi
+                Install Custom to C:/gstreamer
+                add C:\gstreamer\1.0\x86_64\bin to Path variable in Environment Variables
+                gst-launch-1.0 playbin uri=rtsp://localhost:1181/camera
+                gst-launch-1.0 rtspsrc location=rtsp://192.168.11.26:1181/camera latency=400 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! autovideosink
+                !!! print(cv2.getBuildInformation()) !!! gstreamer needs to be on
+                If not follow https://medium.com/@galaktyk01/how-to-build-opencv-with-gstreamer-b11668fa09c
+            Raspian: 
+                Make sure regular gstramer in Buster is installed
+                gst-launch-1.0 rtspsrc location=rtsp://localhost:1181/camera latency=100 ! rtph264depay ! h264parse ! v4l2h264dec capture-io-mode=4 ! v4l2convert output-io-mode=5 capture-io-mode=4 ! autovideosink sync=false
+            Example with authentication:
+                gst-launch-1.0 rtspsrc location=rtsp://user:pass@192.168.81.32:554/live/ch00_0 ! rtph264depay ! h264parse ! decodebin ! autovideosink
         """
+
         plat = platform.system()
-        if plat == 'Windows': 
-            gst = "rtspsrc location=" + self._rtsp + " latency=100 ! queue ! appsink"
-        elif plat == 'Linux':
-            if platform.machine() == "aarch64": # Jetson Nano
-                gst = "rtspsrc location=" + self._rtsp + " latency=100 ! rtph264depay ! h264parse ! omxh264dec ! nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! appsink sync=false"
-            elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # Raspberry Pi
-                gst = "rtspsrc location=" + self._rtsp + " latency=100 ! rtph264depay ! h264parse ! v4l2h264dec capture-io-mode=4 ! v4l2convert output-io-mode=5 capture-io-mode=4 ! appsink sync=false"
+        if plat == "Windows":
+            # gst = 'rtspsrc location=' + self._rtsp + ' latency=400 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false'
+            # self.capture = cv2.VideoCapture(gst)
+            self.capture = cv2.VideoCapture(self._rtsp)
+        elif plat == "Linux":
+            if platform.machine() == 'aarch64': # Jetson Nano
+                gst ='rtspsrc location=' + self._rtsp + ' latency=10 ! rtph264depay ! h264parse ! omxh264dec ! nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! appsink sync=false'
+                self.capture = cv2.VideoCapture(gst)
+            elif platform.machine() == 'armv6l' or platform.machine() == 'armv7l': # Raspberry Pi
+                gst = 'rtspsrc location=' + self._rtsp + ' latency=400 ! queue ! rtph264depay ! h264parse ! v4l2h264dec capture-io-mode=4 ! v4l2convert output-io-mode=5 capture-io-mode=4 ! appsink sync=false'
                 # might not need the two queue statements above
-        elif plat == 'MacOS':
-            gst = "rtspsrc location=" + self._rtsp + " latency=100 ! queue ! appsink"
+                self.capture = cv2.VideoCapture(gst)
+        elif plat == "MacOS":
+            gst = 'rtspsrc location=' + self._rtsp + ' latency=400 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink'
+            self.capture = cv2.VideoCapture(gst)
         else:
-            gst = "rtspsrc location=" + self._rtsp + " latency=100 ! queue ! appsink"
+            gst = 'rtspsrc location=' + self._rtsp + ' latency=400 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink'
+            self.capture = cv2.VideoCapture(gst)
 
-        self.capture = cv2.VideoCapture(gst)
-        self.capture_open = self.capture.isOpened()
-
+        self.capture_open = self.capture.isOpened()        
         if not self.capture_open:
             self.logger.log(logging.CRITICAL, "Status:Failed to open camera!")
 
@@ -197,7 +213,8 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
 
     print("Starting Capture")
-    camera = rtspCapture(rtsp="rtsp://localhost:1181/camera")     
+
+    camera = rtspCapture(rtsp='rtsp://192.168.11.26:1181/camera')     
     camera.start()
 
     print("Getting Frames")
