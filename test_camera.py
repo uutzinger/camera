@@ -16,7 +16,7 @@ elif plat == 'Linux':
         camera = nanoCapture()
     elif platform.machine() == "armv6l" or platform.machine() == 'armv7l':
         from cv2capture import cv2Capture
-        camera = cv2Capture()
+        camera = cv2Capture(1)
         # from picapture import piCapture
         # camera = piCapture()
 elif plat == 'MacOS':

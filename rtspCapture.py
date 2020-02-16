@@ -20,6 +20,7 @@ from threading import Event
 import logging
 import time
 import sys
+import platform
 
 # Open Computer Vision
 import cv2
@@ -69,28 +70,28 @@ class rtspCapture(Thread):
     def _open_capture(self):
         """
         Open up the camera so we can begin capturing 
-        For testing: gst-launch-1.0 gst
-        gst-launch-1.0 rtspsrc location=rtsp://192.168.11.26:1181/camera
-        gst-launch-1.0 rtspsrc location=rtsp://some.server/url ! fakesink
-        gst-launch-1.0 playbin uri=rtsp://192.168.11.26:1181/camera
+        For testing:
+        gst-launch-1.0 rtspsrc location=rtsp://localhost:1181/camera ! fakesink
+        gst-launch-1.0 playbin uri=rtsp://localhost:1181/camera
+        gst-launch-1.0 rtspsrc location=rtsp://localhost:1181/camera latency=100 ! rtph264depay ! h264parse ! v4l2h264dec capture-io-mode=4 ! v4l2convert output-io-mode=5 capture-io-mode=4 ! autovideosink sync=false
         gst-launch-1.0 rtspsrc location=rtsp://user:pass@192.168.81.32:554/live/ch00_0 ! rtph264depay ! h264parse ! decodebin ! autovideosink
+
         """
-
-        # Open the camera with platform optimal settings
-        if sys.platform.startswith('win'): # Windows
+        plat = platform.system()
+        if plat == 'Windows': 
             gst = "rtspsrc location=" + self._rtsp + " latency=100 ! queue ! appsink"
-        elif sys.platform.startswith('darwin'): # Mac
-            gst = "rtspsrc location=" + self._rtsp + " latency=100 ! queue ! appsink"
-        elif sys.platform.startswith('linux'):
+        elif plat == 'Linux':
             if platform.machine() == "aarch64": # Jetson Nano
-                gst = "rtspsrc location=" + self._rtsp + " latency=100 ! queue ! rtph264depay ! queue ! h264parse ! omxh264dec ! nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! appsink sync=false"
-            elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # Raspberry
-                gst = "rtspsrc location=" + self._rtsp + " latency=100 ! queue ! rtph264depay ! queue ! h264parse ! v4l2h264dec capture-io-mode=4 ! v4l2video12convert output-io-mode=5 capture-io-mode=4 ! appsink sync=false"
-                # might not need the two queue sttements above
-        else: # Anything else
+                gst = "rtspsrc location=" + self._rtsp + " latency=100 ! rtph264depay ! h264parse ! omxh264dec ! nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! appsink sync=false"
+            elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # Raspberry Pi
+                gst = "rtspsrc location=" + self._rtsp + " latency=100 ! rtph264depay ! h264parse ! v4l2h264dec capture-io-mode=4 ! v4l2convert output-io-mode=5 capture-io-mode=4 ! appsink sync=false"
+                # might not need the two queue statements above
+        elif plat == 'MacOS':
+            gst = "rtspsrc location=" + self._rtsp + " latency=100 ! queue ! appsink"
+        else:
             gst = "rtspsrc location=" + self._rtsp + " latency=100 ! queue ! appsink"
 
-        self.capture = cv2.VideoCapture(gst, apiPreference=cv2.CAP_GSTREAMER)
+        self.capture = cv2.VideoCapture(gst)
         self.capture_open = self.capture.isOpened()
 
         if not self.capture_open:
@@ -196,7 +197,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
 
     print("Starting Capture")
-    camera = rtspCapture(rtsp="rtsp://192.168.11.26:1181/camera")     
+    camera = rtspCapture(rtsp="rtsp://localhost:1181/camera")     
     camera.start()
 
     print("Getting Frames")

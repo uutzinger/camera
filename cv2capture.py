@@ -96,7 +96,7 @@ class cv2Capture(Thread):
             if self._camera_res[1] > 0:
                 self.height         = self._camera_res[1]       # image resolution
             self.autoexposure   = self._autoexposure            # autoexposure
-            if not self._exposure > 0:
+            if self._exposure > 0:
                 self.exposure   = self._exposure                # camera exposure
             if self._buffersize > 0:
                 self.buffersize = self._buffersize              # camera drive buffer size
