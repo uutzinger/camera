@@ -2,7 +2,7 @@ configs = {
     ##############################################
     # Camera Settings
     ##############################################
-    'camera_res'      : ( 320, 240),     # any amera: Camera width & height
+    'camera_res'      : ( 320, 240),    # any amera: Camera width & height
                                         # CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT
     'exposure'        : 10000,          # any camera: -1,0 = auto, 1...max=frame interval
                                         # picamera microseconds
@@ -13,6 +13,7 @@ configs = {
                                         # Laptop Windows -1
     'buffersize'      : 1,              # default is 4 for V4L2, max 10, 
                                         # Laptop: -1
+    'rtsp'            : 'rtsp://admin:Password@192.168.0.200:554/',
     ##############################################
     # Target Recognition
     ##############################################
