@@ -14,6 +14,7 @@ configs = {
     'buffersize'      : 1,              # default is 4 for V4L2, max 10, 
                                         # Laptop: -1
     'rtsp'            : 'rtsp://admin:Password@192.168.0.200:554/',
+                                        # port 1181 for opsi
     ##############################################
     # Target Recognition
     ##############################################
