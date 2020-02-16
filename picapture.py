@@ -21,7 +21,8 @@ import sys
 
 # Open Computer Vision
 import cv2
-from   picamera import PiCamera, PiRGBArray
+from   picamera import PiCamera
+from   picamera.array import PiRGBArray
 
 # Camera configuration file
 from configs       import configs
@@ -84,14 +85,12 @@ class piCapture(Thread):
         if self.capture_open:
             # Apply settings to camera
             self.resolution = self._camera_res
-            self.height       = self._camera_res[1]           # image resolution
-            self.width        = self._camera_res[0]           # image resolution
-            self.rawCapture = PiRGBArray(self.capture, size=self.resolution)
-            self.fps          = self._framreate
+            self.rawCapture = PiRGBArray(self.capture)
+            self.fps          = self._framerate
             if self._exposure <= 0:
                 # Auto Exposure and Auto White Balance
                 ############################################################
-                self.awb_mode     = 'on'            # No auto white balance
+                self.awb_mode     = 'auto'           # No auto white balance
                 self.awb_gains    = (1,1)            # Gains for red and blue are 1
                 self.brightness   = 50               # No change in brightness
                 self.contrast     = 0                # No change in contrast
@@ -103,7 +102,7 @@ class piCapture(Thread):
                 self.image_effect = 'none'           # No image effects
                 self.sharpness    = 0                # No changes in sharpness
                 self.video_stabilization = False     # No image stablization
-                self.exposure_mode= 'on'             # automatic exposure control
+                self.exposure_mode= 'auto'             # automatic exposure control
                 self.exposure_compensation = 0       # No automatic expsoure controls compensation
             else:
                 self.exposure     = self._exposure                # camera exposure
@@ -160,7 +159,10 @@ class piCapture(Thread):
         last_fps_time = time.time()
         last_exposure_time = last_fps_time
         num_frames = 0
-        for of in self.stream:
+        for f in self.stream:
+            img = f.array
+            self.rawCapture.truncate(0)
+
             current_time = time.time()
             # FPS calculation
             if (current_time - last_fps_time) >= 5.0: # update frame rate every 5 secs
@@ -168,32 +170,51 @@ class piCapture(Thread):
                 self.logger.log(logging.DEBUG, "Status:FPS:{}".format(self.measured_fps))
                 num_frames = 0
                 last_fps_time = current_time
-            with self.capture_lock:
-                img = f.array
-                self.rawCapture.truncate(0)
-            # set the frame var to the img we just captured
+
             if self._display_height > 0:
                 tmp = cv2.resize(img, self._display_res)
+                if   self._flip_method == 0: # no flipping
+                    self.frame = tmp
+                elif self._flip_method == 1: # ccw 90
+                    self.frame = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
+                elif self._flip_method == 2: # rot 180, same as flip lr & up
+                    self.frame = cv2.roate(tmp, cv.ROTATE_180)
+                elif self._flip_method == 3: # cw 90
+                    self.frame = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
+                elif self._flip_method == 4: # horizontal
+                    self.frame = cv2.flip(tmp, 0)
+                elif self._flip_method == 5: # upright diagonal. ccw & lr
+                    tmp = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
+                    self.frame = cv2.flip(tmp, 1)
+                elif self._flip_method == 6: # vertical
+                    self.frame = cv2.flip(tmp, 1)
+                elif self._flip_method == 7: # upperleft diagonal
+                    self.frame = cv2.transpose(tmp)
+                else:
+                    self.frame = tmp
             else:
-                tmp = img
-
-            if   self._flip_method == 1: # ccw 90
-                self.frame = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
-            elif self._flip_method == 2: # rot 180, same as flip lr & up
-                self.frame = cv2.roate(tmp, cv.ROTATE_180)
-            elif self._flip_method == 3: # cw 90
-                self.frame = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
-            elif self._flip_method == 4: # horizontal
-                self.frame = cv2.flip(tmp, 0)
-            elif self._flip_method == 5: # upright diagonal. ccw & lr
-                tmp = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
-                self.frame = cv2.flip(tmp, 1)
-            elif self._flip_method == 6: # vertical
-                self.frame = cv2.flip(tmp, 1)
-            elif self._flip_method == 7: # upperleft diagonal
-                self.frame = cv2.transpose(tmp)
+                if   self._flip_method == 0: # no flipping
+                    self.frame = img
+                elif self._flip_method == 1: # ccw 90
+                    self.frame = cv2.roate(img, cv.ROTATE_90_COUNTERCLOCKWISE)
+                elif self._flip_method == 2: # rot 180, same as flip lr & up
+                    self.frame = cv2.roate(img, cv.ROTATE_180)
+                elif self._flip_method == 3: # cw 90
+                    self.frame = cv2.roate(img, cv.ROTATE_90_COUNTERCLOCKWISE)
+                elif self._flip_method == 4: # horizontal
+                    self.frame = cv2.flip(img, 0)
+                elif self._flip_method == 5: # upright diagonal. ccw & lr
+                    tmp = cv2.roate(img, cv.ROTATE_90_COUNTERCLOCKWISE)
+                    self.frame = cv2.flip(tmp, 1)
+                elif self._flip_method == 6: # vertical
+                    self.frame = cv2.flip(img, 1)
+                elif self._flip_method == 7: # upperleft diagonal
+                    self.frame = cv2.transpose(img)
+                else:
+                    self.frame = img
 
             num_frames += 1
+
 
             if self.stopped:
                 self.stream.close()
@@ -304,7 +325,7 @@ class piCapture(Thread):
         if self.capture_open:
             if len(val) > 1:
                 with self.capture_lock: self.capture.resolution = val
-                self.logger.log(logging.DEBUG, "Status:Width:{},Height:{}".format(val[0].val[1]))
+                self.logger.log(logging.DEBUG, "Status:Width:{},Height:{}".format(val[0],val[1]))
                 self._resolution = val
             else:
                 with self.capture_lock: self.capture.resolution = (val, val)

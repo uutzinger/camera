@@ -142,30 +142,48 @@ class cv2Capture(Thread):
             if img is not None:
 
                 # adjust output height
-                if self._display_height > 0:
-                    # tmp = cv2.resize(img, self._display_res, interpolation = cv2.INTER_NEAREST)
-                    tmp = cv2.resize(img, self._display_res)
-                else:
-                    tmp = img
 
-                # flip image if needed
-                if   self._flip_method == 1: # ccw 90
-                    self.frame = cv2.roate(tmp, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                elif self._flip_method == 2: # rot 180, same as flip lr & up
-                    self.frame = cv2.roate(tmp, cv2.ROTATE_180)
-                elif self._flip_method == 3: # cw 90
-                    self.frame = cv2.roate(tmp, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                elif self._flip_method == 4: # horizontal
-                    self.frame = cv2.flip(tmp, 0)
-                elif self._flip_method == 5: # upright diagonal. ccw & lr
-                    tmp = cv2.roate(tmp, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                    self.frame = cv2.flip(tmp, 1)
-                elif self._flip_method == 6: # vertical
-                    self.frame = cv2.flip(tmp, 1)
-                elif self._flip_method == 7: # upperleft diagonal
-                    self.frame = cv2.transpose(tmp)
+                if self._display_height > 0:
+                    tmp = cv2.resize(img, self._display_res)
+                    if   self._flip_method == 0: # no flipping
+                        self.frame = tmp
+                    elif self._flip_method == 1: # ccw 90
+                        self.frame = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
+                    elif self._flip_method == 2: # rot 180, same as flip lr & up
+                        self.frame = cv2.roate(tmp, cv.ROTATE_180)
+                    elif self._flip_method == 3: # cw 90
+                        self.frame = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
+                    elif self._flip_method == 4: # horizontal
+                        self.frame = cv2.flip(tmp, 0)
+                    elif self._flip_method == 5: # upright diagonal. ccw & lr
+                        tmp = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
+                        self.frame = cv2.flip(tmp, 1)
+                    elif self._flip_method == 6: # vertical
+                        self.frame = cv2.flip(tmp, 1)
+                    elif self._flip_method == 7: # upperleft diagonal
+                        self.frame = cv2.transpose(tmp)
+                    else:
+                        self.frame = tmp
                 else:
-                    self.frame = tmp
+                    if   self._flip_method == 0: # no flipping
+                        self.frame = img
+                    elif self._flip_method == 1: # ccw 90
+                        self.frame = cv2.roate(img, cv.ROTATE_90_COUNTERCLOCKWISE)
+                    elif self._flip_method == 2: # rot 180, same as flip lr & up
+                        self.frame = cv2.roate(img, cv.ROTATE_180)
+                    elif self._flip_method == 3: # cw 90
+                        self.frame = cv2.roate(img, cv.ROTATE_90_COUNTERCLOCKWISE)
+                    elif self._flip_method == 4: # horizontal
+                        self.frame = cv2.flip(img, 0)
+                    elif self._flip_method == 5: # upright diagonal. ccw & lr
+                        tmp = cv2.roate(img, cv.ROTATE_90_COUNTERCLOCKWISE)
+                        self.frame = cv2.flip(tmp, 1)
+                    elif self._flip_method == 6: # vertical
+                        self.frame = cv2.flip(img, 1)
+                    elif self._flip_method == 7: # upperleft diagonal
+                        self.frame = cv2.transpose(img)
+                    else:
+                        self.frame = img
 
                 num_frames += 1
 
