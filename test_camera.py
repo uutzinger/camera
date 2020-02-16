@@ -18,7 +18,7 @@ elif plat == 'Linux':
         from cv2capture import cv2Capture
         camera = cv2Capture()
         # from picapture import piCapture
-        # camera = nanoCapture()
+        # camera = piCapture()
 elif plat == 'MacOS':
     from cv2capture import cv2Capture
     camera = cv2Capture()

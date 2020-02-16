@@ -2,7 +2,7 @@ configs = {
     ##############################################
     # Camera Settings
     ##############################################
-    'camera_res'      : (320, 240),     # any amera: Camera width & height
+    'camera_res'      : ( 320, 240),     # any amera: Camera width & height
                                         # CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT
     'exposure'        : 10000,          # any camera: -1,0 = auto, 1...max=frame interval
                                         # picamera microseconds
@@ -11,7 +11,7 @@ configs = {
     'fps'             : 90,             # any camera: 1/10, 15, 30, 40, 90, 120 overlocked, 180?
     'fourcc'          : 'YU12',         # cv2 camera only: MJPG, YUY2, for ELP camera https://www.fourcc.org/         CAP_PROP_FOURCC 
                                         # Laptop Windows -1
-    'buffersize'      : 4,              # default is 4 for V4L2, max 10, 
+    'buffersize'      : 1,              # default is 4 for V4L2, max 10, 
                                         # Laptop: -1
     ##############################################
     # Target Recognition
