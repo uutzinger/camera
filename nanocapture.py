@@ -62,6 +62,7 @@ def gstreamer_pipeline(
     #        'gainrange="1.0 10.625" '                  # "1.0 10.625"
     #        'ispdigitalgainrange="1 8" '               
 
+
     if exposure_time <= 0:
         # auto exposure
         ################
@@ -108,6 +109,12 @@ def gstreamer_pipeline(
     #   5=uprightdiagonal flip
     #   6=vertical
     #   7=uperleft flip
+
+    # deal with auto resizing
+    if display_height <= 0:
+        display_height = capture_height
+    if display_width <=0:
+        display_width = capture_width
 
     gstreamer_str = (
         '! video/x-raw(memory:NVMM), '                       +
