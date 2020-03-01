@@ -420,54 +420,54 @@ class cv2Capture(Thread):
 
     def cv2SettingsDebug(self):
         """ return opencv camera properties """
-        if self.capture_open:                                          # ELP USB    ,           ,Dell Internal
-            print(self.capture.get(cv2.CAP_PROP_POS_MSEC))             # 0          ,-1         ,0
-            print(self.capture.get(cv2.CAP_PROP_POS_FRAMES))           # NA ELP     ,-1         ,0
-            print(self.capture.get(cv2.CAP_PROP_POS_AVI_RATIO))        # NA ELP     ,-1         , -1
-            print(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))          # 320        ,640        ,320
-            print(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))         # 240        ,480        ,240
-            print(self.capture.get(cv2.CAP_PROP_FPS))                  # 120        ,0          ,30
-            print(self.capture.get(cv2.CAP_PROP_FOURCC))               # MJPG       ,844715353  ,844715353
+        if self.capture_open:                                                                    
+            print("POS_MSEC:    {}".format(self.capture.get(cv2.CAP_PROP_POS_MSEC)))             #
+            print("POS_FRAMES:  {}".format(self.capture.get(cv2.CAP_PROP_POS_FRAMES)))           # 
+            print("AVI_RATIO:   {}".format(self.capture.get(cv2.CAP_PROP_POS_AVI_RATIO)))        # 
+            print("WIDTH:       {}".format(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH)))          # 
+            print("HEIGHT:      {}".format(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT)))         # 
+            print("FPS:         {}".format(self.capture.get(cv2.CAP_PROP_FPS)))                  # 
+            print("FOURCC:      {}".format(self.capture.get(cv2.CAP_PROP_FOURCC)))               # 
             tmp = self.decode_fourcc(self.capture.get(cv2.CAP_PROP_FOURCC))         
-            print(tmp)                                                 #            ,YUY2       ,YUY2
-            print(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))          # NA ELP     ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_FORMAT))               # 16         ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_MODE))                 # MJPG       ,-1         ,0
-            print(self.capture.get(cv2.CAP_PROP_BRIGHTNESS))           # 0.5        ,0          ,0
-            print(self.capture.get(cv2.CAP_PROP_CONTRAST))             # 0.5        ,0          ,0
-            print(self.capture.get(cv2.CAP_PROP_SATURATION))           # 0.46875    ,64         ,64
-            print(self.capture.get(cv2.CAP_PROP_HUE))                  # 0.5        ,0          ,0
-            print(self.capture.get(cv2.CAP_PROP_GAIN))                 # 0.0        ,-1.0       ,-1
-            print(self.capture.get(cv2.CAP_PROP_EXPOSURE))             # 1.0        ,-4.0       ,-4
-            print(self.capture.get(cv2.CAP_PROP_CONVERT_RGB))          # 1.0        ,1.0        ,1
-            print(self.capture.get(cv2.CAP_PROP_WHITE_BALANCE_BLUE_U)) # NA ELP     ,4600.0     ,-1
-            print(self.capture.get(cv2.CAP_PROP_RECTIFICATION))        # NA ELP     ,-1.0       ,-1
-            print(self.capture.get(cv2.CAP_PROP_MONOCHROME))           # NA ELP     ,-1.0       ,-
-            print(self.capture.get(cv2.CAP_PROP_SHARPNESS))            # 2.0        ,2.0        ,2
-            print(self.capture.get(cv2.CAP_PROP_AUTO_EXPOSURE))        # 0.25 or 0.75(auto) ,-1.0 ,0
-            print(self.capture.get(cv2.CAP_PROP_GAMMA))                # 100.0      ,100.0      ,100
-            print(self.capture.get(cv2.CAP_PROP_TEMPERATURE))          # 6500       ,-1         ,4600
-            print(self.capture.get(cv2.CAP_PROP_TRIGGER))              # NA ELP     ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_TRIGGER_DELAY))        # NA ELP     ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_WHITE_BALANCE_RED_V))  # NA ELP     ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_ZOOM))                 # NA ELP     ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_FOCUS))                # NA ELP     ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_GUID))                 # NA ELP     ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_ISO_SPEED))            # NA ELP     ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_BACKLIGHT))            # 1.0        ,3.0        ,3.0
-            print(self.capture.get(cv2.CAP_PROP_PAN))                  # NA ELP     ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_TILT))                 # NA ELP     ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_ROLL))                 # NA ELP     ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_IRIS))                 # NA ELP     ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_SETTINGS))             # NA ELP     ,0          ,-1
-            print(self.capture.get(cv2.CAP_PROP_BUFFERSIZE))           # 4.0        ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_AUTOFOCUS))            # NA ELP     ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_SAR_NUM))              # NA ELP     ,-1         ,1
-            print(self.capture.get(cv2.CAP_PROP_SAR_DEN))              # NA ELP     ,-1         ,1
-            print(self.capture.get(cv2.CAP_PROP_BACKEND))              # 200        ,700        ,1400
-            print(self.capture.get(cv2.CAP_PROP_CHANNEL))              # -1         ,0          ,-1
-            print(self.capture.get(cv2.CAP_PROP_AUTO_WB))              # 1.0        ,-1         ,-1
-            print(self.capture.get(cv2.CAP_PROP_WB_TEMPERATURE))       # 6500       ,-1         ,-1
+            print("FOURCC:      {}".format(tmp))                                                 # 
+            print("FRAME_CNT:   {}".format(self.capture.get(cv2.CAP_PROP_FRAME_COUNT)))          # 
+            print("FORMAT:      {}".format(self.capture.get(cv2.CAP_PROP_FORMAT)))               # 
+            print("MODE:        {}".format(self.capture.get(cv2.CAP_PROP_MODE)))                 # 
+            print("BRIGHTNESS:  {}".format(self.capture.get(cv2.CAP_PROP_BRIGHTNESS)))           # 
+            print("CONTRAST:    {}".format(self.capture.get(cv2.CAP_PROP_CONTRAST)))             #
+            print("SATURATION:  {}".format(self.capture.get(cv2.CAP_PROP_SATURATION)))           # 
+            print("HUE:         {}".format(self.capture.get(cv2.CAP_PROP_HUE)))                  # 
+            print("GAIN:        {}".format(self.capture.get(cv2.CAP_PROP_GAIN)))                 # 
+            print("EXPOSURE:    {}".format(self.capture.get(cv2.CAP_PROP_EXPOSURE)))             #
+            print("CONV_RGB:    {}".format(self.capture.get(cv2.CAP_PROP_CONVERT_RGB)))          # 
+            print("RECT:        {}".format(self.capture.get(cv2.CAP_PROP_RECTIFICATION)))        # 
+            print("MONO:        {}".format(self.capture.get(cv2.CAP_PROP_MONOCHROME)))           # 
+            print("SHARP:       {}".format(self.capture.get(cv2.CAP_PROP_SHARPNESS)))            # 
+            print("AUTO_EXP:    {}".format(self.capture.get(cv2.CAP_PROP_AUTO_EXPOSURE)))        # 
+            print("GAMMA:       {}".format(self.capture.get(cv2.CAP_PROP_GAMMA)))                # 
+            print("TRIGGER:     {}".format(self.capture.get(cv2.CAP_PROP_TRIGGER)))              # 
+            print("TRIGGER_DEL: {}".format(self.capture.get(cv2.CAP_PROP_TRIGGER_DELAY)))        # 
+            print("AUTOWB:      {}".format(self.capture.get(cv2.CAP_PROP_AUTO_WB)))              # 
+            print("WB_TEMP:     {}".format(self.capture.get(cv2.CAP_PROP_WB_TEMPERATURE)))       # 
+            print("WB_BLUE:     {}".format(self.capture.get(cv2.CAP_PROP_WHITE_BALANCE_BLUE_U))) # 
+            print("WB_RED:      {}".format(self.capture.get(cv2.CAP_PROP_WHITE_BALANCE_RED_V)))  # 
+            print("TEMP:        {}".format(self.capture.get(cv2.CAP_PROP_TEMPERATURE)))          # 
+            print("ZOOM:        {}".format(self.capture.get(cv2.CAP_PROP_ZOOM)))                 # 
+            print("FOCUS:       {}".format(self.capture.get(cv2.CAP_PROP_FOCUS)))                # 
+            print("GUID:        {}".format(self.capture.get(cv2.CAP_PROP_GUID)))                 # 
+            print("ISO:         {}".format(self.capture.get(cv2.CAP_PROP_ISO_SPEED)))            # 
+            print("BACKLIGHT:   {}".format(self.capture.get(cv2.CAP_PROP_BACKLIGHT)))            # 
+            print("PAN:         {}".format(self.capture.get(cv2.CAP_PROP_PAN)))                  # 
+            print("TILT:        {}".format(self.capture.get(cv2.CAP_PROP_TILT)))                 #
+            print("ROLL:        {}".format(self.capture.get(cv2.CAP_PROP_ROLL)))                 # 
+            print("IRIS:        {}".format(self.capture.get(cv2.CAP_PROP_IRIS)))                 # 
+            print("SETTINGS:    {}".format(self.capture.get(cv2.CAP_PROP_SETTINGS)))             # 
+            print("BUFFERSIZE:  {}".format(self.capture.get(cv2.CAP_PROP_BUFFERSIZE)))           # 
+            print("AUTOFOCUS:   {}".format(self.capture.get(cv2.CAP_PROP_AUTOFOCUS)))            # 
+            print("SAR_NUM:     {}".format(self.capture.get(cv2.CAP_PROP_SAR_NUM)))              # 
+            print("SAR_DEN:     {}".format(self.capture.get(cv2.CAP_PROP_SAR_DEN)))              # 
+            print("BACKEND:     {}".format(self.capture.get(cv2.CAP_PROP_BACKEND)))              # 
+            print("CHANNEL:     {}".format(self.capture.get(cv2.CAP_PROP_CHANNEL)))              # 
         else: 
             print("NaN")
 
