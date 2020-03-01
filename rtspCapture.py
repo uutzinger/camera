@@ -94,22 +94,22 @@ class rtspCapture(Thread):
 
         plat = platform.system()
         if plat == "Windows":
-            # gst = 'rtspsrc location=' + self._rtsp + ' latency=400 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false'
+            # gst = 'rtspsrc location=' + self._rtsp + ' latency=100 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false'
             # self.capture = cv2.VideoCapture(gst)
             self.capture = cv2.VideoCapture(self._rtsp) # uses ffmpeg subsystem, but windows subsystem does not handle circular bufers
         elif plat == "Linux":
             if platform.machine() == 'aarch64': # Jetson Nano
-                gst ='rtspsrc location=' + self._rtsp + ' latency=10 ! rtph264depay ! h264parse ! omxh264dec ! appsink sync=false'
+                gst ='rtspsrc location=' + self._rtsp + ' latency=100 ! rtph264depay ! h264parse ! omxh264dec ! nvvidconv ! appsink sync=false'
                 self.capture = cv2.VideoCapture(gst)
             elif platform.machine() == 'armv6l' or platform.machine() == 'armv7l': # Raspberry Pi
-                gst = 'rtspsrc location=' + self._rtsp + ' latency=400 ! queue ! rtph264depay ! h264parse ! v4l2h264dec capture-io-mode=4 ! v4l2convert output-io-mode=5 capture-io-mode=4 ! appsink sync=false'
+                gst = 'rtspsrc location=' + self._rtsp + ' latency=100 ! queue ! rtph264depay ! h264parse ! v4l2h264dec capture-io-mode=4 ! v4l2convert output-io-mode=5 capture-io-mode=4 ! appsink sync=false'
                 # might not need the two queue statements above
                 self.capture = cv2.VideoCapture(gst)
         elif plat == "MacOS":
-            gst = 'rtspsrc location=' + self._rtsp + ' latency=400 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink'
+            gst = 'rtspsrc location=' + self._rtsp + ' latency=100 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink'
             self.capture = cv2.VideoCapture(gst)
         else:
-            gst = 'rtspsrc location=' + self._rtsp + ' latency=400 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink'
+            gst = 'rtspsrc location=' + self._rtsp + ' latency=100 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink'
             self.capture = cv2.VideoCapture(gst)
 
         self.capture_open = self.capture.isOpened()        
@@ -149,21 +149,23 @@ class rtspCapture(Thread):
                 _, img = self.capture.read()
 
             if img is not None:
+                # adjust from RGB to BGR
+                # img=cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                 # adjust output height
                 if self._display_height > 0:
                     tmp = cv2.resize(img, self._display_res)
                     if   self._flip_method == 0: # no flipping
                         self.frame = tmp
                     elif self._flip_method == 1: # ccw 90
-                        self.frame = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
+                        self.frame = cv2.rotate(tmp, cv2.ROTATE_90_COUNTERCLOCKWISE)
                     elif self._flip_method == 2: # rot 180, same as flip lr & up
-                        self.frame = cv2.roate(tmp, cv.ROTATE_180)
+                        self.frame = cv2.rotate(tmp, cv2.ROTATE_180)
                     elif self._flip_method == 3: # cw 90
-                        self.frame = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
+                        self.frame = cv2.rotate(tmp, cv2.ROTATE_90_COUNTERCLOCKWISE)
                     elif self._flip_method == 4: # horizontal
                         self.frame = cv2.flip(tmp, 0)
                     elif self._flip_method == 5: # upright diagonal. ccw & lr
-                        tmp = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
+                        tmp = cv2.roate(tmp, cv2.ROTATE_90_COUNTERCLOCKWISE)
                         self.frame = cv2.flip(tmp, 1)
                     elif self._flip_method == 6: # vertical
                         self.frame = cv2.flip(tmp, 1)
@@ -175,15 +177,15 @@ class rtspCapture(Thread):
                     if   self._flip_method == 0: # no flipping
                         self.frame = img
                     elif self._flip_method == 1: # ccw 90
-                        self.frame = cv2.roate(img, cv.ROTATE_90_COUNTERCLOCKWISE)
+                        self.frame = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
                     elif self._flip_method == 2: # rot 180, same as flip lr & up
-                        self.frame = cv2.roate(img, cv.ROTATE_180)
+                        self.frame = cv2.rotate(img, cv2.ROTATE_180)
                     elif self._flip_method == 3: # cw 90
-                        self.frame = cv2.roate(img, cv.ROTATE_90_COUNTERCLOCKWISE)
+                        self.frame = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
                     elif self._flip_method == 4: # horizontal
                         self.frame = cv2.flip(img, 0)
                     elif self._flip_method == 5: # upright diagonal. ccw & lr
-                        tmp = cv2.roate(img, cv.ROTATE_90_COUNTERCLOCKWISE)
+                        tmp = cv2.roate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
                         self.frame = cv2.flip(tmp, 1)
                     elif self._flip_method == 6: # vertical
                         self.frame = cv2.flip(img, 1)
