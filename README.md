@@ -5,6 +5,7 @@ A collection of threaded camera drivers to open USB, internal and MIPI CSI camer
 Urs Utzinger, 2020
 
 ## Camera Settings
+
 ### OV5647 OmniVision RasPi
 * auto_exposure 0: auto, 1:manual
 * exposure in microseconds
