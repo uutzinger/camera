@@ -6,6 +6,7 @@
 ###############################################################################
 
 Work in progress
+
 gst-inspect-1.0 omxh264enc
 pipeline_out = "appsrc ! videoconvert ! video/x-raw, framerate=20/1, format=RGBA ! glimagesink sync=false"
 fourcc = cv2.VideoWriter_fourcc(*'H264')
