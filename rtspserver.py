@@ -34,8 +34,6 @@ import sys
 # Open Computer Vision
 import cv2
 
-# Camera configuration file
-from configs   import configs
 
 ###############################################################################
 # Video Server
@@ -43,7 +41,6 @@ from configs   import configs
 
 class rtspServer(Thread):
     """
-    This thread continually captures frames from an RTSP stream
     """
 
     # Initialize the Camera Thread

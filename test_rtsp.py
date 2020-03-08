@@ -7,7 +7,8 @@ logging.basicConfig(level=logging.DEBUG)
 
 # reate camera interface
 from rtspcapture import rtspCapture
-camera = rtspCapture(rtsp='rtsp://192.168.8.50:8554/unicast')
+# camera = rtspCapture(rtsp='rtsp://192.168.8.50:8554/unicast')
+camera = rtspCapture(rtsp='rtsp://10.41.83.100:554/camera')
 
 print("Starting Capture")
 camera.start()
