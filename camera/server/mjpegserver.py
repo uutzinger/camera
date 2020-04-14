@@ -22,9 +22,6 @@ import sys
 # Open Computer Vision
 import cv2
 
-# Camera configuration file
-from configs   import configs
-
 ###############################################################################
 # Video Capture
 ###############################################################################
@@ -36,7 +33,7 @@ class rtspCapture(Thread):
 
     # Initialize the Camera Thread
     # Opens Capture Device
-    def __init__(self, rtsp: (str) = None):
+    def __init__(self, configs, rtsp: (str) = None):
         # initialize 
         self.logger     = logging.getLogger("cv2Capture{}".format(camera_num))
 

@@ -21,9 +21,6 @@ import os
 # Open Computer Vision
 import cv2
 
-# Camera configuration file
-from configs   import configs
-
 ###############################################################################
 # Video Capture
 ###############################################################################
@@ -139,7 +136,7 @@ class nanoCapture(Thread):
 
     # Initialize the Camera Thread
     # Opens Capture Device and Sets Capture Properties
-    def __init__(self, camera_num: int = 0, res: (int, int) = None, 
+    def __init__(self, configs, camera_num: int = 0, res: (int, int) = None, 
                  exposure: float = None):
 
         # initilize

@@ -15,11 +15,11 @@ camera.start()
 
 print("Getting Frames")
 
-window_handle = cv2.namedWindow("Camera", cv2.WINDOW_NORMAL)
+window_handle = cv2.namedWindow("RTSP", cv2.WINDOW_NORMAL)
 last_fps_time = time.time()
-while(cv2.getWindowProperty("Camera", 0) >= 0):
+while(cv2.getWindowProperty("RTSP", 0) >= 0):
     if camera.new_frame:
-        cv2.imshow('Camera', camera.frame)
+        cv2.imshow('RTSP', camera.frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 camera.stop()

@@ -4,7 +4,7 @@ import time
 rtsp="rtsp://10.41.83.100:554/camera"
 
 print("Starting Capture")
-cap = cv2.VideoCapture(rtsp, apiPreference=cv2.CAP_GSTREAMER)
+cap = cv2.VideoCapture(rtsp, apiPreference=cv2.CAP_FFMPEG)
 
 print("Getting Frames")
 num_frames = 0

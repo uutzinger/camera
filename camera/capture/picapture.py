@@ -24,9 +24,6 @@ import cv2
 from   picamera import PiCamera
 from   picamera.array import PiRGBArray
 
-# Camera configuration file
-from configs       import configs
-
 ###############################################################################
 # Video Capture
 ###############################################################################
@@ -38,7 +35,7 @@ class piCapture(Thread):
 
     # Initialize the Camera Thread
     # Opens Capture Device and Sets Capture Properties
-    def __init__(self, camera_num: int = 0, res: (int, int) = None, 
+    def __init__(self, configs, camera_num: int = 0, res: (int, int) = None, 
                  exposure: float = None):
 
         # initialize 

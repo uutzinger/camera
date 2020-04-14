@@ -25,9 +25,6 @@ import platform
 # Open Computer Vision
 import cv2
 
-# Camera configuration file
-from configs   import configs
-
 ###############################################################################
 # Video Capture
 ###############################################################################
@@ -39,7 +36,7 @@ class rtspCapture(Thread):
 
     # Initialize the Camera Thread
     # Opens Capture Device
-    def __init__(self, rtsp: (str) = None):
+    def __init__(self, configs, rtsp: (str) = None):
         # initialize 
         self.logger     = logging.getLogger("rtspCapture")
 
@@ -75,16 +72,14 @@ class rtspCapture(Thread):
                 gst-launch-1.0 rtspsrc location=rtsp://localhost:1181/camera ! fakesink
             Windows:
                 Install gstreamer from https://gstreamer.freedesktop.org/data/pkg/windows/
-                and select 	gstreamer-1.0-msvc-x86_64-_latestversion_.msi
-                Install Custom to C:/gstreamer
                 add C:\gstreamer\1.0\x86_64\bin to Path variable in Environment Variables
                 gst-launch-1.0 playbin uri=rtsp://localhost:8554/camera
                 gst-launch-1.0 rtspsrc location=rtsp://192.168.11.26:1181/camera latency=10 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! autovideosink
                 gst-launch-1.0 rtspsrc location=rtsp://localhost:8554/camera latency=10 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! autovideosink
-                !!! print(cv2.getBuildInformation()) !!! gstreamer needs to be on
+                print(cv2.getBuildInformation()) gstreamer needs to be on
                 If not follow https://medium.com/@galaktyk01/how-to-build-opencv-with-gstreamer-b11668fa09c
             Raspian: 
-                Make sure regular gstramer in Buster is installed
+                Make sure gstreamer is installed
                 gst-launch-1.0 rtspsrc location=rtsp://localhost:1181/camera latency=10 ! rtph264depay ! h264parse ! v4l2h264dec capture-io-mode=4 ! v4l2convert output-io-mode=5 capture-io-mode=4 ! autovideosink sync=false
             JetsonNano:
                 gst-launch-1.0 rtspsrc location=rtsp://192.168.8.50:8554/unicast latency=10 ! rtph264depay ! h264parse ! omxh264dec ! nvoverlaysink overlay-x=800 overlay-y=50 overlay-w=640 overlay-h=480 overlay=2
@@ -95,8 +90,9 @@ class rtspCapture(Thread):
 
         plat = platform.system()
         if plat == "Windows":
-            # gst = 'rtspsrc location=' + self._rtsp + ' latency=10 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false'
-            self.capture = cv2.VideoCapture(self._rtsp, apiPreference=cv2.CAP_FFMPEG)
+            gst = 'rtspsrc location=' + self._rtsp + ' latency=10 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false'
+            self.capture = cv2.VideoCapture(gst, apiPreference=cv2.CAP_GSTREAMER)
+            # self.capture = cv2.VideoCapture(self._rtsp, apiPreference=cv2.CAP_FFMPEG)
         elif plat == "Linux":
             if platform.machine() == 'aarch64': # Jetson Nano
                 gst ='rtspsrc location=' + self._rtsp + ' latency=10 ! rtph264depay ! h264parse ! omxh264dec ! nvvidconv ! appsink sync=false'
@@ -150,7 +146,7 @@ class rtspCapture(Thread):
 
             if img is not None:
                 # adjust from RGB to BGR
-                img=cv2.cvtColor(img, cv2.COLOR_YUV2BGR_NV12)
+                # img=cv2.cvtColor(img, cv2.COLOR_YUV2BGR_NV12)
                 # adjust output height
                 if self._display_height > 0:
                     tmp = cv2.resize(img, self._display_res)
