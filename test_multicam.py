@@ -25,7 +25,6 @@ num_frames = 0
 window_handle = cv2.namedWindow("Camera", cv2.WINDOW_NORMAL)
 last_fps_time = time.time()
 
-
 while(cv2.getWindowProperty("Camera", 0) >= 0):
     current_time = time.time()
     _, frame1 = cap1.read()
@@ -51,4 +50,3 @@ while(cv2.getWindowProperty("Camera", 0) >= 0):
 cap1.release()
 cap2.release()
 cv2.destroyAllWindows()
-

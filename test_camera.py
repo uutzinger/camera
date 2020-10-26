@@ -3,9 +3,6 @@ import logging
 import time
 import platform
 
-# Show images in window
-doshow = True
-
 # Camera configuration file
 from camera.configs.dell_internal_configs  import configs
 
@@ -31,7 +28,7 @@ elif plat == 'MacOS':
     from camera.capture.cv2capture import cv2Capture
     camera = cv2Capture(configs)
 else:
-    from camera.cappture.cv2capture import cv2Capture
+    from camera.capture.cv2capture import cv2Capture
     camera = cv2Capture(configs)
 
 # print("CV2 Capture Options")

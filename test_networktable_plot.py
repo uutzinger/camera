@@ -26,8 +26,6 @@ NetworkTables.addConnectionListener(connectionListener, immediateNotify=True)
 sd = NetworkTables.getTable("SmartDashboard")
 ll = NetworkTables.getTable("limelight")
 
-
-
 last_fps_time = time.time()
 while(True):
 

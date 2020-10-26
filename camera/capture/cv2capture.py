@@ -40,19 +40,17 @@ class cv2Capture(Thread):
         self.logger     = logging.getLogger("cv2Capture{}".format(camera_num))
 
         # populate desired settings from configuration file or function call
-        self.camera_num = camera_num
-        if exposure is not None: self._exposure   = exposure
-        else:                    self._exposure   = configs['exposure']
-        if res is not None:      self._camera_res = res
-        else:                    self._camera_res = (configs['camera_res'])
-        self._display_res                         = configs['output_res']
-        self._display_width                       = self._display_res[0]
-        self._display_height                      = self._display_res[1]
-        self._framerate                           = configs['fps']
-        self._flip_method                         = configs['flip']
-        self._buffersize                          = configs['buffersize']         # camera drive buffer size
-        self._fourcc                              = configs['fourcc']             # camera sensor encoding format
-        self._autoexposure                        = configs['autoexposure']       # autoexposure depends on camera
+        self.camera_num       = camera_num
+        self._exposure        = exposure if exposure is not None else self._exposure   = configs['exposure']
+        self._camera_res      = res      if res is not None      else self._camera_res = (configs['camera_res'])
+        self._display_res     = configs['output_res']
+        self._display_width   = self._display_res[0]
+        self._display_height  = self._display_res[1]
+        self._framerate       = configs['fps']
+        self._flip_method     = configs['flip']
+        self._buffersize      = configs['buffersize']         # camera drive buffer size
+        self._fourcc          = configs['fourcc']             # camera sensor encoding format
+        self._autoexposure    = configs['autoexposure']       # autoexposure depends on camera
 
         # Threading Locks, Events
         self.capture_lock    = Lock() # before changing capture settings lock them
@@ -75,9 +73,9 @@ class cv2Capture(Thread):
         # Open the camera with platform optimal settings
         if sys.platform.startswith('win'):
             self.capture = cv2.VideoCapture(self.camera_num, apiPreference=cv2.CAP_MSMF)
-        elif sys.platform.startswith('darwin'):
+        else if sys.platform.startswith('darwin'):
             self.capture = cv2.VideoCapture(self.camera_num, apiPreference=cv2.CAP_AVFOUNDATION)
-        elif sys.platform.startswith('linux'):
+        else if sys.platform.startswith('linux'):
             self.capture = cv2.VideoCapture(self.camera_num, apiPreference=cv2.CAP_V4L2)
         else:
             self.capture = cv2.VideoCapture(self.camera_num, apiPreference=cv2.CAP_ANY)
@@ -123,7 +121,6 @@ class cv2Capture(Thread):
     def update(self):
         """ run the thread """
         last_fps_time = time.time()
-        last_exposure_time = last_fps_time
         num_frames = 0
         while not self.stopped:
             current_time = time.time()
@@ -137,9 +134,7 @@ class cv2Capture(Thread):
                 _, img = self.capture.read()
 
             if img is not None:
-
                 # adjust output height
-
                 if self._display_height > 0:
                     tmp = cv2.resize(img, self._display_res)
                     if   self._flip_method == 0: # no flipping
@@ -153,8 +148,8 @@ class cv2Capture(Thread):
                     elif self._flip_method == 4: # horizontal
                         self.frame = cv2.flip(tmp, 0)
                     elif self._flip_method == 5: # upright diagonal. ccw & lr
-                        tmp = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
-                        self.frame = cv2.flip(tmp, 1)
+                        tmp_tmp = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
+                        self.frame = cv2.flip(tmp_tmp, 1)
                     elif self._flip_method == 6: # vertical
                         self.frame = cv2.flip(tmp, 1)
                     elif self._flip_method == 7: # upperleft diagonal
@@ -181,7 +176,6 @@ class cv2Capture(Thread):
                         self.frame = cv2.transpose(img)
                     else:
                         self.frame = img
-
                 num_frames += 1
 
             if self.stopped:

@@ -26,7 +26,7 @@ import platform
 import cv2
 
 ###############################################################################
-# Video Capture
+# RTSP Capture
 ###############################################################################
 
 class rtspCapture(Thread):
@@ -189,8 +189,6 @@ class rtspCapture(Thread):
                         self.frame = cv2.transpose(img)
                     else:
                         self.frame = img
-
-
                 num_frames += 1
 
             if self.stopped:

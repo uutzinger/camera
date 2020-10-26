@@ -8,7 +8,7 @@ print("Starting Capture")
 # cap = cv2.VideoCapture(gst, apiPreference=cv2.CAP_GSTREAMER)
 cap = cv2.VideoCapture('autovideosrc ! videoconvert ! appsink', apiPreference=cv2.CAP_GSTREAMER)
 
-print("Getting Frames")
+print("Getting Images")
 num_frames = 0
 window_handle = cv2.namedWindow("Camera", cv2.WINDOW_NORMAL)
 last_fps_time = time.time()

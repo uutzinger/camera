@@ -1,8 +1,7 @@
 ###############################################################################
 # Raspberry Pi CSI video capture
 # Allows configuation of codec
-# BitBuckets FRC 4183 & Urs Utzinger
-# 2019, 2020
+# Urs Utzinger 2019, 2020
 ###############################################################################
 
 ###############################################################################
@@ -149,12 +148,10 @@ class piCapture(Thread):
         T.daemon = True # run in background
         T.start()
 
-
     # After Stating of the Thread, this runs continously
     def update(self):
         """ run the thread """
         last_fps_time = time.time()
-        last_exposure_time = last_fps_time
         num_frames = 0
         for f in self.stream:
             img = f.array

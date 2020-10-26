@@ -220,7 +220,6 @@ class nanoCapture(Thread):
     def update(self):
         """ run the thread """
         last_fps_time = time.time()
-        last_exposure_time = last_fps_time
         num_frames = 0
         while not self.stopped:
             current_time = time.time()
