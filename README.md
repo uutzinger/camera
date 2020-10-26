@@ -17,7 +17,7 @@ cv2 for USB and CSI cameras
    Jetson Nano: nanoCapture: cv2.CAP_GSTREAMER  
    Other:       cv2Capture:  cv2.CAP_ANY
 RTSP network streams
-   Any[*]:          cv2Capture:  cv2.CAP_GSTREAMER
+   Any[*]:      cv2Capture:  cv2.CAP_GSTREAMER
 cv2 for image resizing and flipping    
 ```
 [*] RTSP on windows requires gstreamer integration which is a custom build for opencv. See my windows installation scripts on Github.
