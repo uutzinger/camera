@@ -1,15 +1,27 @@
 # Camera
 
 ## Overview
-A collection of threaded camera drivers to for USB and internal webcams, rtsp streams and MIPI CSI cameras in python on Windows, MacOS, Jetson Nano and Raspberry Pi. FLIR blackfly camera is also supported.  
-Design goal was maximal frame rate and minimal latency.  
+A collection of python threaded camera support routines for  
+* USB and internal webcams
+* rtsp streams
+* MIPI CSI cameras (Raspberry Pi, Jetson Nano)
+* FLIR blackfly (USB 3)
+
+Supported OS  
+* Windows
+* MacOS
+* Linux
+
+The routines primarily use OpenCV or PySpin to interface with the camera.
+The main effortt here is to run the image acquisition in a background thread and to find best approaches for maximal frame rate and minimal latency.  
 This work includes efforts from Mark Omo and Craig Post.  
+
 Urs Utzinger, 2020
 
 ## Requirements
 ```
 PySpin for FLIR cameras
-   Any:         blackflyCapture  
+   Any OS:      blackflyCapture  
 cv2 for USB and CSI cameras  
    Windows:     cv2Capture:  cv2.CAP_MSMF  
    Darwin:      cv2Capture:  cv2.CAP_AVFOUNDATION  
@@ -20,34 +32,35 @@ RTSP network streams
    Any[*]:      cv2Capture:  cv2.CAP_GSTREAMER
 cv2 for image resizing and flipping    
 ```
-[*] RTSP on windows requires gstreamer integration which is a custom build for opencv. See my windows installation scripts on Github.
+[*] RTSP requires gstreamer integration. CV2 will need to be custom built on windows to enable gstreamer support. See my windows installation scripts on Github.
 
 ## Capture modules
 
 ### **blackflyCapture**
-Supports all settings needed for Blackfly S BFS-U3-04S2M.   
+Supports all settings needed for Blackfly camera.   
 Supports trigger out during frame exposure and trigger in for frame start.  
-Optimized settings to achieve heighest frame rate.  
+Optimized settings to achieve full frame rate (520Hz) with S BFS-U3-04S2M.
 
 ### **nanoCapture**
-Uses gstreamer pipeline.  
+Uses gstreamer pipeline for Jetson Nano.
 Optimized pipline for nvidia conversion and nvarguscamera capture.  
-Settings optimized for Sony IMX219 Raspi v2 Module.  
+Settings optimized for Sony IMX219 Raspi v2 Module.
 
 ### **cv2Capture**
-The cv2 capture architecture is used with ideal video subsystem for each operating system.  
+Uses the cv2 capture architecture. THe video subsystem is choosen based on the operating system.
 
 ### **rtspCapture**
-gstreamer based rtsp network capture for all platforms
+gstreamer based rtsp network stream capture for all platforms.  
+gstreamer is called through OpenCV. By default OpenCV supports ffmpeg and not gstreamer. Jetson Nano does not support ffmpeg.
 
 ### **piCapture**
-interface for picamera module. Depricated since cv2Capture is more efficient in Raspberry Pi.
+Interface for picamera module. Depricated since cv2Capture is more efficient for the Raspberry Pi.
 
 ## Example Programs
 test_blackfly.py tests the blackfly capture module, displays images and reports framerate.  
 test_blackfly_savehdf5.py same as above but incoporates saving to disk.  
 test_camera.py unifying camera capture for all capture platforms except blackfly.  
-test_rtsp.py testing rtsp network streams
+test_rtsp.py testing rtsp network streams.  
 
 ## Camera Settings
 Configs folder:  

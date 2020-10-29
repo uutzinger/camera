@@ -77,7 +77,7 @@ class blackflyCapture(Thread):
         # Init Frame and Thread
         self.frame     = None
         self.new_frame = False
-        self.stopped   = False
+        self.frametime = 0.0
         self.measured_fps = 0.0
 
         Thread.__init__(self)
@@ -107,6 +107,7 @@ class blackflyCapture(Thread):
             self.system.ReleaseInstance()
             self.logger.log(logging.CRITICAL, "Status: No cameras found!")
             self.capture_open = False
+            self.cam = None
             return False
         # Open the camera
         self.cam = self.cam_list[self._camera_num]
@@ -242,8 +243,8 @@ class blackflyCapture(Thread):
             if self.cam is not None:
                 image_result = self.cam.GetNextImage(1000) # timeout in ms
                 if not image_result.IsIncomplete():
-                    # self._frametime = self.cam.EventExposureEndTimestamp.GetValue()
-                    self._frametime = current_time
+                    # self.frameTime = self.cam.EventExposureEndTimestamp.GetValue()
+                    self.frameTime = int(current_time*1000)
                     with self.capture_lock:
                         img = image_result.GetNDArray() # get inmage as NumPy array
                     image_result.Release() # make next frame available
@@ -304,7 +305,8 @@ class blackflyCapture(Thread):
                 last_fps_time = current_time
 
             if self.stopped:
-                image_result.Release()      
+                pass
+                # image_result.Release()      
 
     ###################################################################
     #
@@ -322,7 +324,6 @@ class blackflyCapture(Thread):
         """ returns most recent frame """
         self._new_frame = False
         return self._frame
-
     @frame.setter
     def frame(self, img):
         """ set new frame content """
@@ -331,16 +332,19 @@ class blackflyCapture(Thread):
             self._new_frame = True
 
     @property
-    def frametime(self):
+    def frameTime(self):
         """ returns frame timestamp """
-        return self._frametime
+        return self._frame_time
+    @frameTime.setter
+    def frameTime(self, val):
+        """ sets curent frame timestamp """
+        self._frame_time = val
 
     @property
     def new_frame(self):
         """ check if new frame available """
         out = self._new_frame
         return out
-
     @new_frame.setter
     def new_frame(self, val):
         """ override wether new frame is available """
