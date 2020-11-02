@@ -110,3 +110,15 @@ for i in range(0,100):
 print("CV2  float {}".format(total/100.0))
 #print(stat)
 print('')
+
+total = 0.0
+for i in range(0,100):
+    A=(np.random.randint(0,255,(180,135),dtype=np.uint8))
+    # Ah = cv2.resize(A,dsize=(180,135),interpolation = cv2.INTER_NEAREST)
+    # Ah=A[0::4,0::4]
+    tic=time.perf_counter()
+    stat=cv2.sumElems(A)
+    toc=time.perf_counter()
+    total = total + (toc-tic)
+print("CV2 resize 0.25 uint8 {}".format(total/100.0))
+

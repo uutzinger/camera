@@ -18,6 +18,12 @@ This work includes efforts from Mark Omo and Craig Post.
 
 Urs Utzinger, 2020
 
+## References
+https://realpython.com/python-concurrency/  
+https://realpython.com/python-sleep/ 
+https://realpython.com/async-io-python/  
+https://www.pythonforthelab.com/blog/handling-and-sharing-data-between-threads/  
+
 ## Requirements
 ```
 PySpin for FLIR cameras
@@ -57,10 +63,20 @@ gstreamer is called through OpenCV. By default OpenCV supports ffmpeg and not gs
 Interface for picamera module. Depricated since cv2Capture is more efficient for the Raspberry Pi.
 
 ## Example Programs
-test_blackfly.py tests the blackfly capture module, displays images and reports framerate.  
-test_blackfly_savehdf5.py same as above but incoporates saving to disk.  
+In general display should occur in main program. OpenCV requires waitkey to be executed in order to update the display. Waikey takes much longer than 1ms and therfore transferring data between threads is significantly slowed down in the main thread if display is requested.
+
+Data transfer between threads or between main program and thread works better with Queue than with checking wether new data is available and then accessing it through shared memory. That is because Queue can be programmed to be blocking or non blocking and if Queue is long enough, not data is lost if main thread could not keep up with capture thread for brief amount of time.
+
+test_blackfly.py tests the blackfly capture module and reports framerate.  
+test_blackfly_display.py tests the blackfly capture module, displays images and reports framerate.  
+test_blackfly_savehdf5.py same as above, no display but incoporates saving to disk.  
 test_camera.py unifying camera capture for all capture platforms except blackfly.  
-test_rtsp.py testing rtsp network streams.  
+test_rtsp.py testing rtsp network streams.
+
+test_display.py testing opencv display framerate  
+test_savehd5.py testing the disk throughput with hdf5  
+test_sum.py testing different approaches to calculate the integreal of an image  
+test_arraycopy.py testing whihch axis should be used for the time  
 
 ## Camera Settings
 Configs folder:  
