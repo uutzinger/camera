@@ -2,7 +2,9 @@
 # FLIR balckfly video capture
 # Uses PySpin to capture images
 # Uses OpenCV to resize and roate images
-# Urs Utzinger 2020
+# Urs Utzinger 
+#
+# Fall 2020, First release
 ###############################################################################
 
 ###############################################################################
@@ -12,7 +14,6 @@
 # Multi Threading
 from threading import Thread
 from threading import Lock
-from threading import Event
 
 #
 import logging
@@ -26,9 +27,7 @@ import PySpin
 import cv2
 
 ###############################################################################
-#
 # Video Capture
-#
 ################################################################################
 
 class blackflyCapture(Thread):
@@ -75,9 +74,9 @@ class blackflyCapture(Thread):
         self._open_capture()
 
         # Init Frame and Thread
-        self.frame     = None
-        self.new_frame = False
-        self.frame_time = 0.0
+        self.frame        = None
+        self.new_frame    = False
+        self.frame_time   = 0.0
         self.measured_fps = 0.0
 
         Thread.__init__(self)
@@ -129,6 +128,7 @@ class blackflyCapture(Thread):
         ###################
         self.cam.Init()
         self.capture_open = True
+
         #
         # Camera Settings
         #################
@@ -197,7 +197,7 @@ class blackflyCapture(Thread):
     #
     # Thread routines
     # Start Stop and Update Thread
-    #####################################################################################
+    #####################################################################
 
     def stop(self):
         """stop the thread"""
@@ -235,7 +235,7 @@ class blackflyCapture(Thread):
                     self.frame_time = int(current_time*1000)
 
                     # avoid unnecessary memory copy and changing of array sizes
-                    if (self._output_height == -1) and (self._flip_method == 0):
+                    if (self._output_height <= 0) and (self._flip_method == 0):
                         if capture_queue is not None:
                             if not capture_queue.full():
                                 capture_queue.put((self.frame_time, img), block=False)
@@ -281,16 +281,10 @@ class blackflyCapture(Thread):
                 num_frames = 0
                 last_fps_time = current_time
 
-    ###################################################################
     #
-    # Support Routines
-    # To read and write camrea options and variables
-    #
-    ###################################################################
-
-    #
-    # Frame routines, when queue is not used
-    ###################################################################
+    # Frame routines
+    # If queue is not used
+    #########################################################################
 
     @property
     def frame(self):

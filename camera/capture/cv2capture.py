@@ -2,8 +2,9 @@
 # OpenCV video capture
 # Uses opencv video capture to capture system's camera
 # Adapts to operating system and allows configuation of codec
-# BitBuckets FRC 4183
-# 2019
+# Urs Utzinger
+#
+# 2019 Initial release, based on Bitbuckets FRC 4183 code
 ###############################################################################
 
 ###############################################################################
@@ -13,7 +14,6 @@
 # Multi Threading
 from threading import Thread
 from threading import Lock
-from threading import Event
 
 #
 import logging
@@ -31,21 +31,29 @@ class cv2Capture(Thread):
     """
     This thread continually captures frames from a USB camera
     """
-
+    #
     # Initialize the Camera Thread
     # Opens Capture Device and Sets Capture Properties
+    ############################################################################
     def __init__(self, configs, camera_num: int = 0, res: (int, int) = None,            # width, height
                  exposure: float = None):
         # initialize 
         self.logger     = logging.getLogger("cv2Capture{}".format(camera_num))
 
-        # populate desired settings from configuration file or function call
+        # populate desired settings from configuration file or function arguments
+        ####################################################################
         self.camera_num       = camera_num
-        self._exposure        = exposure if exposure is not None else self._exposure   = configs['exposure']
-        self._camera_res      = res      if res is not None      else self._camera_res = (configs['camera_res'])
-        self._display_res     = configs['output_res']
-        self._display_width   = self._display_res[0]
-        self._display_height  = self._display_res[1]
+        if exposure is not None:
+            self._exposure    = exposure  
+        else: 
+            self._exposure   = configs['exposure']
+        if res is not None:
+            self._camera_res = res
+        else: 
+            self._camera_res = configs['camera_res']
+        self._output_res      = configs['output_res']
+        self._output_width    = self._output_res[0]
+        self._output_height   = self._output_res[1]
         self._framerate       = configs['fps']
         self._flip_method     = configs['flip']
         self._buffersize      = configs['buffersize']         # camera drive buffer size
@@ -61,9 +69,9 @@ class cv2Capture(Thread):
         self._open_capture()
 
         # Init Frame and Thread
-        self.frame     = None
-        self.new_frame = False
-        self.stopped   = False
+        self.frame        = None
+        self.new_frame    = False
+        self.frame_time   = 0.0
         self.measured_fps = 0.0
 
         Thread.__init__(self)
@@ -110,110 +118,111 @@ class cv2Capture(Thread):
         """stop the thread"""
         self.stopped = True
 
-    def start(self):
+    def start(self, capture_queue = None):
         """ set the thread start conditions """
         self.stopped = False
-        T = Thread(target=self.update, args=())
+        T = Thread(target=self.update, args=(capture_queue,))
         T.daemon = True # run in background
         T.start()
 
     # After Stating of the Thread, this runs continously
-    def update(self):
+    def update(self, capture_queue):
         """ run the thread """
         last_fps_time = time.time()
         num_frames = 0
         while not self.stopped:
             current_time = time.time()
+
+            with self.capture_lock:
+                _, img = self.capture.read()
+            num_frames += 1
+            self.frame_time = int(current_time*1000)
+
+            if img is not None:
+
+                # avoid unnecessary memory copy and changing of array sizes
+                if (self._output_height <= 0) and (self._flip_method == 0):
+                    if capture_queue is not None:
+                        if not capture_queue.full():
+                            capture_queue.put((self.frame_time, img), block=False)
+                        else:
+                            self.logger.log(logging.DEBUG, "Status:Capture Queue is full!")
+                    else:
+                        self.frame = img
+                else:
+                    # adjust output height
+                    tmp = cv2.resize(img, self._output_res)
+                    # flip resized image
+                    if   self._flip_method == 0: # no flipping
+                        tmpf = tmp
+                    elif self._flip_method == 1: # ccw 90
+                        tmpf = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
+                    elif self._flip_method == 2: # rot 180, same as flip lr & up
+                        tmpf = cv2.roate(tmp, cv.ROTATE_180)
+                    elif self._flip_method == 3: # cw 90
+                        tmpf = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
+                    elif self._flip_method == 4: # horizontal
+                        tmpf = cv2.flip(tmp, 0)
+                    elif self._flip_method == 5: # upright diagonal. ccw & lr
+                        tmp_tmp = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
+                        tmpf = cv2.flip(tmp_tmp, 1)
+                    elif self._flip_method == 6: # vertical
+                        tmpf = cv2.flip(tmp, 1)
+                    elif self._flip_method == 7: # upperleft diagonal
+                        tmpf = cv2.transpose(tmp)
+                    else:
+                        tmpf = tmp
+                    if capture_queue is not None:
+                        if not capture_queue.isfull():
+                            capture_queue.put((self.frame_time, tmpf), block=False)
+                        else:
+                            self.logger.log(logging.DEBUG, "Status:Capture Queue is full!")                                    
+                    else:
+                        self.frame = tmpf
+
             # FPS calculation
             if (current_time - last_fps_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_fps = num_frames/5.0
                 self.logger.log(logging.DEBUG, "Status:FPS:{}".format(self.measured_fps))
                 num_frames = 0
                 last_fps_time = current_time
-            with self.capture_lock:
-                _, img = self.capture.read()
-
-            if img is not None:
-                # adjust output height
-                if self._display_height > 0:
-                    tmp = cv2.resize(img, self._display_res)
-                    if   self._flip_method == 0: # no flipping
-                        self.frame = tmp
-                    elif self._flip_method == 1: # ccw 90
-                        self.frame = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
-                    elif self._flip_method == 2: # rot 180, same as flip lr & up
-                        self.frame = cv2.roate(tmp, cv.ROTATE_180)
-                    elif self._flip_method == 3: # cw 90
-                        self.frame = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
-                    elif self._flip_method == 4: # horizontal
-                        self.frame = cv2.flip(tmp, 0)
-                    elif self._flip_method == 5: # upright diagonal. ccw & lr
-                        tmp_tmp = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
-                        self.frame = cv2.flip(tmp_tmp, 1)
-                    elif self._flip_method == 6: # vertical
-                        self.frame = cv2.flip(tmp, 1)
-                    elif self._flip_method == 7: # upperleft diagonal
-                        self.frame = cv2.transpose(tmp)
-                    else:
-                        self.frame = tmp
-                else:
-                    if   self._flip_method == 0: # no flipping
-                        self.frame = img
-                    elif self._flip_method == 1: # ccw 90
-                        self.frame = cv2.roate(img, cv.ROTATE_90_COUNTERCLOCKWISE)
-                    elif self._flip_method == 2: # rot 180, same as flip lr & up
-                        self.frame = cv2.roate(img, cv.ROTATE_180)
-                    elif self._flip_method == 3: # cw 90
-                        self.frame = cv2.roate(img, cv.ROTATE_90_COUNTERCLOCKWISE)
-                    elif self._flip_method == 4: # horizontal
-                        self.frame = cv2.flip(img, 0)
-                    elif self._flip_method == 5: # upright diagonal. ccw & lr
-                        tmp = cv2.roate(img, cv.ROTATE_90_COUNTERCLOCKWISE)
-                        self.frame = cv2.flip(tmp, 1)
-                    elif self._flip_method == 6: # vertical
-                        self.frame = cv2.flip(img, 1)
-                    elif self._flip_method == 7: # upperleft diagonal
-                        self.frame = cv2.transpose(img)
-                    else:
-                        self.frame = img
-                num_frames += 1
 
             if self.stopped:
                 self.capture.release()        
 
     #
-    # Frame routines ##################################################
-    # Each camera stores frames locally
-    ###################################################################
+    # Frame routines
+    # If queue is not used
+    #########################################################################
 
     @property
     def frame(self):
         """ returns most recent frame """
-        self._new_frame = False
+        with self.frame_lock:
+            self._new_frame = False
         return self._frame
-
     @frame.setter
-    def frame(self, img):
+    def frame(self, val):
         """ set new frame content """
         with self.frame_lock:
-            self._frame = img
+            self._frame = val
             self._new_frame = True
 
     @property
     def new_frame(self):
         """ check if new frame available """
-        out = self._new_frame
-        return out
-
+        with self.frame_lock:
+            return self._new_frame
     @new_frame.setter
     def new_frame(self, val):
         """ override wether new frame is available """
-        self._new_frame = val
+        with self.frame_lock:
+            self._new_frame = val
 
     #
-    # Camera routines ##################################################
-    # Rading and Setting Camera Options
-    #
+    # Camera routines
+    # Reading and setting camera options
+    ###################################################################
 
     @property
     def width(self):

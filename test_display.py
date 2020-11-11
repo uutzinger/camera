@@ -1,8 +1,5 @@
 ##########################################################################
-# Testing of storage server thread.
-# A data cube is 5.5MBytes in size
-# It is either copied to shared memory or send via aueue to thread.
-# 
+# Testing of display fps.
 ##########################################################################
 # Results
 # =======
@@ -39,8 +36,8 @@ logger = logging.getLogger("Display")
 
 cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 font          = cv2.FONT_HERSHEY_SIMPLEX
-textLocation0 = (10,480)
-textLocation1 = (10,520)
+textLocation0 = (10,20)
+textLocation1 = (10,60)
 fontScale     = 1
 fontColor     = (255,255,255)
 lineType      = 2

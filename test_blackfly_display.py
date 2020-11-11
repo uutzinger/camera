@@ -47,17 +47,18 @@ import time
 from queue import Queue
 import numpy as np
 
-use_queue = False
+use_queue = True`
 display_interval = 0.03
 looptime         = 0.0
 
 # Camera configuration file
 from camera.configs.blackfly_configs  import configs
+
 # display_interval = 1.0/configs['serverfps']
 window_name    = 'Camera'
 font           = cv2.FONT_HERSHEY_SIMPLEX
-textLocation0  = (10,480)
-textLocation1  = (10,520)
+textLocation0  = (10,20)
+textLocation1  = (10,60)
 fontScale      = 1
 fontColor      = (255,255,255)
 lineType       = 2

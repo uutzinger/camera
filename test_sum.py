@@ -1,3 +1,7 @@
+#
+# What is best method to determine the image intensity
+# It turns out unit8 image on cv 2.sumElems(img) is fastets, even faster than resizing image first and then summming
+#
 import numpy as np
 import time
 

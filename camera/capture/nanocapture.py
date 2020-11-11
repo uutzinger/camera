@@ -1,8 +1,11 @@
 ###############################################################################
-# CSi video capture on Jetson Nano using gstreamer
-# Unfortunately latency is expected to be 100-200ms
-# Urs Utzinger
-# 2020
+# CSI video capture on Jetson Nano using gstreamer
+# Latency can be 100-200ms
+# Urs Utzinger, 
+#
+# Fall 2020, Update Queue
+# Fall 2019, First release
+#
 ###############################################################################
 
 ###############################################################################
@@ -27,7 +30,7 @@ import cv2
 
 def gstreamer_pipeline(
         capture_width=1920, capture_height=1080,
-        display_width=1280, display_height=720,
+        output_width=1280, output_height=720,
         framerate=30, exposure_time=-1, # ms
         flip_method=0):
 
@@ -38,9 +41,9 @@ def gstreamer_pipeline(
     #        'sensor-mode=-1 '                           # -1..255, IX279 
     #                                                    # 0(3264x2464,21fps)
     #                                                    # 1 (3264x1848,28)
-    #                                                    # 2(1080p.30),
-    #                                                    # 3(720p,60),
-    #                                                    # 4(=720p,120)
+    #                                                    # 2 (1080p.30)
+    #                                                    # 3 (720p,60)
+    #                                                    # 4 (720p,120)
     #        'tnr-strength=-1 '                          # -1..1
     #        'tnr-mode=1 '                               # 0,1,2
     #        # edge enhancement does not accept settings
@@ -108,10 +111,10 @@ def gstreamer_pipeline(
     #   7=uperleft flip
 
     # deal with auto resizing
-    if display_height <= 0:
-        display_height = capture_height
-    if display_width <=0:
-        display_width = capture_width
+    if output_height <= 0:
+        output_height = capture_height
+    if output_width <=0:
+        output_width = capture_width
 
     gstreamer_str = (
         '! video/x-raw(memory:NVMM), '                       +
@@ -120,7 +123,7 @@ def gstreamer_pipeline(
         'format=(string)NV12, '                              +
         'framerate=(fraction){:d}/1 '.format(framerate)      +
         '! nvvidconv flip-method={:d} '.format(flip_method)  +
-        '! video/x-raw, width=(int){:d}, height=(int){:d}, format=(string)BGRx '.format(display_width,display_height) +
+        '! video/x-raw, width=(int){:d}, height=(int){:d}, format=(string)BGRx '.format(output_width,output_height) +
         '! videoconvert '                                    +
         '! video/x-raw, format=(string)BGR '                 +
         '! appsink')
@@ -129,6 +132,10 @@ def gstreamer_pipeline(
         nvarguscamerasrc_str + gstreamer_str
     )
 
+#
+# Initialize the Camera Thread
+# Open Capture Device and Sets Capture Properties
+##############################################################################
 class nanoCapture(Thread):
     """
     This thread continually captures frames from a CSI camera
@@ -143,16 +150,21 @@ class nanoCapture(Thread):
         self.logger = logging.getLogger("nanoCapture{}".format(camera_num))
 
         # populate desired settings from configuration file or function call
+        ####################################################################
         self.camera_num = camera_num
-        if exposure is not None: self._exposure   = exposure
-        else:                    self._exposure   = configs['exposure']
-        if res is not None:      self._camera_res = res
-        else:                    self._camera_res = configs['camera_res']
+        if exposure is not None:
+            self._exposure    = exposure  
+        else: 
+            self._exposure   = configs['exposure']
+        if res is not None:
+            self._camera_res = res
+        else: 
+            self._camera_res = configs['camera_res']
         self._capture_width                       = self._camera_res[0] 
         self._capture_height                      = self._camera_res[1]
-        self._display_res                         = configs['output_res']
-        self._display_width                       = self._display_res[0]
-        self._display_height                      = self._display_res[1]
+        self._output_res                          = configs['output_res']
+        self._output_width                        = self._output_res[0]
+        self._output_height                       = self._output_res[1]
         self._framerate                           = configs['fps']
         self._flip_method                         = configs['flip']
 
@@ -165,21 +177,23 @@ class nanoCapture(Thread):
         self._open_capture()
 
         # Init Frame and Thread
-        self.frame     = None
-        self.new_frame = False
-        self.stopped   = False
+        self.frame        = None
+        self.new_frame    = False
+        self.frame_time   = 0.0
         self.measured_fps = 0.0
 
         Thread.__init__(self)
 
-
+    #
+    # Setup the Camera
+    ############################################################################
     def _open_capture(self):
         """Open up the camera so we can begin capturing frames"""
         print(gstreamer_pipeline(
             capture_width  = self._capture_width,
             capture_height = self._capture_height,
-            display_width  = self._display_width,
-            display_height = self._display_height,
+            output_width   = self._output_width,
+            output_height  = self._output_height,
             framerate      = self._framerate,
             exposure_time  = self._exposure,
             flip_method    = self._flip_method)
@@ -188,8 +202,8 @@ class nanoCapture(Thread):
         self.capture = cv2.VideoCapture(gstreamer_pipeline(
             capture_width  = self._capture_width,
             capture_height = self._capture_height,
-            display_width  = self._display_width,
-            display_height = self._display_height,
+            output_width   = self._output_width,
+            output_height  = self._output_height,
             framerate      = self._framerate,
             exposure_time  = self._exposure,
             flip_method    = self._flip_method),
@@ -202,74 +216,83 @@ class nanoCapture(Thread):
             self.logger.log(logging.CRITICAL, "Status:Failed to open camera!")
 
     #
-    # Thread routines #################################################
+    # Thread routines 
     # Start Stop and Update Thread
-
+    ###################################################################
     def stop(self): 
         """stop the thread"""
         self.stopped = True
 
-    def start(self):
+    def start(self, capture_queue = None):
         """ set the thread start conditions """
         self.stopped = False
-        T = Thread(target=self.update, args=())
+        T = Thread(target=self.update, args=(capture_queue,))
         T.daemon = True # run in background
         T.start()
 
     # After Stating of the Thread, this runs continously
-    def update(self):
+    def update(self, capture_queue):
         """ run the thread """
         last_fps_time = time.time()
         num_frames = 0
         while not self.stopped:
+
             current_time = time.time()
+
             # FPS calculation
             if (current_time - last_fps_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_fps = num_frames/5.0
                 self.logger.log(logging.DEBUG, "Status:FPS:{}".format(self.measured_fps))
                 num_frames = 0
                 last_fps_time = current_time
-            with self.capture_lock:
-                _, img = self.capture.read()
-            # set the frame var to the img we just captured
-            self.frame = img
-            # tell any threads waiting for a new frame that we have one
+
+            _, img = self.capture.read()
             num_frames += 1
+            self.frame_time = int(current_time*1000)
+
+            if capture_queue is not None:
+                if not capture_queue.isfull():
+                    capture_queue.put((self.frame_time, img), block=False)
+                else:
+                    self.logger.log(logging.DEBUG, "Status:Capture Queue is full!")                                    
+            else:
+                self.frame = img
 
             if self.stopped:
                 self.capture.release()
 
     #
-    # Frame routines ##################################################
-    # Each camera stores frames locally
-
+    # Frame routines
+    # If queue is not used
+    ###########################################################################
     @property
     def frame(self):
         """ returns most recent frame """
-        self._new_frame = False
+        with self.frame_lock:
+            self._new_frame = False
         return self._frame
-
     @frame.setter
-    def frame(self, img):
+    def frame(self, val):
         """ set new frame content """
         with self.frame_lock:
-            self._frame = img
+            self._frame = val
             self._new_frame = True
 
     @property
     def new_frame(self):
         """ check if new frame available """
-        out = self._new_frame
-        return out
-
+        with self.frame_lock:
+            return self._new_frame
     @new_frame.setter
     def new_frame(self, val):
         """ override wether new frame is available """
-        self._new_frame = val
+        with self.frame_lock:
+            self._new_frame = val
+
 
     #
-    # Camera Routines ################################################
-    #
+    # Camera Routines
+    ##################################################################
 
     # OpenCV interface
     # Works for Sony IX219
@@ -297,9 +320,6 @@ class nanoCapture(Thread):
         if self.capture_open:
             return self.capture._exposure                       
         else: return float("NaN")
-
-    # Write
-
     @exposure.setter
     def exposure(self, val):
         if val is None:
