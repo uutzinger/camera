@@ -5,7 +5,7 @@ import platform
 from queue import Queue
 import numpy as np
 
-use_queue = True`
+use_queue = True
 display_interval = 0.03
 looptime         = 0.0
 
@@ -81,7 +81,7 @@ while(cv2.getWindowProperty("Camera", 0) >= 0):
 
     if current_time - last_fps_time >= 5.0:
         measured_fps = num_frames_received/5.0
-        logger.log(logging.DEBUG, "Status:Frames displayed per second:{}".format(measured_fps))
+        logger.log(logging.DEBUG, "Status:Frames received per second:{}".format(measured_fps))
         num_frames_received = 0
         measured_dps = num_frames_displayed/5.0
         logger.log(logging.DEBUG, "Status:Frames displayed per second:{}".format(measured_dps))

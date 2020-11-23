@@ -33,17 +33,20 @@ def gstreamer_pipeline(
         output_width=1280, output_height=720,
         framerate=30, exposure_time=-1, # ms
         flip_method=0):
-
+    ###################################################################################
+    # gstreamer Options 
+    # Examples for IX279
+    ###################################################################################
     #        'timeout=0 '                                # 0 - 2147483647
     #        'blocksize=-1 '                             # block size in bytes
     #        'num-buffers=-1 '                           # -1..2147483647 (-1=ulimited) 
     #                                                    # num buf before sending EOS
     #        'sensor-mode=-1 '                           # -1..255, IX279 
-    #                                                    # 0(3264x2464,21fps)
-    #                                                    # 1 (3264x1848,28)
-    #                                                    # 2 (1080p.30)
-    #                                                    # 3 (720p,60)
-    #                                                    # 4 (720p,120)
+    #                                                    # 0 (3264x2464,21fps)
+    #                                                    # 1 (3264x1848,28fps)
+    #                                                    # 2 (1080p, 30fps)
+    #                                                    # 3 (720p, 60fps)
+    #                                                    # 4 (720p, 120fps)
     #        'tnr-strength=-1 '                          # -1..1
     #        'tnr-mode=1 '                               # 0,1,2
     #        # edge enhancement does not accept settings
@@ -61,7 +64,16 @@ def gstreamer_pipeline(
     #        'exposuretimerange='                       # 
     #        'gainrange="1.0 10.625" '                  # "1.0 10.625"
     #        'ispdigitalgainrange="1 8" '               
-
+    #        'flip-method=0                             # Flip options
+    #                                                   #   0=norotation
+    #                                                   #   1=ccw90deg
+    #                                                   #   2=rotation180
+    #                                                   #   3=cw90
+    #                                                   #   4=horizontal
+    #                                                   #   5=uprightdiagonal flip
+    #                                                   #   6=vertical
+    #                                                   #   7=uperleft flip
+    ###################################################################################
 
     if exposure_time <= 0:
         # auto exposure
@@ -77,10 +89,11 @@ def gstreamer_pipeline(
     else:
         # static exposure
         #################
-        exposure_time = exposure_time * 1000000 # ms to ns
+        exposure_time = exposure_time * 1000            # microseconds to ns
         exp_time_str = '"' + str(exposure_time) + ' ' + str(exposure_time) + '" '
-        nvarguscamerasrc_str = (
+        nvarguscamerasrc_str = (                                                                                                                                                                                                                                                                                                        
             'nvarguscamerasrc '          +
+            'name="NanoCam" '            +
             'do-timestamp=true '         +
             'timeout=0 '                 +
             'blocksize=-1 '              +
@@ -99,16 +112,6 @@ def gstreamer_pipeline(
             'exposurecompensation=0 '    +
             'exposuretimerange='         +
             exp_time_str)
-
-    # Flip options
-    #   0=norotation
-    #   1=ccw90deg
-    #   2=rotation180
-    #   3=cw90
-    #   4=horizontal
-    #   5=uprightdiagonal flip
-    #   6=vertical
-    #   7=uperleft flip
 
     # deal with auto resizing
     if output_height <= 0:

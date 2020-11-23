@@ -2,7 +2,17 @@ configs = {
     ##############################################
     # Camera Settings
     ##############################################
-    'camera_res'      : (320, 240 ),    # any amera: Camera width & height
+    'camera_res'      : (1280, 720 ),   # any amera: Camera width & height
+                                        # 1280x720 30fps, 
+                                        # 960x540 30fps, 
+                                        # 640x360 30fps,
+                                        # 320x180 30fps
+                                        # 640x480 30fps, 
+                                        # 320x240 30fps
+                                        # 160x120 30fps
+                                        # 848x480 30fps
+                                        # 424x240 30fps
+                                        # 
                                         # CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT
     'exposure'        : -1,             # any camera: -1,0 = auto, 1...max=frame interval
                                         # picamera microseconds

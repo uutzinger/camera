@@ -81,9 +81,9 @@ class cv2Capture(Thread):
         # Open the camera with platform optimal settings
         if sys.platform.startswith('win'):
             self.capture = cv2.VideoCapture(self.camera_num, apiPreference=cv2.CAP_MSMF)
-        else if sys.platform.startswith('darwin'):
+        elif sys.platform.startswith('darwin'):
             self.capture = cv2.VideoCapture(self.camera_num, apiPreference=cv2.CAP_AVFOUNDATION)
-        else if sys.platform.startswith('linux'):
+        elif sys.platform.startswith('linux'):
             self.capture = cv2.VideoCapture(self.camera_num, apiPreference=cv2.CAP_V4L2)
         else:
             self.capture = cv2.VideoCapture(self.camera_num, apiPreference=cv2.CAP_ANY)

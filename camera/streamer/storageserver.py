@@ -188,13 +188,15 @@ class tiffServer(Thread):
             if storage_queue is not None:
                 if not storage_queue.empty(): 
                     (cube_time, data_cube) = storage_queue.get(block=True, timeout=None)
-                    self.tiff.save(data=data_cube, compress=6, photometric='minisblack', contiguous=False)
-                    # We need to add tag: str(self.framearrayTime)
+                    self.tiff.write(data_cube, compression='zlib', photometric='minisblack', contiguous=False, metadata ={'time': cube_time, 'author': 'camera'} )
+                    # compression = 'LZW', 'LZMA', 'ZSTD', 'JPEG', 'PACKBITS', 'NONE', 'LERC'
+                    # compression ='jpeg', 'png', 'zlib'
                     num_cubes += 1
             else:
                 if self.new_framearray: 
-                    self.tiff.save(data=self.framearray, compress=6, photometric='minisblack', contiguous=False)
-                    # We need to add tag: str(self.framearrayTime)
+                    self.tiff.write(self.framearray, compression='zlib', photometric='minisblack', contiguous=False, metadata ={'time': self.framearrayTime, 'author': 'camera'} )
+                    # Compression = 'LZW', 'LZMA', 'ZSTD', 'JPEG', 'PACKBITS', 'NONE', 'LERC'
+                    # compression ='jpeg', 'png', 'zlib'
                     num_cubes += 1
                 # run this no more than 100 times per second
                 delay_time = 0.01 - (time.time() - current_time)
