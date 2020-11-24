@@ -254,7 +254,7 @@ class nanoCapture(Thread):
             self.frame_time = int(current_time*1000)
 
             if capture_queue is not None:
-                if not capture_queue.isfull():
+                if not capture_queue.full():
                     capture_queue.put((self.frame_time, img), block=False)
                 else:
                     self.logger.log(logging.DEBUG, "Status:Capture Queue is full!")                                    

@@ -177,7 +177,7 @@ class rtspCapture(Thread):
                     else:
                         tmpf = tmp
                     if capture_queue is not None:
-                        if not capture_queue.isfull():
+                        if not capture_queue.full():
                             capture_queue.put((self.frame_time, tmpf), block=False)
                         else:
                             self.logger.log(logging.DEBUG, "Status:Capture Queue is full!")                                    
