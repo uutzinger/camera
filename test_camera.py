@@ -6,13 +6,16 @@ from queue import Queue
 import numpy as np
 
 use_queue = True
-display_interval = 0.03
 looptime         = 0.0
 
 # Camera configuration file
 from camera.configs.dell_internal_configs  import configs
 
-display_interval = 1.0/configs['serverfps']
+if configs['serverfps'] >= configs['fps'] and use_queue:
+    display_interval = 0
+else:
+    display_interval = 1.0/configs['serverfps']
+
 window_name      = 'Camera'
 font             = cv2.FONT_HERSHEY_SIMPLEX
 textLocation0    = (10,20)
@@ -21,6 +24,7 @@ fontScale        = 1
 fontColor        = (255,255,255)
 lineType         = 2
 cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
+
 
 # Setting up logging
 logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARNING
@@ -51,8 +55,8 @@ else:
     from camera.capture.cv2capture import cv2Capture
     camera = cv2Capture(configs)
 
-# print("CV2 Capture Options")
-# camera.cv2SettingsDebug()
+#print("CV2 Capture Options")
+#camera.cv2SettingsDebug()
 
 print("Getting Images")
 if use_queue:
@@ -88,7 +92,7 @@ while(cv2.getWindowProperty("Camera", 0) >= 0):
         num_frames_displayed = 0
         last_fps_time = current_time
 
-    if (current_time - last_display) > display_interval:
+    if (current_time - last_display) >= display_interval:
         cv2.putText(frame,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
         cv2.putText(frame,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
         cv2.imshow(window_name, frame)

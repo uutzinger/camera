@@ -19,8 +19,7 @@ configs = {
                                         # opencv CAP_PROP_EXPOSURE
     'autoexposure'    : 0.25,           # cv2 camera only, depends on camera: 0.25 or 0.75(auto), -1,0,1
     'fps'             : 30,             # any camera: 1/10, 15, 30, 40, 90, 120, 180
-    'fourcc'          : 'YUY2',         # cv2 camera only: MJPG, YUY2, for ELP camera https://www.fourcc.org/  
-                                        # CAP_PROP_FOURCC 
+    'fourcc'          : -1,             # cv2 camera only: MJPG, YUY2, for ELP camera https://www.fourcc.org/  
                                         # Laptop Windows -1
     'buffersize'      : -1,             # default is 4 for V4L2, max 10, 
                                         # Laptop: -1

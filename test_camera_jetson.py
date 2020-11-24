@@ -12,7 +12,11 @@ looptime         = 0.0
 # Camera configuration file
 from camera.configs.nano_IMX219_configs  import configs
 
-display_interval = 1.0/configs['serverfps']
+if configs['serverfps'] >= configs['fps'] and use_queue:
+    display_interval = 0
+else:
+    display_interval = 1.0/configs['serverfps']
+    
 window_name      = 'Camera'
 font             = cv2.FONT_HERSHEY_SIMPLEX
 textLocation0    = (10,20)
