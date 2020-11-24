@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARN
 logger = logging.getLogger("CV2Capture")
 
 # Setting up input and/or output Queue
-captureQueue = Queue(maxsize=32)
+captureQueue = Queue(maxsize=2)
 
 # Create camera interface
 # Based on computer OS you are running
@@ -56,6 +56,7 @@ if use_queue:
     camera.start(captureQueue)
 else:
     camera.start()
+
 
 # Initialize Variables
 last_display  = time.time()
