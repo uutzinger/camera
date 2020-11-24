@@ -16,7 +16,7 @@ configs = {
     # Target Display
     ##############################################
     'output_res'      : (-1, -1),       # Output resolution 
-    'flip'            : 0,              # 0=norotation 
+    'flip'            : 4,              # 0=norotation 
                                         # 1=ccw90deg 
                                         # 2=rotation180 
                                         # 3=cw90 

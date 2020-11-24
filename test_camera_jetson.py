@@ -6,7 +6,6 @@ from queue import Queue
 import numpy as np
 
 use_queue = True
-display_interval = 0.03
 looptime         = 0.0
 
 # Camera configuration file
@@ -31,7 +30,7 @@ logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARN
 logger = logging.getLogger("CV2Capture")
 
 # Setting up input and/or output Queue
-captureQueue = Queue(maxsize=2)
+captureQueue = Queue(maxsize=32)
 
 # Create camera interface
 # Based on computer OS you are running
@@ -94,14 +93,14 @@ while(cv2.getWindowProperty("Camera", 0) >= 0):
         cv2.putText(frame,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
         cv2.putText(frame,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
         cv2.imshow(window_name, frame)
-        # quit the program if users enter q or closes the display window
+        # quit the program if users enter q 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
         last_display = current_time
         num_frames_displayed += 1
 
     if not use_queue:
-        # make sure the while-loop takes at least looptime to complete
+        # make sure the while-loop does not consume all resources
         # since queue is blocking, we dont need this when we use queue
         delay_time = looptime - (time.time() - current_time) 
         if  delay_time >= 0.001:
