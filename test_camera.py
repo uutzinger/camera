@@ -8,13 +8,24 @@ import numpy as np
 use_queue = True
 looptime         = 0.0
 
-# Camera configuration file
+# Dell Inspiron 15 internal camera
 from camera.configs.dell_internal_configs  import configs
-
-if configs['serverfps'] >= configs['fps'] and use_queue:
+#
+# Nano Jetson IMX219 camera
+# from camera.configs.nano_IMX219_configs  import configs
+#
+# Raspberry Pi v1 & v2 camera
+# from camera.configs.raspi_v1module_configs  import configs
+# from camera.configs.raspi_v2module_configs  import configs
+#
+# ELP
+# from camera.configs.ELP1080p_configs  import configs
+#
+ 
+if configs['displayfps'] >= configs['fps'] and use_queue:
     display_interval = 0
 else:
-    display_interval = 1.0/configs['serverfps']
+    display_interval = 1.0/configs['displayfps']
 
 window_name      = 'Camera'
 font             = cv2.FONT_HERSHEY_SIMPLEX
@@ -33,8 +44,7 @@ logger = logging.getLogger("CV2Capture")
 # Setting up input and/or output Queue
 captureQueue = Queue(maxsize=32)
 
-# Create camera interface
-# Based on computer OS you are running
+# Create camera interface based on computer OS you are running
 plat = platform.system()
 if plat == 'Windows': 
     from camera.capture.cv2capture import cv2Capture

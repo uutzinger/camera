@@ -24,11 +24,5 @@ configs = {
                                         # 5=upright diagonal flip 
                                         # 6=vertical 
                                         # 7=uperleft diagonal flip
-    'serverfps'       : 30
+    'displayfps'       : 30
     }
-
-##################################################
-# Capture Options for Sony IX219 CSI camera
-##################################################
-# v4l2-ctl -L
-# v4l2-ctl --list-formats-ext

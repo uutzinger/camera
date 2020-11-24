@@ -54,7 +54,7 @@ looptime         = 0.0
 # Camera configuration file
 from camera.configs.blackfly_configs  import configs
 
-# display_interval = 1.0/configs['serverfps']
+# display_interval = 1.0/configs['displayfps']
 window_name    = 'Camera'
 font           = cv2.FONT_HERSHEY_SIMPLEX
 textLocation0  = (10,20)

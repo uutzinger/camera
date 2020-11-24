@@ -47,7 +47,7 @@ frame = np.zeros((540,720), dtype=np.uint8)
 from camera.configs.blackfly_configs  import configs
 
 # Display
-display_interval = 1.0/configs['serverfps']
+display_interval = 1.0/configs['displayfps']
 window_name    = 'Camera'
 font           = cv2.FONT_HERSHEY_SIMPLEX
 textLocation0  = (10,480)

@@ -1,19 +1,16 @@
 configs = {
     ##############################################
     # Camera Settings
-    # 320x240 90fps
-    # 640x480 90fps
-    # 1280x720 60fps
-    # 1920x1080 6.4fps
-    # 2592x1944 6.4fps
     ##############################################
-    'camera_res'      : (1280, 720),    # any amera: Camera width & height
-    'exposure'        : 10000,          # any camera: -1,0 = auto, 1...max=frame interval
-                                        # picamera microseconds
+    'camera_res'      : (640, 480),     # CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT
+                                        # 1920x1980 30fps
+                                        # 1280x720 60fps
+                                        # 640,480, 120fps
+    'exposure'        : 1000,           # -1,0 = auto, 1...max=frame interval
+                                        # opencv CAP_PROP_EXPOSURE
     'autoexposure'    : 0,              # cv2 camera only, depends on camera: 0.25 or 0.75(auto), -1,0,1
-    'fps'             : 60,             # any camera: 1/10, 15, 30, 40, 90, 120 overlocked
-    'fourcc'          : 'YU12',         # cv2 camera only: MJPG, YUY2, for ELP camera https://www.fourcc.org/
-                                        # CAP_PROP_FOURCC 
+    'fps'             : 120,            # 120fps only with MJPG fourcc
+    'fourcc'          : 'MJPG',         # cv2 camera only: MJPG, YUY2, for ELP camera https://www.fourcc.org/ CAP_PROP_FOURCC 
     'buffersize'      : 4,              # default is 4 for V4L2, max 10, 
     ##############################################
     # Target Recognition
