@@ -24,6 +24,7 @@ configs = {
                                         # 5=upright diagonal flip 
                                         # 6=vertical 
                                         # 7=uperleft diagonal flip
+    'serverfps'       : 30
     }
 
 ##################################################
