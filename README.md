@@ -72,15 +72,15 @@ Interface for picamera module. Depricated since cv2Capture is more efficient for
 **Queue**: Data transfer between threads or between main program and thread works better with Queue than with setting new data falgs and accessing it through shared memory. Queue can be programmed to be blocking or non blocking and if the queue size is long enough, no data is lost if the main thread can  not keep up with the capture thread for brief amount of time.
 
 * ```test_blackfly.py``` tests the blackfly capture module and reports framerate.
-* ```test_blackfly_display.py``` tests the blackfly capture module, displays images * and reports framerate.  
+* ```test_blackfly_display.py``` tests the blackfly capture module, displays images and reports framerate.  
 * ```test_blackfly_savehdf5.py``` same as above, no display but incoporates saving to disk.  
 * ```test_camera.py``` unifying camera capture for all capture platforms except blackfly.  
 * ```test_rtsp.py``` testing rtsp network streams.
 
 * ```test_display.py``` testing opencv display framerate  
 * ```test_savehd5.py``` testing the disk throughput with hdf5  
-* ```test_sum.py testing``` different approaches to calculate the integreal/brightness of an image  
-* ```test_arraycopy.py``` testing whihch axis should be used for time  
+* ```test_sum.py``` testing different approaches to calculate the integreal/brightness of an image  
+* ```test_arraycopy.py``` testing which axis in 3D arrays should be used for time  
 
 ## Camera Settings
 Configs folder:  

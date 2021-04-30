@@ -31,7 +31,7 @@ import cv2
 def gstreamer_pipeline(
         capture_width=1920, capture_height=1080,
         output_width=1280, output_height=720,
-        framerate=30, exposure_time=-1, # ms
+        framerate=30, exposure_time=-1, # micorseconds
         flip_method=0):
     ###################################################################################
     # gstreamer Options 

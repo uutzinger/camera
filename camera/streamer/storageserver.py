@@ -143,7 +143,7 @@ class tiffServer(Thread):
 
         # Initialize TIFF
         if filename is not None:
-            self.tiff = TiffWriter(filename, bigtiff=True)
+            self.tiff = tifffile.TiffWriter(filename, bigtiff=True)
         else:
             self.logger.log(logging.ERROR, "Status:Need to provide filename to store data!")
             return False
@@ -188,13 +188,13 @@ class tiffServer(Thread):
             if storage_queue is not None:
                 if not storage_queue.empty(): 
                     (cube_time, data_cube) = storage_queue.get(block=True, timeout=None)
-                    self.tiff.write(data_cube, compression='zlib', photometric='minisblack', contiguous=False, metadata ={'time': cube_time, 'author': 'camera'} )
+                    self.tiff.save(data_cube, compress=6, photometric='MINISBLACK', contiguous=False, metadata ={'time': cube_time, 'author': 'camera'} )
                     # compression = 'LZW', 'LZMA', 'ZSTD', 'JPEG', 'PACKBITS', 'NONE', 'LERC'
                     # compression ='jpeg', 'png', 'zlib'
                     num_cubes += 1
             else:
                 if self.new_framearray: 
-                    self.tiff.write(self.framearray, compression='zlib', photometric='minisblack', contiguous=False, metadata ={'time': self.framearrayTime, 'author': 'camera'} )
+                    self.tiff.write(self.framearray, compress=6, photometric='MINISBLACK', contiguous=False, metadata ={'time': self.framearrayTime, 'author': 'camera'} )
                     # Compression = 'LZW', 'LZMA', 'ZSTD', 'JPEG', 'PACKBITS', 'NONE', 'LERC'
                     # compression ='jpeg', 'png', 'zlib'
                     num_cubes += 1
