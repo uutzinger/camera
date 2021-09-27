@@ -13,7 +13,8 @@ configs = {
     'adc'             : 8,              # 8,10,12,14 bit
     'trigout'         : 2,              # -1 no trigger output, 
                                         # line 1 has opto isolator but requires pullup to 3V
-                                        # line 2 has not isolation and takes 4-10us for on transition
+                                        # line 2 has not isolation and takes 4-10us for a transition
+    'ttlinv'          : True,           # inverted logic levels are best
     'trigin'          : -1,             # -1 no trigger input,  
                                         # line 0, 2 or 3, not tested
     ##############################################

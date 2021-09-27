@@ -64,6 +64,7 @@ class blackflyCapture(Thread):
         self._offset         = configs['offset']
         self._adc            = configs['adc']
         self._trigout        = configs['trigout']            # -1 no trigout, 1 = line 1
+        self._ttlinv         = configs['ttlinv']             # False = normal, True=inverted
         self._trigin         = configs['trigin']             # -1 no trigin,  1 = line 1
 
         # Threading Locks, Events
@@ -176,6 +177,7 @@ class blackflyCapture(Thread):
         #   Set Output Trigger, Line 1 has opto isolator but transitions slow, line 2 takes about 4-10 us to transition
         #   Set Input Trigger
         self.trigout = self._trigout 
+        self.ttlinv  = self._ttlinv
         self.trigin  = self._trigin
         #
         # 4 Aquistion
@@ -684,6 +686,30 @@ class blackflyCapture(Thread):
             self.logger.log(logging.ERROR, "Status:Failed to set ADC, camera not open!")
 
     @property
+    def ttlinv(self):
+        """ returns tigger output ttl polarity """
+        if self.capture_open:
+            return self._ttlinv
+        else: return -1
+    @ttlinv.setter
+    def ttlinv(self, val):
+        """ sets trigger logic polarity """
+        if (val is None):
+            self.logger.log(logging.ERROR, "Status:Can not set trigger level to:{}!".format(val))
+            return
+        if self.capture_open:
+            if val == 0: # Want regular trigger output polarity
+                self.cam.LineInverter.SetValue(False)
+                self._ttlinv = False;
+            elif val == 1: # want inverted trigger output polarity
+                self.cam.LineInverter.SetValue(True)
+                self._ttlinv = True;
+
+            self.logger.log(logging.DEBUG, "Status:Trigger Output Logic Inverted:{}".format(self._ttlinv))
+        else: # camera not open
+            self.logger.log(logging.ERROR, "Status:Failed to set Trigger Output Polarity, camera not open!")
+
+    @property
     def trigout(self):
         """ returns tigger output setting """
         if self.capture_open:
@@ -710,7 +736,7 @@ class blackflyCapture(Thread):
                 if self.cam.LineMode.GetAccessMode() == PySpin.RW:
                     self.cam.LineMode.SetValue(PySpin.LineMode_Output) # dont have input
                 if self.cam.LineInverter.GetAccessMode() == PySpin.RW:
-                    self.cam.LineInverter.SetValue(False)
+                    self.cam.LineInverter.SetValue(self._ttlinv)
                 if self.cam.LineSource.GetAccessMode() == PySpin.RW:
                     self.cam.LineSource.SetValue(PySpin.LineSource_ExposureActive) # dont have off
                 self._trigout = -1
@@ -731,7 +757,7 @@ class blackflyCapture(Thread):
                 if self.cam.LineMode.GetAccessMode() == PySpin.RW:
                     self.cam.LineMode.SetValue(PySpin.LineMode_Output)
                 if self.cam.LineInverter.GetAccessMode() == PySpin.RW:
-                    self.cam.LineInverter.SetValue(False) 
+                    self.cam.LineInverter.SetValue(self._ttlinv)
                 if self.cam.LineSource.GetAccessMode() == PySpin.RW:
                     self.cam.LineSource.SetValue(PySpin.LineSource_ExposureActive)
                 self._trigout = 1
@@ -742,7 +768,7 @@ class blackflyCapture(Thread):
                 if self.cam.LineMode.GetAccessMode() == PySpin.RW:
                     self.cam.LineMode.SetValue(PySpin.LineMode_Output)
                 if self.cam.LineInverter.GetAccessMode() == PySpin.RW:
-                    self.cam.LineInverter.SetValue(False)
+                    self.cam.LineInverter.SetValue(self._ttlinv)
                 if self.cam.LineSource.GetAccessMode() == PySpin.RW:
                     self.cam.LineSource.SetValue(PySpin.LineSource_ExposureActive)
                 self._trigout = 2
@@ -750,13 +776,14 @@ class blackflyCapture(Thread):
         else: # camera not open
             self.logger.log(logging.ERROR, "Status:Failed to set trigger, camera not open!")
 
+
     @property
     def trigin(self):
         """ returns tigger input setting """
         if self.capture_open:
             return self._trigin
         else: return -1
-    @trigout.setter
+    @trigin.setter
     def trigin(self, val):
         """ sets trigger input line """
         if (val is None):

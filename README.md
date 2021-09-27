@@ -16,7 +16,10 @@ The routines primarily use OpenCV or PySpin to interface with the camera.
 The main effortt with these routines is to run the image acquisition in a background thread and to find best approaches for maximal frame rate and minimal latency.  
 This work is based efforts from [Mark Omo](https://github.com/ferret-guy) and [Craig Post](https://github.com/cpostbitbuckets).
 
-Urs Utzinger, 2020
+2020 Release
+2021 Updated PySpin trigger out polarity setting
+
+Urs Utzinger
 
 ## References
 realpython:  
