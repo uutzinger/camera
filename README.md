@@ -16,9 +16,9 @@ The routines primarily use OpenCV or PySpin to interface with the camera.
 The main effortt with these routines is to run the image acquisition in a background thread and to find best approaches for maximal frame rate and minimal latency.  
 This work is based efforts from [Mark Omo](https://github.com/ferret-guy) and [Craig Post](https://github.com/cpostbitbuckets).
 
-2020 Release
-2021 Updated PySpin trigger out polarity setting
-
+2020 Release  
+2021 Updated PySpin trigger out polarity setting  
+2021 Added avi server and multicamera example  
 Urs Utzinger
 
 ## References
@@ -44,6 +44,31 @@ RTSP network streams
 cv2 for image resizing and flipping    
 ```
 [*] RTSP requires gstreamer integration. CV2 will need to be custom built on windows to enable gstreamer support. See my windows installation scripts on [Github](https://github.com/uutzinger/Windows_Install_Scripts).
+
+To install opencv on Windows:
+* ```pip3 install opencv-python```
+* ```pip3 install opencv-contrib-python```  
+
+To install opencv on Raspi:
+```
+cd ~
+sudo apt-get update
+sudo apt-get upgrade -y
+sudo apt-get -y install python3-pybind11
+sudo apt-get -y install libusb-1.0-0-dev
+sudo apt-get -y install swig
+sudo apt-get -y install gfortran
+sudo apt-get -y install python3-numpy python3-dev python3-pip python3-mock
+sudo apt-get -y install libjpeg-dev libtiff-dev libtiff5-dev libjasper-dev libpng-dev
+sudo apt-get -y install libavcodec-dev libavformat-dev libswscale-dev libv4l-dev libavresample-dev
+sudo apt-get -y install libxvidcore-dev libx264-dev
+sudo apt-get -y install libhdf5-dev libhdf5-serial-dev
+sudo apt-get -y install libopenblas-dev liblapack-dev libatlas-base-dev libblas-dev  libeigen{2,3}-dev
+wget https://bootstrap.pypa.io/get-pip.py
+sudo python3 get-pip.py
+sudo pip3 install --upgrade setuptools
+sudo pip3 install opencv-contrib-python==4.1.0.25
+```
 
 ## Capture modules
 
