@@ -90,7 +90,7 @@ class cv2Capture(Thread):
 
         self.capture_open = self.capture.isOpened()
 
-        # self.cv2SettingsDebug() # check camera properties
+        self.cv2SettingsDebug() # check camera properties
 
         if self.capture_open:
             # Apply settings to camera

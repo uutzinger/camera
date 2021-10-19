@@ -48,8 +48,12 @@ cv2 for image resizing and flipping
 To install opencv on Windows:
 * ```pip3 install opencv-python```
 * ```pip3 install opencv-contrib-python```  
+* ```pip3 install tifffile h5py platform```  
 
-To install opencv on Raspi:
+Make sure you have ```C:\temp directory``` if you use storage server.
+
+To install opencv on Raspi:  
+(probalby dont need all packages...)
 ```
 cd ~
 sudo apt-get update
@@ -68,6 +72,7 @@ wget https://bootstrap.pypa.io/get-pip.py
 sudo python3 get-pip.py
 sudo pip3 install --upgrade setuptools
 sudo pip3 install opencv-contrib-python==4.1.0.25
+pip3 install tifffile h5py platform
 ```
 
 ## Capture modules
@@ -105,10 +110,12 @@ Interface for picamera module. Depricated since cv2Capture is more efficient for
 * ```test_camera.py``` unifying camera capture for all capture platforms except blackfly.  
 * ```test_rtsp.py``` testing rtsp network streams.
 
-* ```test_display.py``` testing opencv display framerate  
-* ```test_savehd5.py``` testing the disk throughput with hdf5  
+* ```test_display.py``` testing opencv display framerate, no camera, just static refresh rate
+* ```test_savehd5.py``` testing the disk throughput with hdf5, no camera
 * ```test_sum.py``` testing different approaches to calculate the integreal/brightness of an image  
 * ```test_arraycopy.py``` testing which axis in 3D arrays should be used for time  
+
+* ```test_saveravi_display.py``` example for multiple camera and save to avi file
 
 ## Camera Settings
 Configs folder:  

@@ -16,9 +16,6 @@ from threading import Event
 import logging
 import time
 
-# 
-import h5py
-import tifffile
 
 ###############################################################################
 # Disk Storage Server
@@ -30,6 +27,7 @@ import tifffile
 
 class h5Server(Thread):
     """ HDF5 file array saver    """
+    import h5py
 
     # Initialize the storage Thread
     # Opens Capture Device
@@ -137,6 +135,8 @@ class h5Server(Thread):
 
 class tiffServer(Thread):
     """Tiff file save """
+    
+    import tifffile
 
     # Initialize the storage Thread
     # Opens Capture Device

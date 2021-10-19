@@ -52,7 +52,7 @@ captureQueue = Queue(maxsize=32)
 storageQueue = Queue(maxsize=2)
 
 # Setting up Storage
-from camera.streamer.storageserver import h5Server
+from camera.streamer.h5storageserver import h5Server
 print("Starting Storage Server")
 now = datetime.now()
 filename = now.strftime("%Y%m%d%H%M%S") + ".hdf5"

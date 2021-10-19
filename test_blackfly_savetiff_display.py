@@ -65,7 +65,7 @@ captureQueue = Queue(maxsize=64)
 storageQueue = Queue(maxsize=2)
 
 # Setting up Storage
-from camera.streamer.storageserver import tiffServer
+from camera.streamer.tiffstorageserver import tiffServer
 print("Starting Storage Server")
 now = datetime.now()
 filename = now.strftime("%Y%m%d%H%M%S") + ".tiff"
@@ -145,11 +145,12 @@ while(True):
         num_frames_displayed = 0
         last_xps_time = current_time
 
-    if (current_time - last_display) > display_interval:
+    if (current_time - last_display) >= display_interval:
+        display_frame = frame.copy()
         # This section creates significant delay and we need to throttle the display to maintain max capture and storage rate
-        cv2.putText(frame,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
-        cv2.putText(frame,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
-        cv2.imshow(window_name, frame)
+        cv2.putText(display_frame,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
+        cv2.putText(display_frame,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
+        cv2.imshow(window_name, display_frame)
         # quit the program if users enter q or closes the display window
         if cv2.waitKey(1) & 0xFF == ord('q'): # this likely is the reason that display frame rate is not faster than 60fps.
             break

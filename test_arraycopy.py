@@ -1,3 +1,6 @@
+# This is to figure out if we need
+# image_stack[numbr,image] or image_stack[image,number]
+#
 import time
 import numpy as np
 data_cube1 = np.random.randint(0, 255, (540, 720, 14), 'uint8')

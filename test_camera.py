@@ -9,25 +9,28 @@ use_queue = True
 looptime         = 0.0
 
 # Dell Inspiron 15 internal camera
-from camera.configs.dell_internal_configs  import configs
+# from camera.configs.dell_internal_configs  import configs as configs0
+
+# Eluktronics Max-15 internal camera
+from camera.configs.eluk_configs  import configs as configs0
 #
 # Nano Jetson IMX219 camera
-# from camera.configs.nano_IMX219_configs  import configs
+# from camera.configs.nano_IMX219_configs  import configs as configs0
 #
 # Raspberry Pi v1 & v2 camera
-# from camera.configs.raspi_v1module_configs  import configs
-# from camera.configs.raspi_v2module_configs  import configs
+# from camera.configs.raspi_v1module_configs  import configs as configs0
+# from camera.configs.raspi_v2module_configs  import configs as configs0
 #
 # ELP
-# from camera.configs.ELP1080p_configs  import configs
+# from camera.configs.ELP1080p_configs  import configs as configs0
 #
  
-if configs['displayfps'] >= configs['fps'] and use_queue:
+if configs0['displayfps'] >= configs0['fps'] and use_queue:
     display_interval = 0
 else:
-    display_interval = 1.0/configs['displayfps']
+    display_interval = 1.0/configs0['displayfps']
 
-window_name      = 'Camera'
+window_name      = 'Camera0'
 font             = cv2.FONT_HERSHEY_SIMPLEX
 textLocation0    = (10,20)
 textLocation1    = (10,60)
@@ -42,37 +45,37 @@ logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARN
 logger = logging.getLogger("CV2Capture")
 
 # Setting up input and/or output Queue
-captureQueue = Queue(maxsize=32)
+captureQueue0 = Queue(maxsize=32)
 
 # Create camera interface based on computer OS you are running
 plat = platform.system()
 if plat == 'Windows': 
     from camera.capture.cv2capture import cv2Capture
-    camera = cv2Capture(configs)
+    camera0 = cv2Capture(configs0)
 elif plat == 'Linux':
     if platform.machine() == "aarch64":
         from camera.capture.nanocapture import nanoCapture
-        camera = nanoCapture(configs)
+        camera0 = nanoCapture(configs0)
     elif platform.machine() == "armv6l" or platform.machine() == 'armv7l':
         from camera.capture.cv2capture import cv2Capture
-        camera = cv2Capture(configs)
+        camera0 = cv2Capture(configs0)
         # from picapture import piCapture
         # camera = piCapture()
 elif plat == 'MacOS':
     from camera.capture.cv2capture import cv2Capture
-    camera = cv2Capture(configs)
+    camera0 = cv2Capture(configs0)
 else:
     from camera.capture.cv2capture import cv2Capture
-    camera = cv2Capture(configs)
+    camera0 = cv2Capture(configs0)
 
 #print("CV2 Capture Options")
 #camera.cv2SettingsDebug()
 
 print("Getting Images")
 if use_queue:
-    camera.start(captureQueue)
+    camera0.start(captureQueue0)
 else:
-    camera.start()
+    camera0.start()
 
 # Initialize Variables
 last_display  = time.time()
@@ -81,16 +84,16 @@ measured_dps  = 0
 num_frames_received    = 0
 num_frames_displayed   = 0
 
-while(cv2.getWindowProperty("Camera", 0) >= 0):
+while(cv2.getWindowProperty(window_name, 0) >= 0):
     current_time = time.time()
     # wait for new image
     if use_queue:
-        (frame_time, frame) = captureQueue.get(block=True, timeout=None)
+        (frame_time, frame) = captureQueue0.get(block=True, timeout=None)
         num_frames_received += 1
     else:
-        if camera.new_frame:
-            frame = camera.frame
-            frame_time = camera.frame_time
+        if camera0.new_frame:
+            frame = camera0.frame
+            frame_time = camera0.frame_time
             num_frames_received +=1
 
     if current_time - last_fps_time >= 5.0:
@@ -103,7 +106,7 @@ while(cv2.getWindowProperty("Camera", 0) >= 0):
         last_fps_time = current_time
 
     if (current_time - last_display) >= display_interval:
-        cv2.putText(frame,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
+        cv2.putText(frame,"Capture FPS:{} [Hz]".format(camera0.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
         cv2.putText(frame,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
         cv2.imshow(window_name, frame)
         # quit the program if users enter q or closes the display window
@@ -119,5 +122,5 @@ while(cv2.getWindowProperty("Camera", 0) >= 0):
         if  delay_time >= 0.001:
             time.sleep(delay_time)  # this creates at least 10-15ms delay, regardless of delay_time
 
-camera.stop()
+camera0.stop()
 cv2.destroyAllWindows()

@@ -9,22 +9,22 @@ import time
 import numpy as np
 from datetime import datetime
 from queue import Queue
+import platform
 
 looptime = 0.0
 use_queue = True
-data_cube = np.zeros((14,540,720), dtype=np.uint8)
-frame = np.zeros((540,720), dtype=np.uint8)
 
 # Camera configuration file
-from camera.configs.BEN_configs  import configs
+# from camera.configs.BEN_configs  import configs
+from camera.configs.eluk_configs import configs as configs0
 
 # Display
-display_interval = 1.0/configs['displayfps']
+display_interval = 1.0/configs0['displayfps']
 window_name0   = 'Camera0'
 font           = cv2.FONT_HERSHEY_SIMPLEX
-textLocation0  = (10,440)
-textLocation1  = (10,480)
-textLocation2  = (10,520)
+textLocation0  = (10,20)
+textLocation1  = (10,60)
+textLocation2  = (10,100)
 fontScale      = 1
 fontColor      = (255,255,255)
 lineType       = 2
@@ -36,16 +36,16 @@ logger = logging.getLogger("Main")
 
 # Setting up input and output Queue
 captureQueue0 = Queue(maxsize=64)
-storageQueue0 = Queue(maxsize=2)
+storageQueue0 = Queue(maxsize=64)
 # here add additional queues if you have more than one camera. 
 # Each camera needs capture and saving queue
 
 # Setting up Storage
-from camera.streamer.storageserver import aviServer
+from camera.streamer.avistorageserver import aviServer
 print("Starting Storage Server")
 now = datetime.now()
-fps  = configs['fps']
-size = configs['camera_res']
+fps  = configs0['fps']
+size = configs0['camera_res']
 filename0 = now.strftime("%Y%m%d%H%M%S") + "_0.avi"
 avi0 = aviServer("C:\\temp\\" + filename0, fps, size)
 # create multiple avi1 = ... if you have multiple avis to stream to
@@ -63,22 +63,22 @@ print("Starting Capture")
 plat = platform.system()
 if plat == 'Windows': 
     from camera.capture.cv2capture import cv2Capture
-    camera0 = cv2Capture(configs,0) # 0 is camera number
+    camera0 = cv2Capture(configs0,0) # 0 is camera number
 elif plat == 'Linux':
     if platform.machine() == "aarch64":  # This is jetson nano for me
         from camera.capture.nanocapture import nanoCapture
-        camera0 = nanoCapture(configs,0) # 0 is camera number
+        camera0 = nanoCapture(configs0,0) # 0 is camera number
     elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # this is reaspberry pi for me
         from camera.capture.cv2capture import cv2Capture
-        camera0 = cv2Capture(configs,0) # 0 is camera number
+        camera0 = cv2Capture(configs0,0) # 0 is camera number
         # from picapture import piCapture
         # camera = piCapture()
-elif plat == 'MacOS': # dont have
+elif plat == 'MacOS': # 
     from camera.capture.cv2capture import cv2Capture
-    camera0 = cv2Capture(configs,0) # 0 is camera number
+    camera0 = cv2Capture(configs0,0) # 0 is camera number
 else:
     from camera.capture.cv2capture import cv2Capture
-    camera0 = cv2Capture(configs,0) # 0 is camera number
+    camera0 = cv2Capture(configs0,0) # 0 is camera number
 
 print("Getting Images")
 if use_queue:
@@ -112,7 +112,7 @@ while(True):
             storageQueue0.put((frame0_time, frame0), block=False) 
             num_frames0_sent += 1
         else:
-            self.logger.log(logging.DEBUG, "Status:0:Storage Queue is full!")
+            logger.log(logging.DEBUG, "Status:0:Storage Queue is full!")
     else:
         avi0.framearray = frame0 # transfer data array to storage server
         num_frames0_sent += 1
@@ -133,12 +133,13 @@ while(True):
         num_frames0_displayed = 0
         last_xps_time = current_time
 
-    if (current_time - last_display) > display_interval:
+    if (current_time - last_display) >= display_interval:
+        frame_display = frame0.copy()
         # This section creates significant delay and we need to throttle the display to maintain max capture and storage rate
-        cv2.putText(frame0,"Capture FPS:{} [Hz]".format(camera0.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
-        cv2.putText(frame0,"Display FPS:{} [Hz]".format(measured_dps),         textLocation1, font, fontScale, fontColor, lineType)
-        cv2.putText(frame0,"Storage FPS:{} [Hz]".format(avi0.measured_cps),    textLocation2, font, fontScale, fontColor, lineType)
-        cv2.imshow(window_name0, frame0)
+        cv2.putText(frame_display,"Capture FPS:{} [Hz]".format(camera0.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
+        cv2.putText(frame_display,"Display FPS:{} [Hz]".format(measured_dps),         textLocation1, font, fontScale, fontColor, lineType)
+        cv2.putText(frame_display,"Storage FPS:{} [Hz]".format(avi0.measured_cps),    textLocation2, font, fontScale, fontColor, lineType)
+        cv2.imshow(window_name0, frame_display)
         # quit the program if users enter q or closes the display window
         if cv2.waitKey(1) & 0xFF == ord('q'): # this likely is the reason that display frame rate is not faster than 60fps.
             break
