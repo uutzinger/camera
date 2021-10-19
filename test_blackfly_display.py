@@ -47,14 +47,12 @@ import time
 from queue import Queue
 import numpy as np
 
-use_queue = True`
-display_interval = 0.03
-looptime         = 0.0
+use_queue = True
 
 # Camera configuration file
 from camera.configs.blackfly_configs  import configs
 
-# display_interval = 1.0/configs['displayfps']
+display_interval = 1.0/configs['displayfps']
 window_name    = 'Camera'
 font           = cv2.FONT_HERSHEY_SIMPLEX
 textLocation0  = (10,20)
@@ -69,7 +67,7 @@ logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARN
 logger = logging.getLogger("Blackfly")
 
 # Setting up input and/or output Queue
-captureQueue = Queue(maxsize=32)
+captureQueue = Queue(maxsize=64)
 
 # Create camera interface
 from camera.capture.blackflycapture import blackflyCapture
@@ -83,10 +81,10 @@ else:
 
 # Initialize Variables
 last_display  = time.time()
-last_fps_time  = time.time()
+last_fps_time = time.time()
 measured_dps  = 0
-num_frames_received    = 0
-num_frames_displayed   = 0
+num_frames_received  = 0
+num_frames_displayed = 0
 
 while (cv2.getWindowProperty(window_name, 0) >= 0):
     current_time = time.time()
@@ -110,9 +108,10 @@ while (cv2.getWindowProperty(window_name, 0) >= 0):
         last_fps_time = current_time
 
     if (current_time - last_display) > display_interval:
-        cv2.putText(frame,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
-        cv2.putText(frame,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
-        cv2.imshow(window_name, frame)
+        display_frame = frame.copy()
+        cv2.putText(display_frame,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
+        cv2.putText(display_frame,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
+        cv2.imshow(window_name, display_frame)
         # quit the program if users enter q or closes the display window
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break

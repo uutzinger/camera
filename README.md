@@ -2,7 +2,7 @@
 
 ## Overview
 A collection of python threaded camera support routines for  
-* USB and internal webcams
+* USB and laptop internal webcams
 * RTSP streams
 * MIPI CSI cameras (Raspberry Pi, Jetson Nano)
 * FLIR blackfly (USB)
@@ -10,15 +10,18 @@ A collection of python threaded camera support routines for
 Supported OS  
 * Windows
 * MacOS
-* Linux
+* Linux, Raspian
 
 The routines primarily use OpenCV or PySpin to interface with the camera.
-The main effortt with these routines is to run the image acquisition in a background thread and to find best approaches for maximal frame rate and minimal latency.  
-This work is based efforts from [Mark Omo](https://github.com/ferret-guy) and [Craig Post](https://github.com/cpostbitbuckets).
+The image acquisition runs in a background thread to achieve maximal frame rate and minimal latency.
 
+This work is based on efforts from [Mark Omo](https://github.com/ferret-guy) and [Craig Post](https://github.com/cpostbitbuckets).
+
+```
+2021 October Added avi server and multicamera example, PySpin trigger fix
+2021 September Updated PySpin trigger out polarity setting  
 2020 Release  
-2021 Updated PySpin trigger out polarity setting  
-2021 Added avi server and multicamera example  
+```
 Urs Utzinger
 
 ## References
@@ -43,36 +46,59 @@ RTSP network streams
    Any[*]:      cv2Capture:  cv2.CAP_GSTREAMER
 cv2 for image resizing and flipping    
 ```
-[*] RTSP requires gstreamer integration. CV2 will need to be custom built on windows to enable gstreamer support. See my windows installation scripts on [Github](https://github.com/uutzinger/Windows_Install_Scripts).
+[*] RTSP requires gstreamer integration. CV2 will need to be custom built on windows to enable gstreamer support. See my windows installation scripts on [Github](https://github.com/uutzinger/Windows_Install_Scripts) if RTSP functionaliy is needed.
 
-To install opencv on Windows:
+### To install standard opencv on Windows:
 * ```pip3 install opencv-python```
 * ```pip3 install opencv-contrib-python```  
-* ```pip3 install tifffile h5py platform```  
 
-Make sure you have ```C:\temp directory``` if you use storage server.
+donwload from https://www.lfd.uci.edu/~gohlke/pythonlibs/   
+* ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#numpy```
+* ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#imagecodecs```
+* ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#tifffile```
+* ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#h5py```
+* ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#llvmlite```
+* ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#numba```
 
-To install opencv on Raspi:  
-(probalby dont need all packages...)
+then in CMD window with .... repalced through autocompleting TAB.
+```
+cd Downloads
+pip3 install numpy...
+pip3 install imagecodecs....
+pip3 install tifffile....
+pip3 install h5py....
+pip3 install llvmlite....
+pip3 install numba....
+```
+
+Make sure you have ```C:\temp``` direcory if you use the example storage programs.
+
+### To install OpenCV on Raspi:  
+(probalby dont need all the packages in the middle)
 ```
 cd ~
-sudo apt-get update
-sudo apt-get upgrade -y
+sudo apt-get -y update
+sudo apt-get -y upgrade
+
+sudo apt-get -y install cmake gfortran
 sudo apt-get -y install python3-pybind11
 sudo apt-get -y install libusb-1.0-0-dev
 sudo apt-get -y install swig
-sudo apt-get -y install gfortran
 sudo apt-get -y install python3-numpy python3-dev python3-pip python3-mock
-sudo apt-get -y install libjpeg-dev libtiff-dev libtiff5-dev libjasper-dev libpng-dev
-sudo apt-get -y install libavcodec-dev libavformat-dev libswscale-dev libv4l-dev libavresample-dev
-sudo apt-get -y install libxvidcore-dev libx264-dev
-sudo apt-get -y install libhdf5-dev libhdf5-serial-dev
-sudo apt-get -y install libopenblas-dev liblapack-dev libatlas-base-dev libblas-dev  libeigen{2,3}-dev
+sudo apt-get -y install libjpeg-dev libtiff-dev libtiff5-dev libjasper-dev libpng-dev libgif-dev libhdf5-dev
+sudo apt-get -y install libavcodec-dev libavformat-dev libswscale-dev libv4l-dev libavresample-dev  libdc1394-22-de
+sudo apt-get -y install libxvidcore-dev libx264-dev 
+sudo apt-get -y install libopenblas-dev libatlas-base-dev libblas-dev liblapack-dev libblas-dev  libeigen{2,3}-dev
+sudo apt-get -y insyall libgtk-3-dev 
+sudo apt-get -y insyall libtbb2 libtbb-dev
+sudo apt-get install libjasper-dev 
+sudo apt-get install protobuf-compiler
+
 wget https://bootstrap.pypa.io/get-pip.py
 sudo python3 get-pip.py
 sudo pip3 install --upgrade setuptools
 sudo pip3 install opencv-contrib-python==4.1.0.25
-pip3 install tifffile h5py platform
+sudo pip3 install tifffile h5py platform imagecodecs
 ```
 
 ## Capture modules
@@ -102,7 +128,7 @@ Interface for picamera module. Depricated since cv2Capture is more efficient for
 ## Example Programs
 **Display**: In general display should occur in main program. OpenCV requires waitkey to be executed in order to update the display. Waikey takes much longer than 1ms and therfore transferring data between threads is significantly slowed down in the main thread if display is requested.
 
-**Queue**: Data transfer between threads or between main program and thread works better with Queue than with setting new data falgs and accessing it through shared memory. Queue can be programmed to be blocking or non blocking and if the queue size is long enough, no data is lost if the main thread can  not keep up with the capture thread for brief amount of time.
+**Queue**: Data transfer between threads or between main program and thread works better with Queue than with setting new data falgs and accessing it through shared memory. Queue can be programmed to be blocking or non blocking and if the queue size is long enough, no data is lost if a thread can not keep up with the capture thread for brief amount of time.
 
 * ```test_blackfly.py``` tests the blackfly capture module and reports framerate.
 * ```test_blackfly_display.py``` tests the blackfly capture module, displays images and reports framerate.  
@@ -123,7 +149,8 @@ Configs folder:
   FLIR Blackfly S BFS-U3-04S2M: .. blackfly_configs.py  
   Raspi v1 OV5647: ............... raspy_v1module_configs.py  
   Raspi v2 IMX219: ............... raspy_v2module_configs.py  
-  Dell internal: ................. dell_internal_confgis.py  
+  Dell internal: ................. dell_internal_confgis.py
+  Eluktronics internal: .......... eluk_configs.py  
   ELP USB: ....................... configs.py  
 ````
 ### Sony IMX287 FLIR Blackfly S BFS-U3-04S2M

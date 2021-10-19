@@ -5,7 +5,7 @@ configs = {
     # auto exposure 0 or 1
     ##############################################
     'camera_res'      : (720, 540),     # image width & height, can read ROI
-    'exposure'        : 1700,           # in microseconds, -1 = autoexposure
+    'exposure'        : 1750,           # in microseconds, -1 = autoexposure
     'autoexposure'    : 0,              # 0,1
     'fps'             : 500,            # 
     'binning'         : (1,1),          # 1,2 or 4
@@ -15,8 +15,7 @@ configs = {
                                         # line 1 has opto isolator but requires pullup to 3V
                                         # line 2 has not isolation and takes 4-10us for a transition
     'ttlinv'          : True,           # inverted logic levels are best
-    'trigin'          : -1,             # -1 no trigger input,  
-                                        # line 0, 2 or 3, not tested
+    'trigin'          : -1,             # -1 use software, otherwise hardware
     ##############################################
     # Target Display
     ##############################################

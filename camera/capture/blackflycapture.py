@@ -22,6 +22,7 @@ import sys
 
 # Open FLIR driver
 import PySpin
+from PySpin.PySpin import TriggerMode_Off, TriggerSource_Software
 
 # Open Computer Vision
 import cv2
@@ -118,11 +119,11 @@ class blackflyCapture(Thread):
             for feature in features:
                 node_feature = PySpin.CValuePtr(feature)
                 if PySpin.IsReadable(node_feature): 
-                    self.logger.log(logging.INFO, "Status:Cameras Features: {} {}".format(node_feature.GetName(), node_feature.ToString()))
+                    self.logger.log(logging.DEBUG, "Status:Cameras Features: {} {}".format(node_feature.GetName(), node_feature.ToString()))
                 else: 
-                    self.logger.log(logging.INFO, "Status:Cameras Features: {}".format('Node not readable'))
+                    self.logger.log(logging.DEBUG, "Status:Cameras Features: {}".format('Node not readable'))
         else:
-            self.logger.log(logging.INFO, "Status:Cameras Features: {}".format('Device control information not available.'))
+            self.logger.log(logging.DEBUG, "Status:Cameras Features: {}".format('Device control information not available.'))
 
         #
         # Initialize camera
@@ -139,21 +140,65 @@ class blackflyCapture(Thread):
         #   Automatic Gain (off)
         #   Gamma (set to 1.0 then off)
         #   Automatic Exposure (off preferred for high frame rate)
-        # hard coded features
+        # Some more needed off for version 2.5
+        #   Acquisition Mode = Continous
+        #   Acquisiton Frame Rate Enable = True
+        #   Exposure Mode Timed
+        #   Gamme Enable Off
+        
+        # ISP OFF
         if self.cam.IspEnable.GetAccessMode() == PySpin.RW:
             self.cam.IspEnable.SetValue(False)
+            self.logger.log(logging.DEBUG, "Status:Camera:ISP Enable: {}".format(self.cam.IspEnable.GetValue()))
+        else:
+            self.logger.log(logging.DEBUG, "Status:Camera:ISP Enable: no access")
+        # Gain OFF
         if self.cam.GainSelector.GetAccessMode() == PySpin.RW: 
             self.cam.GainSelector.SetValue(PySpin.GainSelector_All)
-        if self.cam.GainAuto.GetAccessMode() == PySpin.RW:
-            self.cam.GainAuto.SetValue(PySpin.GainAuto_Off)
+            self.logger.log(logging.DEBUG, "Status:Camera:GainSelector: {}".format(self.cam.GainSelector.GetValue()))
+        else:
+            self.logger.log(logging.DEBUG, "Status:Camera:GainSelector: no access")
         if self.cam.Gain.GetAccessMode() == PySpin.RW:
             self.cam.Gain.SetValue(1.0)
+            self.logger.log(logging.DEBUG, "Status:Camera:Gain: {}".format(self.cam.Gain.GetValue()))
+        else:
+            self.logger.log(logging.DEBUG, "Status:Camera:Gain: no access")
+        if self.cam.GainAuto.GetAccessMode() == PySpin.RW:
+            self.cam.GainAuto.SetValue(PySpin.GainAuto_Off)
+            self.logger.log(logging.DEBUG, "Status:Camera:GainAuto: {}".format(self.cam.GainAuto.GetValue()))
+        else:
+            self.logger.log(logging.DEBUG, "Status:Camera:GainAuto: no access")
+        #   Acquisition Mode = Continous
+        if self.cam.AcquisitionMode.GetAccessMode() == PySpin.RW:
+            self.cam.AcquisitionMode.SetValue(PySpin.AcquisitionMode_Continuous)
+            self.logger.log(logging.DEBUG, "Status:Camera:AcquistionMode: {}".format(self.cam.AcquisitionMode.GetValue()))
+        else:
+            self.logger.log(logging.DEBUG, "Status:Camera:AcquisionMode: no access")
+        #   Exposure Mode Timed
+        if self.cam.ExposureMode.GetAccessMode() == PySpin.RW:
+            self.cam.ExposureMode.SetValue(PySpin.ExposureMode_Timed)        
+            self.logger.log(logging.DEBUG, "Status:Camera:ExposureMode: {}".format(self.cam.ExposureMode.GetValue()))
+        else:
+            self.logger.log(logging.DEBUG, "Status:Camera:ExposureMode: no access")
+        #   Acquisiton Frame Rate Enable = True
+        if self.cam.AcquisitionFrameRateEnable.GetAccessMode() == PySpin.RW:
+            self.cam.AcquisitionFrameRateEnable.SetValue(True)
+            self.logger.log(logging.DEBUG, "Status:Camera:AcquisionFrameRateEnable: {}".format(self.cam.AcquisitionFrameRateEnable.GetValue()))
+        else:
+            self.logger.log(logging.DEBUG, "Status:Camera:AcquisionFrameRateEnable: no access")
+        #   Gamma Off
+        if self.cam.GammaEnable.GetAccessMode() == PySpin.RW:
+            self.cam.GammaEnable.SetValue(True)
         if self.cam.Gamma.GetAccessMode() == PySpin.RW:
             self.cam.Gamma.SetValue(1.0)
+            self.logger.log(logging.DEBUG, "Status:Camera:Gamma: {}".format(self.cam.Gamma.GetValue()))
+        else:
+            self.logger.log(logging.DEBUG, "Status:Camera:Gamma: no access")
         if self.cam.GammaEnable.GetAccessMode() == PySpin.RW:
-            self.cam.GainAuto.SetValue(False)
-        if self.cam.ExposureMode.GetAccessMode() == PySpin.RW:
-            self.cam.ExposureMode.SetValue(PySpin.ExposureMode_Timed)
+            self.cam.GammaEnable.SetValue(False)
+            self.logger.log(logging.DEBUG, "Status:Camera:GammaEnable: {}".format(self.cam.GammaEnable.GetValue()))
+        else:
+            self.logger.log(logging.DEBUG, "Status:Camera:GammaEnable: no access")
         # features changable by client
         self.autoexposure = self._autoexposure # using user accessible function
         #
@@ -165,27 +210,35 @@ class blackflyCapture(Thread):
         # hard coded features
         if self.cam.BinningVerticalMode.GetAccessMode() == PySpin.RW:
             self.cam.BinningVerticalMode.SetValue(PySpin.BinningVerticalMode_Sum)
+            self.logger.log(logging.DEBUG, "Status:Camera:BinningVerticalMode: {}".format(self.cam.BinningVerticalMode.GetValue()))
+        else:
+            self.logger.log(logging.DEBUG, "Status:Camera:BinningVerticalMode: no access")
         if self.cam.BinningHorizontalMode.GetAccessMode() == PySpin.RW:
             self.cam.BinningHorizontalMode.SetValue(PySpin.BinningHorizontalMode_Sum)
+            self.logger.log(logging.DEBUG, "Status:Camera:BinningHorizonalMode: {}".format(self.cam.BinningHorizontalMode.GetValue()))
+        else:
+            self.logger.log(logging.DEBUG, "Status:Camera:BinningHorizonalMode: no access")
         # features changeable by user
         self.binning    = self._binning
         self.resolution = self._camera_res
-        self.offset = self._offset
-        self.adc = self._adc
+        self.offset     = self._offset
+        self.adc        = self._adc
+
+        #
+        # 3a Digital Input for Trigger
+        #   Set Input Trigger, if set to -1 use software trigger
+        self.trigin  = self._trigin
+
         #
         # 3 Digital Output
         #   Set Output Trigger, Line 1 has opto isolator but transitions slow, line 2 takes about 4-10 us to transition
-        #   Set Input Trigger
         self.trigout = self._trigout 
-        self.ttlinv  = self._ttlinv
-        self.trigin  = self._trigin
+
         #
         # 4 Aquistion
         #   Continous 
         #   FPS, should be set after turning off auto feature, ADC bit depth, binning as they slow down camera
         # hard coded features
-        if self.cam.AcquisitionMode.GetAccessMode() == PySpin.RW:
-            self.cam.AcquisitionMode.SetValue(PySpin.AcquisitionMode_Continuous)
         # feaures changable by client
         self.exposure = self._exposure
         self.fps = self._framerate
@@ -193,7 +246,15 @@ class blackflyCapture(Thread):
         #
         # Start Image Acquistion
         ########################  
-        self.cam.BeginAcquisition()
+        self.cam.BeginAcquisition() # Start Aquision
+        # if trigger source is Software: execute, otherwise nothing goes
+        self.cam.TriggerSource.SetValue(PySpin.TriggerSource_Software)
+        if self.cam.TriggerSource.GetValue() == PySpin.TriggerSource_Software:
+            self.cam.TriggerSoftware()
+            self.logger.log(logging.DEBUG, "Status:Camera:TriggerSource: executed")
+        else:
+            self.logger.log(logging.DEBUG, "Status:Camera:TriggerSource: no access")
+
         self.logger.log(logging.INFO, "Status:Acquiring images.")
 
     #
@@ -328,18 +389,18 @@ class blackflyCapture(Thread):
     def width(self, val):
         """ sets video capture width """
         if (val is None) or (val == -1):
-            self.logger.log(logging.DEBUG, "Status:Width not changed:{}".format(val))
+            self.logger.log(logging.DEBUG, "Status:Camera:Width not changed:{}".format(val))
             return
         if self.capture_open:
             val = max(self.cam.Width.GetMin(), min(self.cam.Width.GetMax(), val))
             if self.cam.Width.GetAccessMode() == PySpin.RW:
                 self.cam.Width.SetValue(val)
                 self._camera_res = (self.cam.Width.GetValue(), self.cam.Height.GetValue())
-                self.logger.log(logging.DEBUG, "Status:Width:{}".format(val))
+                self.logger.log(logging.DEBUG, "Status:Camera:Width:{}".format(val))
             else:
-                self.logger.log(logging.ERROR, "Status:Failed to set width to {}!".format(val))
+                self.logger.log(logging.ERROR, "Status:Camera:Failed to set width to {}!".format(val))
         else: # camera not open
-            self.logger.log(logging.ERROR, "Status:Failed to set resolution, camera not open!")
+            self.logger.log(logging.ERROR, "Status:Camera:Failed to set resolution, camera not open!")
 
     @property
     def height(self):
@@ -352,18 +413,18 @@ class blackflyCapture(Thread):
     def height(self, val):
         """ sets video capture width """
         if (val is None) or (val == -1):
-            self.logger.log(logging.DEBUG, "Status:Height not changed:{}".format(val))
+            self.logger.log(logging.DEBUG, "Status:Camera:Height not changed:{}".format(val))
             return
         if self.capture_open:
             val = max(self.cam.Height.GetMin(), min(self.cam.Height.GetMax(), val)) 
             if self.cam.Height.GetAccessMode() == PySpin.RW:
                 self.cam.Height.SetValue(val)
                 self._camera_res = (self.cam.Width.GetValue(), self.cam.Height.GetValue())
-                self.logger.log(logging.DEBUG, "Status:Height:{}".format(val))
+                self.logger.log(logging.DEBUG, "Status:Camera:Height:{}".format(val))
             else:
-                self.logger.log(logging.ERROR, "Status:Failed to set height to {}!".format(val))
+                self.logger.log(logging.ERROR, "Status:Camera:Failed to set height to {}!".format(val))
         else: # camera not open
-            self.logger.log(logging.ERROR, "Status:Failed to set resolution, camera not open!")
+            self.logger.log(logging.ERROR, "Status:Camera:Failed to set resolution, camera not open!")
 
     @property
     def resolution(self):
@@ -383,31 +444,31 @@ class blackflyCapture(Thread):
                 val = (_tmp0, _tmp1)
                 if self.cam.Width.GetAccessMode() == PySpin.RW:
                     self.cam.Width.SetValue(int(val[0]))
-                    self.logger.log(logging.DEBUG, "Status:Width:{}".format(val[0]))
+                    self.logger.log(logging.DEBUG, "Status:Camera:Width:{}".format(val[0]))
                 else:
-                    self.logger.log(logging.CRITICAL, "Status:Failed to set width to {}!".format(val[0]))
+                    self.logger.log(logging.CRITICAL, "Status:Camera:Failed to set width to {}!".format(val[0]))
                 if self.cam.Height.GetAccessMode() == PySpin.RW:
                     self.cam.Height.SetValue(int(val[1]))
-                    self.logger.log(logging.DEBUG, "Status:Height:{}".format(val[1]))
+                    self.logger.log(logging.DEBUG, "Status:Camera:Height:{}".format(val[1]))
                 else:
-                    self.logger.log(logging.CRITICAL, "Status:Failed to set height to {}!".format(val[1]))
+                    self.logger.log(logging.CRITICAL, "Status:Camera:Failed to set height to {}!".format(val[1]))
                 self._camera_res = (self.cam.Width.GetValue(), self.cam.Height.GetValue())
             else: # given only one value for resolution, make image square
                 val = max(self.cam.Width.GetMin(), min(self.cam.Width.GetMax(), val))
                 val = max(self.cam.Height.GetMin(), min(self.cam.Height.GetMax(), val))
                 if self.cam.Width.GetAccessMode() == PySpin.RW:
                     self.cam.Width.SetValue(int(val))
-                    self.logger.log(logging.DEBUG, "Status:Width:{}".format(val))
+                    self.logger.log(logging.DEBUG, "Status:Camera:Width:{}".format(val))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set resolution to {},{}!".format(val,val))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set resolution to {},{}!".format(val,val))
                 if self.cam.Height.GetAccessMode() == PySpin.RW:
                     self.cam.Height.SetValue(int(val)) 
                     self.logger.log(logging.DEBUG, "Status:Height:{}".format(val))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set resolution to {},{}!".format(val,val))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set resolution to {},{}!".format(val,val))
                 self._camera_res = (self.cam.Width.GetValue(), self.cam.Height.GetValue())
         else: # camera not open
-            self.logger.log(logging.ERROR, "Status:Failed to set resolution, camera not open!")
+            self.logger.log(logging.ERROR, "Status:Camera:Failed to set resolution, camera not open!")
 
     @property
     def offset(self):
@@ -427,31 +488,31 @@ class blackflyCapture(Thread):
                 val = (_tmp0, _tmp1)
                 if self.cam.OffsetX.GetAccessMode() == PySpin.RW:
                     self.cam.OffsetX.SetValue(int(val[0]))
-                    self.logger.log(logging.DEBUG, "Status:OffsetX:{}".format(val[0]))
+                    self.logger.log(logging.DEBUG, "Status:Camera:OffsetX:{}".format(val[0]))
                 else:
-                    self.logger.log(logging.CRITICAL, "Status:Failed to set X offset to {}!".format(val[0]))
+                    self.logger.log(logging.CRITICAL, "Status:Camera:Failed to set X offset to {}!".format(val[0]))
                 if self.cam.OffsetY.GetAccessMode() == PySpin.RW:
                     self.cam.OffsetY.SetValue(int(val[1]))
-                    self.logger.log(logging.DEBUG, "Status:OffsetY:{}".format(val[1]))
+                    self.logger.log(logging.DEBUG, "Status:Camera:OffsetY:{}".format(val[1]))
                 else:
-                    self.logger.log(logging.CRITICAL, "Status:Failed to set Y offset to {}!".format(val[1]))
+                    self.logger.log(logging.CRITICAL, "Status:Camera:Failed to set Y offset to {}!".format(val[1]))
                 self._offset = (self.cam.OffsetX.GetValue(), self.cam.OffsetY.GetValue())
             else: # given only one value for resolution
                 val = max(min(self.cam.OffsetX.GetMin(), val), self.cam.OffsetX.GetMax())
                 val = max(min(self.cam.OffsetY.GetMin(), val), self.cam.OffsetY.GetMax())
                 if self.cam.OffsetX.GetAccessMode() == PySpin.RW:
                     self.cam.OffsetX.SetValue(int(val))
-                    self.logger.log(logging.DEBUG, "Status:OffsetX:{}".format(val))
+                    self.logger.log(logging.DEBUG, "Status:Camera:OffsetX:{}".format(val))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set X offset to {}!".format(val))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set X offset to {}!".format(val))
                 if self.cam.OffsetY.GetAccessMode() == PySpin.RW:
                     self.cam.OffsetY.SetValue(int(val))
-                    self.logger.log(logging.DEBUG, "Status:OffsetY:{}".format(val))
+                    self.logger.log(logging.DEBUG, "Status:Camera:OffsetY:{}".format(val))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set Y offset to {},{}!".format(val))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set Y offset to {},{}!".format(val))
                 self._offset = (self.cam.OffsetX.GetValue(), self.cam.OffsetY.GetValue())
         else: # camera not open
-            self.logger.log(logging.ERROR, "Status:Failed to set offset, camera not open!")
+            self.logger.log(logging.ERROR, "Status:Camera:Failed to set offset, camera not open!")
 
     @property
     def binning(self):
@@ -471,14 +532,14 @@ class blackflyCapture(Thread):
                 val = (_tmp0, _tmp1)
                 if self.cam.BinningHorizontal.GetAccessMode() == PySpin.RW:
                     self.cam.BinningHorizontal.SetValue(int(val[0]))
-                    self.logger.log(logging.DEBUG, "Status:BinningHorizontal:{}".format(val[0]))
+                    self.logger.log(logging.DEBUG, "Status:Camera:BinningHorizontal:{}".format(val[0]))
                 else:
-                    self.logger.log(logging.CRITICAL, "Status:Failed to set horizontal binning to {}!".format(val[0]))
+                    self.logger.log(logging.CRITICAL, "Status:Camera:Failed to set horizontal binning to {}!".format(val[0]))
                 if self.cam.BinningVertical.GetAccessMode() == PySpin.RW:
                     self.cam.BinningVertical.SetValue(int(val[1]))
-                    self.logger.log(logging.DEBUG, "Status:BinningVertical:{}".format(val[1]))
+                    self.logger.log(logging.DEBUG, "Status:Camera:BinningVertical:{}".format(val[1]))
                 else:
-                    self.logger.log(logging.CRITICAL, "Status:Failed to set vertical binning to {}!".format(val[1]))
+                    self.logger.log(logging.CRITICAL, "Status:Camera:Failed to set vertical binning to {}!".format(val[1]))
                 self._binning = (self.cam.BinningHorizontal.GetValue(), self.cam.BinningVertical.GetValue())
             else: # given only one value for resolution
                 _tmp0 = min(max(val[0], self.cam.BinningHorizontal.GetMin()), self.cam.BinningHorizontal.GetMax()) 
@@ -486,17 +547,17 @@ class blackflyCapture(Thread):
                 val = (_tmp0, _tmp1)
                 if self.cam.BinningHorizontal.GetAccessMode() == PySpin.RW:
                     self.cam.BinningHorizontal.SetValue(int(val))
-                    self.logger.log(logging.DEBUG, "Status:BinningHorizontal:{}".format(val))
+                    self.logger.log(logging.DEBUG, "Status:Camera:BinningHorizontal:{}".format(val))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set horizontal binning to {}!".format(val))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set horizontal binning to {}!".format(val))
                 if self.cam.BinningVertical.GetAccessMode() == PySpin.RW:
                     self.cam.BinningVertical.SetValue(int(val))
-                    self.logger.log(logging.DEBUG, "Status:BinningVertical:{}".format(val))
+                    self.logger.log(logging.DEBUG, "Status:Camera:BinningVertical:{}".format(val))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set vertical binning to {}!".format(val))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set vertical binning to {}!".format(val))
                 self._binning = (self.cam.BinningHorizontal.GetValue(), self.cam.BinningVertical.GetValue())
         else: # camera not open
-            self.logger.log(logging.ERROR, "Status:Failed to set binning, camera not open!")
+            self.logger.log(logging.ERROR, "Status:Camera:Failed to set binning, camera not open!")
 
     @property
     def exposure(self):
@@ -509,26 +570,26 @@ class blackflyCapture(Thread):
     def exposure(self, val):
         """ sets exposure """
         if (val is None) or (val == -1):
-            self.logger.log(logging.ERROR, "Status:Can not set exposure to {}!".format(val))
+            self.logger.log(logging.ERROR, "Status:Camera:Can not set exposure to {}!".format(val))
             return
         # Setting exposure implies that autoexposure is off and exposure mode is timed 
         if self.cam.ExposureMode.GetValue() != PySpin.ExposureMode_Timed:
-            self.logger.log(logging.ERROR, "Status:Can not set exposure! Exposure Mode needs to be Timed")
+            self.logger.log(logging.ERROR, "Status:Camera:Can not set exposure! Exposure Mode needs to be Timed")
             return
         if self.cam.ExposureAuto.GetValue() != PySpin.ExposureAuto_Off:
-            self.logger.log(logging.ERROR, "Status:Can not set exposure! Exposure is Auto")
+            self.logger.log(logging.ERROR, "Status:Camera:Can not set exposure! Exposure is Auto")
             return
         # Setting exposure
         if self.capture_open:
             self._exposure = max(self.cam.ExposureTime.GetMin(), min(self.cam.ExposureTime.GetMax(), float(val)))
             if self.cam.ExposureTime.GetAccessMode() == PySpin.RW:
                 self.cam.ExposureTime.SetValue(self._exposure)
-                self.logger.log(logging.DEBUG, "Status:Exposure:{}".format(self._exposure))
+                self.logger.log(logging.DEBUG, "Status:Camera:Exposure:{}".format(self._exposure))
             else:
-                self.logger.log(logging.ERROR, "Status:Failed to set expsosure to:{}".format(self._exposure))
+                self.logger.log(logging.ERROR, "Status:Camera:Failed to set expsosure to:{}".format(self._exposure))
             self._exposure = self.cam.ExposureTime.GetValue()
         else: # camera not open
-            self.logger.log(logging.ERROR, "Status:Failed to set exposure, camera not open!")
+            self.logger.log(logging.ERROR, "Status:Camera:Failed to set exposure, camera not open!")
 
     @property
     def autoexposure(self):
@@ -551,42 +612,42 @@ class blackflyCapture(Thread):
         # 2) Set exposure 
         # 3) Set max FPS
         if (val is None) or (val == -1):
-            self.logger.log(logging.CRITICAL, "Status:Can not set Autoexposure to:{}".format(val))
+            self.logger.log(logging.CRITICAL, "Status:Camera:Can not set Autoexposure to:{}".format(val))
             return
         if self.capture_open:
             if val > 0: 
                 # Setting Autoexposure on
                 if self.cam.ExposureAuto.GetAccessMode() == PySpin.RW:
                     self.cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Continuous)
-                    self.logger.log(logging.DEBUG, "Status:Autoexposure:{}".format(1))
+                    self.logger.log(logging.DEBUG, "Status:Camera:Autoexposure:{}".format(1))
                     self._autoexposure = 1
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set Autoexposure to:{}".format(val))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set Autoexposure to:{}".format(val))
                 self._framerate = self.cam.AcquistionFrameRate.GetMax()
-                if capture.AcquisitionFrameRate.GetAccessMode() == PySpin.RW:
+                if self.cam.AcquisitionFrameRate.GetAccessMode() == PySpin.RW:
                     self.cam.AcquisitionFrameRate.SetValue(self._framerate)
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set Frame Rate to:{}".format(self._framerate))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set Frame Rate to:{}".format(self._framerate))
             else:
                 # Setting Autoexposure off
                 if self.cam.ExposureAuto.GetAccessMode() == PySpin.RW:
                     self.cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
-                    self.logger.log(logging.DEBUG, "Status:Autoexposure:{}".format(0))
+                    self.logger.log(logging.DEBUG, "Status:Camera:Autoexposure:{}".format(0))
                     self._autoexposure = 0
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set Autoexposure to:{}".format(val))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set Autoexposure to:{}".format(val))
                 self._exposure = max(self.cam.ExposureTime.GetMin(), min(self.cam.ExposureTime.GetMax(), self._exposure))
                 if self.cam.ExposureTime.GetAccessMode() == PySpin.RW:
                     self.cam.ExposureTime.SetValue(self._exposure)
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set Exposure Time to:{}".format(self._exposure))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set Exposure Time to:{}".format(self._exposure))
                 self._framerate = self.cam.AcquisitionFrameRate.GetMax()
                 if self.cam.AcquisitionFrameRate.GetAccessMode() == PySpin.RW:
                     self.cam.AcquisitionFrameRate.SetValue(self._framerate)
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set Frame Rate to:{}".format(self._framerate))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set Frame Rate to:{}".format(self._framerate))
         else: # camera not open
-            self.logger.log(logging.ERROR, "Status:Failed to set auto exposure, camera not open!")
+            self.logger.log(logging.ERROR, "Status:Camera:Failed to set auto exposure, camera not open!")
 
     @property
     def fps(self):
@@ -599,15 +660,15 @@ class blackflyCapture(Thread):
     def fps(self, val):
         """ set frames per second in camera """
         if (val is None) or (val == -1):
-            self.logger.log(logging.CRITICAL, "Status:Can not set framerate to:{}".format(val))
+            self.logger.log(logging.CRITICAL, "Status:Camera:Can not set framerate to:{}".format(val))
             return
         if self.capture_open:
             self._framerate = float(val)
             if self.cam.AcquisitionFrameRate.GetAccessMode() == PySpin.RW:
                 self.cam.AcquisitionFrameRate.SetValue(self._framerate)
-                self.logger.log(logging.DEBUG, "Status:FPS:{}".format(self._framerate))
+                self.logger.log(logging.DEBUG, "Status:Camera:FPS:{}".format(self._framerate))
             else:
-                self.logger.log(logging.CRITICAL, "Status:Failed to set FPS to:{}".format(self._framerate))
+                self.logger.log(logging.CRITICAL, "Status:Camera:Failed to set FPS to:{}".format(self._framerate))
             self._framerate = self.cam.AcquisitionFrameRate.GetValue()
 
     @property
@@ -631,59 +692,59 @@ class blackflyCapture(Thread):
     def adc(self, val):
         """ sets adc bit depth """
         if (val is None) or (val == -1):
-            self.logger.log(logging.ERROR, "Status:Can not set exposure to {}!".format(val))
+            self.logger.log(logging.ERROR, "Status:Camera:Can not set exposure to {}!".format(val))
             return
         if self.capture_open:
             if val == 8:
                 if self.cam.AdcBitDepth.GetAccessMode() == PySpin.RW:
                     self.cam.AdcBitDepth.SetValue(PySpin.AdcBitDepth_Bit8) 
                     self._adc = 8
-                    self.logger.log(logging.DEBUG, "Status:ADC:{}".format(self._adc))
+                    self.logger.log(logging.DEBUG, "Status:Camera:ADC:{}".format(self._adc))
                     if self.cam.PixelFormat.GetAccessMode() == PySpin.RW:
                         self.cam.PixelFormat.SetValue(PySpin.PixelFormat_Mono8)
-                        self.logger.log(logging.DEBUG, "Status:PixelFormat:{}".format('Mono8'))
+                        self.logger.log(logging.DEBUG, "Status:Camera:PixelFormat:{}".format('Mono8'))
                     else:
-                        self.logger.log(logging.ERROR, "Status:Failed to set Pixel Format to:{}".format('Mono8'))
+                        self.logger.log(logging.ERROR, "Status:Camera:Failed to set Pixel Format to:{}".format('Mono8'))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set ADC to:{}".format(val))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set ADC to:{}".format(val))
             elif val == 10:
                 if self.cam.AdcBitDepth.GetAccessMode() == PySpin.RW:
                     self.cam.AdcBitDepth.SetValue(PySpin.AdcBitDepth_Bit10) 
                     self._adc = 10
-                    self.logger.log(logging.DEBUG, "Status:ADC:{}".format(self._adc))
+                    self.logger.log(logging.DEBUG, "Status:Camera:ADC:{}".format(self._adc))
                     if self.cam.PixelFormat.GetAccessMode() == PySpin.RW:
                         self.cam.PixelFormat.SetValue(PySpin.PixelFormat_Mono16)
-                        self.logger.log(logging.DEBUG, "Status:PixelFormat:{}".format('Mono16'))
+                        self.logger.log(logging.DEBUG, "Status:Camera:PixelFormat:{}".format('Mono16'))
                     else:
-                        self.logger.log(logging.ERROR, "Status:Failed to set Pixel Format to:{}".format('Mono16'))
+                        self.logger.log(logging.ERROR, "Status:Camera:Failed to set Pixel Format to:{}".format('Mono16'))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set ADC to:{}".format(val))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set ADC to:{}".format(val))
             elif val == 12:
                 if self.cam.AdcBitDepth.GetAccessMode() == PySpin.RW:
                     self.cam.AdcBitDepth.SetValue(PySpin.AdcBitDepth_Bit12) 
                     self._adc = 12
-                    self.logger.log(logging.DEBUG, "Status:ADC:{}".format(self._adc))
+                    self.logger.log(logging.DEBUG, "Status:Camera:ADC:{}".format(self._adc))
                     if self.cam.PixelFormat.GetAccessMode() == PySpin.RW:
                         self.cam.PixelFormat.SetValue(PySpin.PixelFormat_Mono16)
-                        self.logger.log(logging.DEBUG, "Status:PixelFormat:{}".format('Mono16'))
+                        self.logger.log(logging.DEBUG, "Status:Camera:PixelFormat:{}".format('Mono16'))
                     else:
-                        self.logger.log(logging.ERROR, "Status:Failed to set Pixel Format to:{}".format('Mono16'))
+                        self.logger.log(logging.ERROR, "Status:Camera:Failed to set Pixel Format to:{}".format('Mono16'))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set ADC to:{}".format(val))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set ADC to:{}".format(val))
             elif val == 14:
                 if self.cam.AdcBitDepth.GetAccessMode() == PySpin.RW:
                     self.cam.AdcBitDepth.SetValue(PySpin.AdcBitDepth_Bit14) 
                     self._adc = 14
-                    self.logger.log(logging.DEBUG, "Status:ADC:{}".format(self._adc))
+                    self.logger.log(logging.DEBUG, "Status:Camera:ADC:{}".format(self._adc))
                     if self.cam.PixelFormat.GetAccessMode() == PySpin.RW:
                         self.cam.PixelFormat.SetValue(PySpin.PixelFormat_Mono16)
-                        self.logger.log(logging.DEBUG, "Status:PixelFormat:{}".format('Mono16'))
+                        self.logger.log(logging.DEBUG, "Status:Camera:PixelFormat:{}".format('Mono16'))
                     else:
-                        self.logger.log(logging.ERROR, "Status:Failed to set Pixel Format to:{}".format('Mono16'))
+                        self.logger.log(logging.ERROR, "Status:Camera:Failed to set Pixel Format to:{}".format('Mono16'))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set ADC to:{}".format(val))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set ADC to:{}".format(val))
         else: # camera not open
-            self.logger.log(logging.ERROR, "Status:Failed to set ADC, camera not open!")
+            self.logger.log(logging.ERROR, "Status:Camera:Failed to set ADC, camera not open!")
 
     @property
     def ttlinv(self):
@@ -695,7 +756,7 @@ class blackflyCapture(Thread):
     def ttlinv(self, val):
         """ sets trigger logic polarity """
         if (val is None):
-            self.logger.log(logging.ERROR, "Status:Can not set trigger level to:{}!".format(val))
+            self.logger.log(logging.ERROR, "Status:Camera:Can not set trigger level to:{}!".format(val))
             return
         if self.capture_open:
             if val == 0: # Want regular trigger output polarity
@@ -705,9 +766,9 @@ class blackflyCapture(Thread):
                 self.cam.LineInverter.SetValue(True)
                 self._ttlinv = True;
 
-            self.logger.log(logging.DEBUG, "Status:Trigger Output Logic Inverted:{}".format(self._ttlinv))
+            self.logger.log(logging.DEBUG, "Status:Camera:Trigger Output Logic Inverted:{}".format(self._ttlinv))
         else: # camera not open
-            self.logger.log(logging.ERROR, "Status:Failed to set Trigger Output Polarity, camera not open!")
+            self.logger.log(logging.ERROR, "Status:Camera:Failed to set Trigger Output Polarity, camera not open!")
 
     @property
     def trigout(self):
@@ -718,8 +779,18 @@ class blackflyCapture(Thread):
     @trigout.setter
     def trigout(self, val):
         """ sets trigger output line """
+
+        # Line Selector Line 0,1,2,3
+        # Line Mode Out
+        #   0 Input Only
+        #   1 Output Only
+        #   2 Input and Output
+        #   3 Input Only
+        # Line Inverer True or False
+        # Line Source Exposure Active
+
         if (val is None):
-            self.logger.log(logging.ERROR, "Status:Can not set trigger output on line:{}!".format(val))
+            self.logger.log(logging.ERROR, "Status:Camera:Can not set trigger output on line:{}!".format(val))
             return
         if self.capture_open:
             if val == -1: # dont want trigger output
@@ -740,7 +811,7 @@ class blackflyCapture(Thread):
                 if self.cam.LineSource.GetAccessMode() == PySpin.RW:
                     self.cam.LineSource.SetValue(PySpin.LineSource_ExposureActive) # dont have off
                 self._trigout = -1
-                self.logger.log(logging.DEBUG, "Status:Trigger Output:{}".format(self._trigout))
+                self.logger.log(logging.DEBUG, "Status:Camera:Trigger Output:{}".format(self._trigout))
             elif val == 1: # want trigger output on line 1, need pullup to 3V on line 1, set line 2 to 3V
                 # set line 2 to out high for 3V
                 if self.cam.LineSelector.GetAccessMode() == PySpin.RW:
@@ -761,8 +832,12 @@ class blackflyCapture(Thread):
                 if self.cam.LineSource.GetAccessMode() == PySpin.RW:
                     self.cam.LineSource.SetValue(PySpin.LineSource_ExposureActive)
                 self._trigout = 1
-                self.logger.log(logging.DEBUG, "Status:Trigger Output:{}".format(self._trigout))
+                self.logger.log(logging.DEBUG, "Status:Camera:Trigger Output:{}".format(self._trigout))
             elif val == 2: # best option
+                # Line Selector Line 2
+                # Line Mode Out
+                # Line Inverer True or False
+                # Line Source Exposure Active
                 if self.cam.LineSelector.GetAccessMode() == PySpin.RW:
                     self.cam.LineSelector.SetValue(PySpin.LineSelector_Line2)
                 if self.cam.LineMode.GetAccessMode() == PySpin.RW:
@@ -772,10 +847,9 @@ class blackflyCapture(Thread):
                 if self.cam.LineSource.GetAccessMode() == PySpin.RW:
                     self.cam.LineSource.SetValue(PySpin.LineSource_ExposureActive)
                 self._trigout = 2
-                self.logger.log(logging.DEBUG, "Status:Trigger Output:{}".format(self._trigout))
+                self.logger.log(logging.DEBUG, "Status:Camera:Trigger Output:{}".format(self._trigout))
         else: # camera not open
-            self.logger.log(logging.ERROR, "Status:Failed to set trigger, camera not open!")
-
+            self.logger.log(logging.ERROR, "Status:Camera:Failed to set trigger, camera not open!")
 
     @property
     def trigin(self):
@@ -786,24 +860,27 @@ class blackflyCapture(Thread):
     @trigin.setter
     def trigin(self, val):
         """ sets trigger input line """
+
         if (val is None):
-            self.logger.log(logging.ERROR, "Status:Can not set trigger input on line {}!".format(val))
+            self.logger.log(logging.ERROR, "Status:Camera:Can not set trigger input on line {}!".format(val))
             return
         if self.capture_open:
             if val == -1: # no external trigger, trigger source is software
-                self.cam.TriggerSelector.SetValue(PySpin.TriggerSelector_FrameStart)
-                if self.cam.TriggerMode.GetAccessMode() == PySpin.RW:
-                    self.cam.TriggerMode.SetValue(PySpin.TriggerMode_Off)
+                if self.cam.TriggerSelector.GetAccessMode() == PySpin.RW:
+                    self.cam.TriggerSelector.SetValue(PySpin.TriggerSelector_AcquisitionStart)
+                    if self.cam.TriggerMode.GetAccessMode() == PySpin.RW:
+                        self.cam.TriggerMode.SetValue(PySpin.TriggerMode_On)
                     if self.cam.TriggerSource.GetAccessMode() == PySpin.RW:
                         self.cam.TriggerSource.SetValue(PySpin.TriggerSource_Software)
                     if self.cam.TriggerOverlap.GetAccessMode() == PySpin.RW:
-                        self.cam.TriggerOverlap.SetValue(PySpin.TriggerOverlap_Off)
+                        self.cam.TriggerOverlap.SetValue(PySpin.TriggerOverlap_ReadOut)
                     if self.cam.TriggerDelay.GetAccessMode() == PySpin.RW:
                         self.cam.TriggerDelay.SetValue(self.cam.TriggerDelay.GetMin())
                     self._trigout = -1
-                    self.logger.log(logging.DEBUG, "Status:Trigger Output:{}".format(self._trigout))
+                    self.logger.log(logging.DEBUG, "Status:Camera:Trigger Output:{}".format(self._trigout))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set trigger output on line:{}".format(self._trigout))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set trigger output on line:{}".format(self._trigout))
+
             elif val == 0: # trigger is line 0
                 self.cam.TriggerSelector.SetValue(PySpin.TriggerSelector_FrameStart)
                 if self.cam.TriggerMode.GetAccessMode() == PySpin.RW:
@@ -817,9 +894,9 @@ class blackflyCapture(Thread):
                         if self.cam.TriggerDelay.GetAccessMode() == PySpin.RW:
                             self.cam.TriggerDelay.SetValue(self.cam.TriggerDelay.GetMin())
                         self._trigout = 0
-                        self.logger.log(logging.DEBUG, "Status:Trigger Output:{}".format(self._trigout))
+                        self.logger.log(logging.DEBUG, "Status:Camera:Trigger Output:{}".format(self._trigout))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set trigger output on line:{}".format(self._trigout))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set trigger output on line:{}".format(self._trigout))
             elif val == 2: # trigger is line 2
                 self.cam.TriggerSelector.SetValue(PySpin.TriggerSelector_FrameStart)
                 if self.cam.TriggerMode.GetAccessMode() == PySpin.RW:
@@ -833,9 +910,9 @@ class blackflyCapture(Thread):
                         if self.cam.TriggerDelay.GetAccessMode() == PySpin.RW:
                             self.cam.TriggerDelay.SetValue(self.cam.TriggerDelay.GetMin())
                         self._trigout = 2
-                        self.logger.log(logging.DEBUG, "Status:Trigger Output:{}".format(self._trigout))
+                        self.logger.log(logging.DEBUG, "Status:Camera:Trigger Output:{}".format(self._trigout))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set trigger output on line:{}".format(self._trigout))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set trigger output on line:{}".format(self._trigout))
             elif val == 3: # trigger is line 3
                 self.cam.TriggerSelector.SetValue(PySpin.TriggerSelector_FrameStart)
                 if self.cam.TriggerMode.GetAccessMode() == PySpin.RW:
@@ -849,11 +926,11 @@ class blackflyCapture(Thread):
                         if self.cam.TriggerDelay.GetAccessMode() == PySpin.RW:
                             self.cam.TriggerDelay.SetValue(self.cam.TriggerDelay.GetMin())
                         self._trigout = 3
-                        self.logger.log(logging.DEBUG, "Status:Trigger Output:{}".format(self._trigout))
+                        self.logger.log(logging.DEBUG, "Status:Camera:Trigger Output:{}".format(self._trigout))
                 else:
-                    self.logger.log(logging.ERROR, "Status:Failed to set trigger output on line:{}".format(self._trigout))
+                    self.logger.log(logging.ERROR, "Status:Camera:Failed to set trigger output on line:{}".format(self._trigout))
         else: # camera not open
-            self.logger.log(logging.ERROR, "Status:Failed to set trigger, camera not open!")
+            self.logger.log(logging.ERROR, "Status:Camera:Failed to set trigger, camera not open!")
 
 ###############################################################################
 # Testing
