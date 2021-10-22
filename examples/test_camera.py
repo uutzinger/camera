@@ -9,20 +9,20 @@ use_queue = True
 looptime         = 0.0
 
 # Dell Inspiron 15 internal camera
-# from camera.configs.dell_internal_configs  import configs as configs0
+# from configs.dell_internal_configs  import configs as configs0
 
 # Eluktronics Max-15 internal camera
-from camera.configs.eluk_configs import configs as configs0
+from configs.eluk_configs import configs as configs0
 #
 # Nano Jetson IMX219 camera
-# from camera.configs.nano_IMX219_configs  import configs as configs0
+# from configs.nano_IMX219_configs  import configs as configs0
 #
 # Raspberry Pi v1 & v2 camera
-# from camera.configs.raspi_v1module_configs  import configs as configs0
-# from camera.configs.raspi_v2module_configs  import configs as configs0
+# from configs.raspi_v1module_configs  import configs as configs0
+# from configs.raspi_v2module_configs  import configs as configs0
 #
 # ELP
-# from camera.configs.ELP1080p_configs  import configs as configs0
+# from configs.ELP1080p_configs  import configs as configs0
 #
  
 if configs0['displayfps'] >= configs0['fps'] and use_queue:

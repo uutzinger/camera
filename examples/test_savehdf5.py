@@ -2,7 +2,7 @@
 # Testing of storage server thread.
 # A data cube is 5.5MBytes in size
 # It is either copied to shared memory or send via aueue to thread.
-# 
+# No camera involved
 ##########################################################################
 # Results
 # =======

@@ -37,7 +37,7 @@ use_queue = True
 looptime  = 0.001
 
 # Camera configuration file
-from camera.configs.blackfly_configs  import configs
+from configs.blackfly_configs  import configs
 
 display_interval = 1.0/configs['displayfps']
 font             = cv2.FONT_HERSHEY_SIMPLEX

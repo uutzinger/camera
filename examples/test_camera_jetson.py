@@ -9,7 +9,7 @@ use_queue = True
 looptime         = 0.0
 
 # Camera configuration file
-from camera.configs.nano_IMX219_configs  import configs
+from configs.nano_IMX219_configs  import configs
 
 if configs['displayfps'] >= configs['fps'] and use_queue:
     display_interval = 0

@@ -48,31 +48,32 @@ cv2 for image resizing and flipping
 ```
 [*] RTSP requires gstreamer integration. CV2 will need to be custom built on windows to enable gstreamer support. See my windows installation scripts on [Github](https://github.com/uutzinger/Windows_Install_Scripts) if RTSP functionaliy is needed.
 
-## Installation Requirements
+## Installation
 
+```
+cd "folder where you have this Readme.md file"
+pip install .
+or
+python setup.py install
+or
+py -3 setup.py install
+
+```
 ### To install standard opencv on Windows:
 * ```pip3 install opencv-python```
 * ```pip3 install opencv-contrib-python```  
 
 donwload from https://www.lfd.uci.edu/~gohlke/pythonlibs/   
-* ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#numpy```
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#imagecodecs```
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#tifffile```
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#h5py```
-* ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#llvmlite```
-* ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#numba```
-
-numba has maximum version requirement for numpy, you might need to use older version of numpy, using the numpy+mkl version is improving numpy performance.
 
 then in CMD window with .... repalced through autocompleting TAB.
 ```
 cd Downloads
-pip3 install numpy...
 pip3 install imagecodecs....
 pip3 install tifffile....
 pip3 install h5py....
-pip3 install llvmlite....
-pip3 install numba....
 ```
 
 Make sure you have ```C:\temp``` direcory if you use the example storage programs.
@@ -105,10 +106,17 @@ sudo pip3 install opencv-contrib-python==4.1.0.25
 sudo pip3 install tifffile h5py platform imagecodecs
 ```
 ## How to use
-Take a look at the specifications of your camera. If you use USB camera on windows you can use Window Camera utility to figure out resolution options and frames per second. To investigate other options you can use OSB studio, establish camera capture device and look into video options.
-You will need to use one of the existing camera configutrations in camera/configs or create your own one. As first step set appropriate resolution and frames per second. As second step figure out the exposure and autoexposure settings.
+1. Take a look at the specifications of your camera. 
 
-Then start with program such as ```test_camera.py```. You should not need to edit python files in  capture or streamer folder.
+If you use USB camera on windows you can use Window Camera utility to figure out resolution options and frames per second. To investigate other options you can use OSB studio, establish camera capture device and look into video options.
+
+2. You will need to create a configuration file.
+
+Use one of the existing camera configutrations in ```examples/configs``` or create your own one. As first step set appropriate resolution and frames per second. As second step figure out the exposure and autoexposure settings.
+
+3. Then start with a program in ```.\examples``` such as ```test_camera.py```. 
+
+You should not need to edit python files in  capture or streamer folder.
 
 ## Capture modules
 
@@ -150,7 +158,7 @@ Interface for picamera module. Depricated since cv2Capture is more efficient for
 * ```test_sum.py``` testing different approaches to calculate the integreal/brightness of an image  
 * ```test_arraycopy.py``` testing which axis in 3D arrays should be used for time  
 
-* ```test_saveravi_display.py``` example for multiple camera and save to avi file
+* ```test_saveavi_display.py``` example for multiple camera and save to avi files
 
 ## Camera Settings
 Configs folder:  

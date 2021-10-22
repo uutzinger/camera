@@ -41,7 +41,7 @@ use_queue = True
 data_cube = np.zeros((14,540,720), dtype=np.uint8)
 
 # Camera configuration file
-from camera.configs.blackfly_configs  import configs
+from configs.blackfly_configs  import configs
     
 # Setting up logging
 logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARNING

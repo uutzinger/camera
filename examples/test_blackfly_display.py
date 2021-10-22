@@ -50,7 +50,7 @@ import numpy as np
 use_queue = True
 
 # Camera configuration file
-from camera.configs.blackfly_configs  import configs
+from configs.blackfly_configs  import configs
 
 display_interval = 1.0/configs['displayfps']
 window_name    = 'Camera'

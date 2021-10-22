@@ -15,8 +15,8 @@ looptime = 0.0
 use_queue = True
 
 # Camera configuration file
-# from camera.configs.BEN_configs  import configs
-from camera.configs.eluk_configs import configs as configs0
+# from configs.BEN_configs  import configs
+from configs.eluk_configs import configs as configs0
 
 # Display
 display_interval = 1.0/configs0['displayfps']
