@@ -18,9 +18,9 @@ The image acquisition runs in a background thread to achieve maximal frame rate 
 This work is based on efforts from [Mark Omo](https://github.com/ferret-guy) and [Craig Post](https://github.com/cpostbitbuckets).
 
 ```
-2021 October Added avi server and multicamera example, PySpin trigger fix
-2021 September Updated PySpin trigger out polarity setting  
-2020 Release  
+2021 - October added aviServer and multicamera example, PySpin trigger fix
+2021 - September updated PySpin trigger out polarity setting  
+2020 - Release  
 ```
 Urs Utzinger
 
@@ -48,6 +48,8 @@ cv2 for image resizing and flipping
 ```
 [*] RTSP requires gstreamer integration. CV2 will need to be custom built on windows to enable gstreamer support. See my windows installation scripts on [Github](https://github.com/uutzinger/Windows_Install_Scripts) if RTSP functionaliy is needed.
 
+## Installation Requirements
+
 ### To install standard opencv on Windows:
 * ```pip3 install opencv-python```
 * ```pip3 install opencv-contrib-python```  
@@ -59,6 +61,8 @@ donwload from https://www.lfd.uci.edu/~gohlke/pythonlibs/
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#h5py```
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#llvmlite```
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#numba```
+
+numba has maximum version requirement for numpy, you might need to use older version of numpy, using the numpy+mkl version is improving numpy performance.
 
 then in CMD window with .... repalced through autocompleting TAB.
 ```
@@ -100,6 +104,11 @@ sudo pip3 install --upgrade setuptools
 sudo pip3 install opencv-contrib-python==4.1.0.25
 sudo pip3 install tifffile h5py platform imagecodecs
 ```
+## How to use
+Take a look at the specifications of your camera. If you use USB camera on windows you can use Window Camera utility to figure out resolution options and frames per second. To investigate other options you can use OSB studio, establish camera capture device and look into video options.
+You will need to use one of the existing camera configutrations in camera/configs or create your own one. As first step set appropriate resolution and frames per second. As second step figure out the exposure and autoexposure settings.
+
+Then start with program such as ```test_camera.py```. You should not need to edit python files in  capture or streamer folder.
 
 ## Capture modules
 

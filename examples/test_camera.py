@@ -12,7 +12,7 @@ looptime         = 0.0
 # from camera.configs.dell_internal_configs  import configs as configs0
 
 # Eluktronics Max-15 internal camera
-from camera.configs.eluk_configs  import configs as configs0
+from camera.configs.eluk_configs import configs as configs0
 #
 # Nano Jetson IMX219 camera
 # from camera.configs.nano_IMX219_configs  import configs as configs0
@@ -45,6 +45,7 @@ logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARN
 logger = logging.getLogger("CV2Capture")
 
 # Setting up input and/or output Queue
+# Increase maxsize if you get queue is full statements
 captureQueue0 = Queue(maxsize=32)
 
 # Create camera interface based on computer OS you are running
@@ -53,13 +54,13 @@ if plat == 'Windows':
     from camera.capture.cv2capture import cv2Capture
     camera0 = cv2Capture(configs0)
 elif plat == 'Linux':
-    if platform.machine() == "aarch64":
+    if platform.machine() == "aarch64": # for me this is jetson nano
         from camera.capture.nanocapture import nanoCapture
         camera0 = nanoCapture(configs0)
-    elif platform.machine() == "armv6l" or platform.machine() == 'armv7l':
+    elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # this is raspberry for me
         from camera.capture.cv2capture import cv2Capture
         camera0 = cv2Capture(configs0)
-        # from picapture import piCapture
+        # from picapture import piCapture, dont use because opencv is more efficient
         # camera = piCapture()
 elif plat == 'MacOS':
     from camera.capture.cv2capture import cv2Capture
@@ -70,6 +71,7 @@ else:
 
 #print("CV2 Capture Options")
 #camera.cv2SettingsDebug()
+# you can use the above to list all the feature you set in opencv camera interface
 
 print("Getting Images")
 if use_queue:
@@ -110,6 +112,8 @@ while(cv2.getWindowProperty(window_name, 0) >= 0):
         cv2.putText(frame,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
         cv2.imshow(window_name, frame)
         # quit the program if users enter q or closes the display window
+        # the waitKey function limits the display frame rate to about 30fps for me
+        # without waitKey the opencv window is not refreshed
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
         last_display = current_time
