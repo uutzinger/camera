@@ -17,106 +17,59 @@ The image acquisition runs in a background thread to achieve maximal frame rate 
 
 This work is based on efforts from [Mark Omo](https://github.com/ferret-guy) and [Craig Post](https://github.com/cpostbitbuckets).
 
-```
-2021 - October added aviServer and multicamera example, PySpin trigger fix
-2021 - September updated PySpin trigger out polarity setting  
-2020 - Release  
-```
-Urs Utzinger
-
-## References
-realpython:  
-https://realpython.com/python-concurrency/  
-https://realpython.com/python-sleep/ 
-https://realpython.com/async-io-python/  
-python for the lab  
-https://www.pythonforthelab.com/blog/handling-and-sharing-data-between-threads/  
-
 ## Requirements
-```
-PySpin for FLIR cameras
-   Any OS:      blackflyCapture  
-cv2 for USB and CSI cameras  
-   Windows:     cv2Capture:  cv2.CAP_MSMF  
-   Darwin:      cv2Capture:  cv2.CAP_AVFOUNDATION  
-   Linux:       cv2Capture:  cv2.CAP_V4L2  
-   Jetson Nano: nanoCapture: cv2.CAP_GSTREAMER  
-   Other:       cv2Capture:  cv2.CAP_ANY
-RTSP network streams
-   Any[*]:      cv2Capture:  cv2.CAP_GSTREAMER
-cv2 for image resizing and flipping    
-```
-[*] RTSP requires gstreamer integration. CV2 will need to be custom built on windows to enable gstreamer support. See my windows installation scripts on [Github](https://github.com/uutzinger/Windows_Install_Scripts) if RTSP functionaliy is needed.
+
+* PySpin for FLIR cameras
+* opencv for USB, CSI cameras, RTSP network streams
+  * Windows uses cv2.CAP_MSMF
+  * Darwin uses cv2.CAP_AVFOUNDATION
+  * Linux uses cv2.CAP_V4L2
+  * Jetson Nano uses cv2.CAP_GSTREAMER
+  * RTSP uses cv2.CAP_GSTREAMER
+
+```cv2.CAP_GSTREAMER``` requires custom built openccv on Windows as gstreamer is not enabled by default. See my windows installation scripts on [Github](https://github.com/uutzinger/Windows_Install_Scripts). GSTREAMER is enabled on default jetson nano opencv build.
 
 ## Installation
 
-```
-cd "folder where you have this Readme.md file"
-pip install .
-or
-python setup.py install
-or
-py -3 setup.py install
+1. ``` cd "folder where you have this Readme.md file" ```
+2. ``` pip install . ``` or ```python setup.py install ```
 
-```
-### To install standard opencv on Windows:
-* ```pip3 install opencv-python```
-* ```pip3 install opencv-contrib-python```  
+### To install pre requisites on Windows:
+3. ```pip3 install opencv-contrib-python```  
 
-donwload from https://www.lfd.uci.edu/~gohlke/pythonlibs/   
+If you want tiff or hd5 storage capabilities donwload from https://www.lfd.uci.edu/~gohlke/pythonlibs/   
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#imagecodecs```
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#tifffile```
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#h5py```
 
-then in CMD window with .... repalced through autocompleting TAB.
-```
-cd Downloads
-pip3 install imagecodecs....
-pip3 install tifffile....
-pip3 install h5py....
-```
+Then in CMD window:  
 
-Make sure you have ```C:\temp``` direcory if you use the example storage programs.
+4. ``` cd Downloads```   
+5. ``` pip3 install imagecodecs....```  
+6. ``` pip3 install tifffile....```   
+7. ``` pip3 install h5py....```  
+
+with ```....``` replaced through autocompleting TAB-key.
+
+8. Make sure you have ```C:\temp``` direcory if you use the example storage programs.
 
 ### To install OpenCV on Raspi:  
-(probalby dont need all the packages in the middle)
-```
-cd ~
-sudo apt-get -y update
-sudo apt-get -y upgrade
+4. ```cd ~```
+5. ```sudo pip3 install opencv-contrib-python==4.1.0.25```
+6. ```sudo pip3 install tifffile h5py platform imagecodecs```
 
-sudo apt-get -y install cmake gfortran
-sudo apt-get -y install python3-pybind11
-sudo apt-get -y install libusb-1.0-0-dev
-sudo apt-get -y install swig
-sudo apt-get -y install python3-numpy python3-dev python3-pip python3-mock
-sudo apt-get -y install libjpeg-dev libtiff-dev libtiff5-dev libjasper-dev libpng-dev libgif-dev libhdf5-dev
-sudo apt-get -y install libavcodec-dev libavformat-dev libswscale-dev libv4l-dev libavresample-dev  libdc1394-22-de
-sudo apt-get -y install libxvidcore-dev libx264-dev 
-sudo apt-get -y install libopenblas-dev libatlas-base-dev libblas-dev liblapack-dev libblas-dev  libeigen{2,3}-dev
-sudo apt-get -y insyall libgtk-3-dev 
-sudo apt-get -y insyall libtbb2 libtbb-dev
-sudo apt-get install libjasper-dev 
-sudo apt-get install protobuf-compiler
-
-wget https://bootstrap.pypa.io/get-pip.py
-sudo python3 get-pip.py
-sudo pip3 install --upgrade setuptools
-sudo pip3 install opencv-contrib-python==4.1.0.25
-sudo pip3 install tifffile h5py platform imagecodecs
-```
 ## How to use
-1. Take a look at the specifications of your camera. 
+A. Determine the specifications of your camera. 
 
-If you use USB camera on windows you can use Window Camera utility to figure out resolution options and frames per second. To investigate other options you can use OSB studio, establish camera capture device and look into video options.
+On Windows the Camera utility will give you resolution options and frames per second. To investigate other options you can use OSB studio, establish camera capture device and look into video options.
 
-2. You will need to create a configuration file.
+B. You will need to create a configuration file.
 
 Use one of the existing camera configutrations in ```examples/configs``` or create your own one. As first step set appropriate resolution and frames per second. As second step figure out the exposure and autoexposure settings.
 
-3. Then start with a program in ```.\examples``` such as ```test_camera.py```. 
+C. Then start with a program in ```.\examples``` such as ```test_camera.py```. 
 
-You should not need to edit python files in  capture or streamer folder.
+You should not need to edit python files in capture or streamer folder.
 
 ## Capture modules
 
@@ -143,33 +96,42 @@ By default OpenCV supports ffmpeg and not gstreamer. Jetson Nano does not suppor
 Interface for picamera module. Depricated since cv2Capture is more efficient for the Raspberry Pi.
 
 ## Example Programs
-**Display**: In general display should occur in main program. OpenCV requires waitkey to be executed in order to update the display. Waikey takes much longer than 1ms and therfore transferring data between threads is significantly slowed down in the main thread if display is requested.
+**Display**:   
+In general display should occur in main program. OpenCV requires waitkey to be executed in order to update the display and limites update rate to about 30 fps.
 
-**Queue**: Data transfer between threads or between main program and thread works better with Queue than with setting new data falgs and accessing it through shared memory. Queue can be programmed to be blocking or non blocking and if the queue size is long enough, no data is lost if a thread can not keep up with the capture thread for brief amount of time.
+**Queue**: 
+Data transfer between the main program and capture and storage threads. 
 
-* ```test_blackfly.py``` tests the blackfly capture module and reports framerate.
+**Examples**: 
+* ```test_saveavi_display.py``` example for multiple camera and save to avi files
+* ```test_blackfly.py``` tests the blackfly capture module and reports framerate. No display.
 * ```test_blackfly_display.py``` tests the blackfly capture module, displays images and reports framerate.  
 * ```test_blackfly_savehdf5.py``` same as above, no display but incoporates saving to disk.  
-* ```test_camera.py``` unifying camera capture for all capture platforms except blackfly.  
-* ```test_rtsp.py``` testing rtsp network streams.
+* ```test_camera.py``` tests camera capture for all capture platforms except blackfly.  
+* ```test_rtsp.py``` testing of rtsp network streams.
 
-* ```test_display.py``` testing opencv display framerate, no camera, just static refresh rate
-* ```test_savehd5.py``` testing the disk throughput with hdf5, no camera
-* ```test_sum.py``` testing different approaches to calculate the integreal/brightness of an image  
-* ```test_arraycopy.py``` testing which axis in 3D arrays should be used for time  
+* ```test_display.py``` testing of opencv display framerate, no camera, just refresh rate.
+* ```test_savehd5.py``` testing of the disk throughput with hdf5, no camera
+* ```test_arraycopy.py``` testing which axis in anumpy 3D arrays should be used for time  
 
-* ```test_saveavi_display.py``` example for multiple camera and save to avi files
+## Changes
+```
+2021 - October added aviServer and multicamera example, PySpin trigger fix
+2021 - September updated PySpin trigger out polarity setting  
+2020 - Release  
+Urs Utzinger
+```
+
+## References
+realpython:  
+https://realpython.com/python-concurrency/  
+https://realpython.com/python-sleep/ 
+https://realpython.com/async-io-python/  
+python for the lab  
+https://www.pythonforthelab.com/blog/handling-and-sharing-data-between-threads/  
+
 
 ## Camera Settings
-Configs folder:  
-```
-  FLIR Blackfly S BFS-U3-04S2M: .. blackfly_configs.py  
-  Raspi v1 OV5647: ............... raspy_v1module_configs.py  
-  Raspi v2 IMX219: ............... raspy_v2module_configs.py  
-  Dell internal: ................. dell_internal_confgis.py
-  Eluktronics internal: .......... eluk_configs.py  
-  ELP USB: ....................... configs.py  
-````
 ### Sony IMX287 FLIR Blackfly S BFS-U3-04S2M
 * 720x540 524fps
 * auto_exposure off
