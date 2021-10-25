@@ -38,7 +38,6 @@ from datetime import datetime
 from queue import Queue
 
 looptime = 0.0
-use_queue = True
 data_cube = np.zeros((14,540,720), dtype=np.uint8)
 frame = np.zeros((540,720), dtype=np.uint8)
 
@@ -71,20 +70,14 @@ now = datetime.now()
 filename = now.strftime("%Y%m%d%H%M%S") + ".tiff"
 tiff = tiffServer("C:\\temp\\" + filename)
 print("Starting Storage Server")
-if use_queue: 
-    tiff.start(storageQueue)
-else:
-    tiff.start()
+tiff.start(storageQueue)
 
 # Create camera interface
 from camera.capture.blackflycapture import blackflyCapture
 print("Starting Capture")
 camera = blackflyCapture(configs)
 print("Getting Images")
-if use_queue:
-    camera.start(captureQueue)
-else:
-    camera.start()
+camera.start(captureQueue)
 
 # Initialize Variables
 frame_idx = 0               # index to create data cube out of individual frames
@@ -101,33 +94,21 @@ while(True):
     current_time = time.time()
 
     # wait for new image
-    if use_queue:
-        (frame_time, frame) = captureQueue.get(block=True, timeout=None)
-        data_cube[frame_idx,:,:] = frame
-        stat=cv2.sumElems(frame)
-        frame_idx += 1
-    else:
-        if camera.new_frame:
-            frame = camera.frame
-            frame_time = camera.frame_time
-            data_cube[frame_idx,:,:] = frame
-            frame_idx += 1
+    (frame_time, frame) = captureQueue.get(block=True, timeout=None)
+    data_cube[frame_idx,:,:] = frame
+    stat=cv2.sumElems(frame)
+    frame_idx += 1
 
     # When we have a complete dataset:
     if frame_idx >= 14: # 0...13 is populated
         frame_idx = 0
         num_cubes_generated += 1
 
-        if use_queue:
-            if not storageQueue.full():
-                storageQueue.put((frame_time, data_cube), block=False) 
-                num_cubes_sent += 1
-            else:
-                self.logger.log(logging.DEBUG, "Status:Storage Queue is full!")
-        else:
-            tiff.framearray_time = frame_time # data array will be saved with this as its name
-            tiff.framearray = data_cube # transfer data array to storage server
+        if not storageQueue.full():
+            storageQueue.put((frame_time, data_cube), block=False) 
             num_cubes_sent += 1
+        else:
+            self.logger.log(logging.DEBUG, "Status:Storage Queue is full!")
 
     # Display performance in main loop
     if current_time - last_xps_time >= 5.0:
@@ -156,13 +137,6 @@ while(True):
             break
         last_display = current_time
         num_frames_displayed += 1
-
-    if not use_queue:
-        # make sure the while-loop takes at least looptime to complete, otherwise CPU use is high in main thread and capture and storage is slow
-        # since queue is blocking, we dont need this when we use queue
-        delay_time = looptime - (time.time() - current_time) 
-        if  delay_time >= 0.001:
-            time.sleep(delay_time)  # this creates at least 10-15ms delay, regardless of delay_time
 
 # Cleanup
 camera.stop()

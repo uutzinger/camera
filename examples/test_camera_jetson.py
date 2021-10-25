@@ -5,7 +5,6 @@ import platform
 from queue import Queue
 import numpy as np
 
-use_queue = True
 looptime         = 0.0
 
 # Camera configuration file
@@ -55,10 +54,7 @@ else:
     camera = cv2Capture(configs)
 
 print("Getting Images")
-if use_queue:
-    camera.start(captureQueue)
-else:
-    camera.start()
+camera.start(captureQueue)
 
 
 # Initialize Variables
@@ -71,14 +67,8 @@ num_frames_displayed   = 0
 while(cv2.getWindowProperty("Camera", 0) >= 0):
     current_time = time.time()
     # wait for new image
-    if use_queue:
-        (frame_time, frame) = captureQueue.get(block=True, timeout=None)
-        num_frames_received += 1
-    else:
-        if camera.new_frame:
-            frame = camera.frame
-            frame_time = camera.frame_time
-            num_frames_received +=1
+    (frame_time, frame) = captureQueue.get(block=True, timeout=None)
+    num_frames_received += 1
 
     if current_time - last_fps_time >= 5.0:
         measured_fps = num_frames_received/5.0
@@ -98,13 +88,6 @@ while(cv2.getWindowProperty("Camera", 0) >= 0):
             break
         last_display = current_time
         num_frames_displayed += 1
-
-    if not use_queue:
-        # make sure the while-loop does not consume all resources
-        # since queue is blocking, we dont need this when we use queue
-        delay_time = looptime - (time.time() - current_time) 
-        if  delay_time >= 0.001:
-            time.sleep(delay_time)  # this creates at least 10-15ms delay, regardless of delay_time
 
 camera.stop()
 cv2.destroyAllWindows()

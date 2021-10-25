@@ -35,7 +35,6 @@ from datetime import datetime
 from queue import Queue
 
 looptime = 0.001
-use_queue = True
 data_cube = np.random.randint(0, 255, (14, 540, 720), 'uint8')
 
 # Setting up logging
@@ -52,10 +51,7 @@ from camera.streamer.storageserver import tiffServer
 print("Settingup Storage Server")
 tiff = tiffServer("C:\\temp\\" + filename)
 print("Starting Storage Server")
-if use_queue: 
-    tiff.start(storageQueue)
-else:
-    tiff.start()
+tiff.start(storageQueue)
 
 num_cubes = 0 
 last_cps_time = time.time()
@@ -64,11 +60,7 @@ cube_time = 0
 # Main Loop
 while True:
     current_time = time.time()
-    if use_queue:
-        storageQueue.put((cube_time, data_cube), block=True, timeout=None)  # Dell Inspiron 7556 achieves 42 to 50 cubes per second
-    else:
-        tiff.framearray_time = cube_time # data array will be saved with this as its name, Dell Inspiron 7556 achieves about 46 cubes per second
-        tiff.framearray = data_cube # transfer data array to storage server
+    storageQueue.put((cube_time, data_cube), block=True, timeout=None)  # Dell Inspiron 7556 achieves 42 to 50 cubes per second
     num_cubes += 1
     cube_time += 1
 
@@ -77,11 +69,6 @@ while True:
         logger.log(logging.DEBUG, "Status:Cubes sent to storeage per second:{}".format(measured_cps))
         last_cps_time = current_time
         num_cubes = 0
-
-    if not use_queue: # We dont need loop delay when using queue as it is blocking
-        delay_time = looptime - (time.time() - current_time) # make sure the while-loop takes at least looptime to complete
-        if  delay_time >= 0.001:
-            time.sleep(delay_time)  # this creates at least 10-15ms delay, regardless of delay_time
 
 # Cleanup
 tiff.stop()

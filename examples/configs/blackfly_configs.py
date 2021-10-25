@@ -28,5 +28,5 @@ configs = {
                                         # 5=upright diagonal flip 
                                         # 6=vertical 
                                         # 7=uperleft diagonal flip
-    'displayfps'       : 10              # frame rate for display, usually we skip frames for display but record at full camera fps
+    'displayfps'       : 50             # frame rate for display, usually we skip frames for display but record at full camera fps
     }

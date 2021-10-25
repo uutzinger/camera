@@ -7,10 +7,15 @@ A collection of python threaded camera support routines for
 * MIPI CSI cameras (Raspberry Pi, Jetson Nano)
 * FLIR blackfly (USB)
 
+Also support to save as  
+* HD5  
+* tiff  
+* avi  
+
 Supported OS  
 * Windows
 * MacOS
-* Linux, Raspian
+* Unix
 
 The routines primarily use OpenCV or PySpin to interface with the camera.
 The image acquisition runs in a background thread to achieve maximal frame rate and minimal latency.
@@ -27,7 +32,7 @@ This work is based on efforts from [Mark Omo](https://github.com/ferret-guy) and
   * Jetson Nano uses cv2.CAP_GSTREAMER
   * RTSP uses cv2.CAP_GSTREAMER
 
-```cv2.CAP_GSTREAMER``` requires custom built openccv on Windows as gstreamer is not enabled by default. See my windows installation scripts on [Github](https://github.com/uutzinger/Windows_Install_Scripts). GSTREAMER is enabled on default jetson nano opencv build.
+```cv2.CAP_GSTREAMER``` requires custom built opencv on Windows as gstreamer is not enabled by default. See my windows installation scripts on [Github](https://github.com/uutzinger/Windows_Install_Scripts). GSTREAMER is enabled by default on jetson nano opencv.
 
 ## Installation
 
@@ -37,10 +42,16 @@ This work is based on efforts from [Mark Omo](https://github.com/ferret-guy) and
 ### To install pre requisites on Windows:
 3. ```pip3 install opencv-contrib-python```  
 
-If you want tiff or hd5 storage capabilities donwload from https://www.lfd.uci.edu/~gohlke/pythonlibs/   
+If you want tiff or hd5 storage capabilities donwload
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#imagecodecs```
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#tifffile```
-* ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#h5py```
+* ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#h5py```   
+
+matching your python installation and CPU architecture.
+
+If you want to use blackfly camera: 
+* download Spinnaker SDK from https://flir.app.boxcn.net/v/SpinnakerSDK and install development options
+* download spinnaker_python from same location matching your python and CPU archtecture. 
 
 Then in CMD window:  
 
@@ -48,20 +59,21 @@ Then in CMD window:
 5. ``` pip3 install imagecodecs....```  
 6. ``` pip3 install tifffile....```   
 7. ``` pip3 install h5py....```  
+8. ``` pip3 install spinnaker_python...whl```
 
-with ```....``` replaced through autocompleting TAB-key.
+with ```....``` replaced by TAB-key.
 
-8. Make sure you have ```C:\temp``` direcory if you use the example storage programs.
+9. Make sure you have ```C:\temp``` direcory if you use the example storage programs.
 
 ### To install OpenCV on Raspi:  
-4. ```cd ~```
-5. ```sudo pip3 install opencv-contrib-python==4.1.0.25```
-6. ```sudo pip3 install tifffile h5py platform imagecodecs```
+3. ```cd ~```
+4. ```sudo pip3 install opencv-contrib-python==4.1.0.25```
+5. ```sudo pip3 install tifffile h5py platform imagecodecs```
 
-## How to use
+## How to create config files
 A. Determine the specifications of your camera. 
 
-On Windows the Camera utility will give you resolution options and frames per second. To investigate other options you can use OSB studio, establish camera capture device and look into video options.
+On Windows the Camera utility will give you resolution options and frames per second. To investigate other options you can use OSB studio, establish camera capture device and inspect video options. 
 
 B. You will need to create a configuration file.
 
@@ -108,11 +120,9 @@ Data transfer between the main program and capture and storage threads.
 * ```test_blackfly_display.py``` tests the blackfly capture module, displays images and reports framerate.  
 * ```test_blackfly_savehdf5.py``` same as above, no display but incoporates saving to disk.  
 * ```test_camera.py``` tests camera capture for all capture platforms except blackfly.  
-* ```test_rtsp.py``` testing of rtsp network streams.
 
 * ```test_display.py``` testing of opencv display framerate, no camera, just refresh rate.
 * ```test_savehd5.py``` testing of the disk throughput with hdf5, no camera
-* ```test_arraycopy.py``` testing which axis in anumpy 3D arrays should be used for time  
 
 ## Changes
 ```

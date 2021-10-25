@@ -12,7 +12,6 @@ from queue import Queue
 import platform
 
 looptime = 0.0
-use_queue = True
 
 # Camera configuration file
 # from configs.BEN_configs  import configs
@@ -50,10 +49,7 @@ filename0 = now.strftime("%Y%m%d%H%M%S") + "_0.avi"
 avi0 = aviServer("C:\\temp\\" + filename0, fps, size)
 # create multiple avi1 = ... if you have multiple avis to stream to
 print("Starting Storage Server")
-if use_queue: 
-    avi0.start(storageQueue0)
-else:
-    avi0.start()
+avi0.start(storageQueue0)
 
 # Create camera interface
 print("Starting Capture")
@@ -81,10 +77,7 @@ else:
     camera0 = cv2Capture(configs0,0) # 0 is camera number
 
 print("Getting Images")
-if use_queue:
-    camera0.start(captureQueue0)
-else:
-    camera0.start()
+camera0.start(captureQueue0)
 
 # Initialize Variables
 num_frames0_sent      = 0          # keep track of data cubes sent to storage
@@ -100,22 +93,13 @@ while(True):
     current_time = time.time()
 
     # wait for new image
-    if use_queue:
-        (frame0_time, frame0) = captureQueue0.get(block=True, timeout=None)
-    else:
-        if camera0.new_frame:
-            frame0 = camera0.frame
-            frame0_time = camera0.frame_time
+    (frame0_time, frame0) = captureQueue0.get(block=True, timeout=None)
 
-    if use_queue:
-        if not storageQueue0.full():
-            storageQueue0.put((frame0_time, frame0), block=False) 
-            num_frames0_sent += 1
-        else:
-            logger.log(logging.DEBUG, "Status:0:Storage Queue is full!")
-    else:
-        avi0.framearray = frame0 # transfer data array to storage server
+    if not storageQueue0.full():
+        storageQueue0.put((frame0_time, frame0), block=False) 
         num_frames0_sent += 1
+    else:
+        logger.log(logging.DEBUG, "Status:0:Storage Queue is full!")
 
     # Display performance in main loop
     if current_time - last_xps_time >= 5.0:
@@ -145,13 +129,6 @@ while(True):
             break
         last_display = current_time
         num_frames0_displayed += 1
-
-    if not use_queue:
-        # make sure the while-loop takes at least looptime to complete, otherwise CPU use is high in main thread and capture and storage is slow
-        # since queue is blocking, we dont need this when we use queue
-        delay_time = looptime - (time.time() - current_time) 
-        if  delay_time >= 0.001:
-            time.sleep(delay_time)  # this creates at least 10-15ms delay, regardless of delay_time
 
 # Cleanup
 camera0.stop()

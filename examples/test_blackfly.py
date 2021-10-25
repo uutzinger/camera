@@ -33,7 +33,6 @@ import time
 from queue import Queue
 import numpy as np
 
-use_queue = True
 looptime  = 0.001
 
 # Camera configuration file
@@ -59,10 +58,7 @@ from camera.capture.blackflycapture import blackflyCapture
 print("Starting Capture")
 camera = blackflyCapture(configs)
 print("Getting Images")
-if use_queue:
-    camera.start(captureQueue)
-else:
-    camera.start()
+camera.start(captureQueue)
 
 data_cube = np.zeros((14,540,720), dtype=np.uint8)
 
@@ -77,15 +73,9 @@ while True:
     current_time = time.time()
 
     # wait for new image
-    if use_queue:
-        (frame_time, frame) = captureQueue.get(block=True, timeout=None)
-        data_cube[frame_idx,:,:] = frame
-        frame_idx += 1
-    else:
-        if camera.new_frame:
-            frame = camera.frame
-            data_cube[frame_idx,:,:] = frame
-            frame_idx += 1
+    (frame_time, frame) = captureQueue.get(block=True, timeout=None)
+    data_cube[frame_idx,:,:] = frame
+    frame_idx += 1
 
     # When we have a complete dataset:
     if frame_idx >= 14: # 0...13 is populated
@@ -97,12 +87,5 @@ while True:
         logger.log(logging.DEBUG, "Status:Cubes received per second:{}".format(measured_cps))
         last_cps_time = current_time
         num_cubes = 0
-
-    if not use_queue:
-        # make sure the while-loop takes at least looptime to complete
-        # since queue is blocking, we dont need this when we use queue
-        delay_time = looptime - (time.time() - current_time) 
-        if  delay_time >= 0.0001:
-            time.sleep(delay_time)  # this creates at least 10-15ms delay, regardless of delay_time
-
+        
 camera.stop()

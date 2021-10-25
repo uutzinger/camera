@@ -47,8 +47,6 @@ import time
 from queue import Queue
 import numpy as np
 
-use_queue = True
-
 # Camera configuration file
 from configs.blackfly_configs  import configs
 
@@ -67,17 +65,14 @@ logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARN
 logger = logging.getLogger("Blackfly")
 
 # Setting up input and/or output Queue
-captureQueue = Queue(maxsize=64)
+captureQueue = Queue(maxsize=128)
 
 # Create camera interface
 from camera.capture.blackflycapture import blackflyCapture
 print("Starting Capture")
 camera = blackflyCapture(configs)
 print("Getting Images")
-if use_queue:
-    camera.start(captureQueue)
-else:
-    camera.start()
+camera.start(captureQueue)
 
 # Initialize Variables
 last_display  = time.time()
@@ -89,14 +84,8 @@ num_frames_displayed = 0
 while (cv2.getWindowProperty(window_name, 0) >= 0):
     current_time = time.time()
     # wait for new image
-    if use_queue:
-        (frame_time, frame) = captureQueue.get(block=True, timeout=None)
-        num_frames_received += 1
-    else:
-        if camera.new_frame:
-            frame = camera.frame
-            frame_time = camera.frame_time
-            num_frames_received +=1
+    (frame_time, frame) = captureQueue.get(block=True, timeout=None)
+    num_frames_received += 1
 
     if current_time - last_fps_time >= 5.0:
         measured_fps = num_frames_received/5.0
