@@ -40,7 +40,8 @@ This work is based on efforts from [Mark Omo](https://github.com/ferret-guy) and
 2. ``` pip install . ``` or ```python setup.py install ```
 
 ### To install pre requisites on Windows:
-**opencv**  
+**opencv** 
+
 3. ```pip3 install opencv-contrib-python```  
 
 **tiff** or **hd5**  
@@ -65,7 +66,7 @@ Then in CMD window:
 
 with ```....``` replaced by TAB-key.
 
-9. Make sure you have ```C:\temp``` direcory if you use the example storage programs.
+9. Make sure you have ```C:\temp``` directory if you use the example storage programs.
 
 ### To install OpenCV on Raspi:  
 
