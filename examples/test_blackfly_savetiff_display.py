@@ -37,7 +37,8 @@ import numpy as np
 from datetime import datetime
 from queue import Queue
 
-looptime = 0.0
+dps_measure_time = 5.0 # average measurements over 5 secs
+
 data_cube = np.zeros((14,540,720), dtype=np.uint8)
 frame = np.zeros((540,720), dtype=np.uint8)
 
@@ -45,7 +46,11 @@ frame = np.zeros((540,720), dtype=np.uint8)
 from configs.blackfly_configs  import configs
 
 # Display
-display_interval = 1.0/configs['displayfps']
+if configs['displayfps'] >= configs['fps']:
+    display_interval = 0
+else:
+    display_interval = 1.0/configs['displayfps']
+
 window_name    = 'Camera'
 font           = cv2.FONT_HERSHEY_SIMPLEX
 textLocation0  = (10,480)
@@ -96,7 +101,7 @@ while(True):
     # wait for new image
     (frame_time, frame) = captureQueue.get(block=True, timeout=None)
     data_cube[frame_idx,:,:] = frame
-    stat=cv2.sumElems(frame)
+    # stat=cv2.sumElems(frame)
     frame_idx += 1
 
     # When we have a complete dataset:
@@ -111,17 +116,17 @@ while(True):
             self.logger.log(logging.DEBUG, "Status:Storage Queue is full!")
 
     # Display performance in main loop
-    if current_time - last_xps_time >= 5.0:
+    if current_time - last_xps_time >= dps_measure_time:
         # how many data cubes did we create
-        measured_cps_generated = num_cubes_generated/5.0
+        measured_cps_generated = num_cubes_generated/dps_measure_time
         logger.log(logging.DEBUG, "Status:captured cubes generated per second:{}".format(measured_cps_generated))
         num_cubes_generated = 0
         # how many data cubes did we send to storage
-        measured_cps_sent = num_cubes_sent/5.0
+        measured_cps_sent = num_cubes_sent/dps_measure_time
         logger.log(logging.DEBUG, "Status:cubes sent to storage per second:{}".format(measured_cps_sent))
         num_cubes_sent = 0
         # how many frames did we display
-        measured_dps = num_frames_displayed/5.0
+        measured_dps = num_frames_displayed/dps_measure_time
         logger.log(logging.DEBUG, "Status:Frames displayed per second:{}".format(measured_dps))
         num_frames_displayed = 0
         last_xps_time = current_time

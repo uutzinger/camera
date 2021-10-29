@@ -1,5 +1,8 @@
 ##########################################################################
-# Testing of display and capture & storage thread combined.
+# Testing of display and capture & storage thread combined
+# if you want to expand to multiple cameras, you can duplicate any 
+# variable and object ending with 0 to one with 1
+# Main issue at this time is if one camera has lower fps than the other
 ##########################################################################
 #
 ##########################################################################
@@ -11,22 +14,19 @@ from datetime import datetime
 from queue import Queue
 import platform
 
-looptime = 0.0
-
 # Camera configuration file
-# from configs.BEN_configs  import configs
 from configs.eluk_configs import configs as configs0
 
 # Display
-display_interval = 1.0/configs0['displayfps']
-window_name0   = 'Camera0'
-font           = cv2.FONT_HERSHEY_SIMPLEX
-textLocation0  = (10,20)
-textLocation1  = (10,60)
-textLocation2  = (10,100)
-fontScale      = 1
-fontColor      = (255,255,255)
-lineType       = 2
+display0_interval = 1.0/configs0['displayfps']
+window_name0     = 'Camera0'
+font             = cv2.FONT_HERSHEY_SIMPLEX
+textLocation00   = (10,20)
+textLocation10   = (10,60)
+textLocation20   = (10,100)
+fontScale0       = 1
+fontColor        = (255,255,255)
+lineType         = 2
 cv2.namedWindow(window_name0, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 
 # Setting up logging
@@ -43,10 +43,10 @@ storageQueue0 = Queue(maxsize=64)
 from camera.streamer.avistorageserver import aviServer
 print("Starting Storage Server")
 now = datetime.now()
-fps  = configs0['fps']
-size = configs0['camera_res']
+fps0  = configs0['fps']
+size0 = configs0['camera_res']
 filename0 = now.strftime("%Y%m%d%H%M%S") + "_0.avi"
-avi0 = aviServer("C:\\temp\\" + filename0, fps, size)
+avi0 = aviServer("C:\\temp\\" + filename0, fps0, size0)
 # create multiple avi1 = ... if you have multiple avis to stream to
 print("Starting Storage Server")
 avi0.start(storageQueue0)
@@ -67,8 +67,6 @@ elif plat == 'Linux':
     elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # this is reaspberry pi for me
         from camera.capture.cv2capture import cv2Capture
         camera0 = cv2Capture(configs0,0) # 0 is camera number
-        # from picapture import piCapture
-        # camera = piCapture()
 elif plat == 'MacOS': # 
     from camera.capture.cv2capture import cv2Capture
     camera0 = cv2Capture(configs0,0) # 0 is camera number
@@ -83,7 +81,7 @@ camera0.start(captureQueue0)
 num_frames0_sent      = 0          # keep track of data cubes sent to storage
 num_frames0_generated = 0          # keep track of data cubes generated
 last_xps_time        = time.time() # keep track of time to dispay performance
-last_display         = time.time() # keeo track of time to display images
+last_display0        = time.time() # keeo track of time to display images
 num_frames0_received  = 0          # keep track of how many captured frames reach the main program
 num_frames0_displayed = 0          # keep trakc of how many frames are displayed
 measured_dps         = 0           # computed in main thread, number of frames displayed per second
@@ -94,7 +92,9 @@ while(True):
 
     # wait for new image
     (frame0_time, frame0) = captureQueue0.get(block=True, timeout=None)
-
+    # if you have two cameras with different fps settings, we need to figure out here how to 
+    # obtain images in non blocking fashion as the slowest would prevail and buffer over runs on faster
+    
     if not storageQueue0.full():
         storageQueue0.put((frame0_time, frame0), block=False) 
         num_frames0_sent += 1
@@ -112,22 +112,22 @@ while(True):
         logger.log(logging.DEBUG, "Status:0:frames sent to storage per second:{}".format(measured_fps_sent))
         num_frames_sent = 0
         # how many frames did we display
-        measured_dps = num_frames0_displayed/5.0
-        logger.log(logging.DEBUG, "Status:0:frames displayed per second:{}".format(measured_dps))
+        measured0_dps = num_frames0_displayed/5.0
+        logger.log(logging.DEBUG, "Status:0:frames displayed per second:{}".format(measured0_dps))
         num_frames0_displayed = 0
         last_xps_time = current_time
 
-    if (current_time - last_display) >= display_interval:
-        frame_display = frame0.copy()
+    if (current_time - last_display0) >= display0_interval:
+        frame0_display = frame0.copy()
         # This section creates significant delay and we need to throttle the display to maintain max capture and storage rate
-        cv2.putText(frame_display,"Capture FPS:{} [Hz]".format(camera0.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
-        cv2.putText(frame_display,"Display FPS:{} [Hz]".format(measured_dps),         textLocation1, font, fontScale, fontColor, lineType)
-        cv2.putText(frame_display,"Storage FPS:{} [Hz]".format(avi0.measured_cps),    textLocation2, font, fontScale, fontColor, lineType)
-        cv2.imshow(window_name0, frame_display)
+        cv2.putText(frame0_display,"Capture FPS:{} [Hz]".format(camera0.measured_fps), textLocation00, font, fontScale0, fontColor, lineType)
+        cv2.putText(frame0_display,"Display FPS:{} [Hz]".format(measured0_dps),         textLocation10, font, fontScale0, fontColor, lineType)
+        cv2.putText(frame0_display,"Storage FPS:{} [Hz]".format(avi0.measured_cps),    textLocation20, font, fontScale0, fontColor, lineType)
+        cv2.imshow(window_name0, frame0_display)
         # quit the program if users enter q or closes the display window
         if cv2.waitKey(1) & 0xFF == ord('q'): # this likely is the reason that display frame rate is not faster than 60fps.
             break
-        last_display = current_time
+        last_display0 = current_time
         num_frames0_displayed += 1
 
 # Cleanup

@@ -1,27 +1,10 @@
 ##########################################################################
 # Testing of storage server thread.
 # A data cube is 5.5MBytes in size
-# It is either copied to shared memory or send via aueue to thread.
 # No camera involved
 ##########################################################################
 # Results
 # =======
-# Without Threading
-#   Loop delay 0ms
-#     48-49 cubes sent from storage server to disk, starts with 180cubes then goes down to within 20secs
-#     CPU Usage: 2-3%
-#     DISK I/O: 250MB/s, starts with 450MB/s
-# Without Queue:
-#   Loop delay 0ms
-#     280'000 cubes per second send to storage server
-#     28-29 sent from storage server to disk
-#     CPU Usage: 18-20%
-#     DISK I/O: 145MB/s
-#   Loop delay 1ms 
-#     64.4 cubes per second to storage thread
-#     47-48 cubes per second to disk
-#     CPU Usage: 1.5-2.5%
-#     DISK I/O:  240MB/s
 # With Queue:
 #   48-49 cubes per second
 #   CPU Usage: 1-2.6%
@@ -48,7 +31,7 @@ storageQueue = Queue(maxsize=5)
 # Setting up Storage
 now = datetime.now()
 filename = now.strftime("%Y%m%d%H%M%S") + ".hdf5"
-from camera.streamer.storageserver import h5Server
+from camera.streamer.h5storageserver import h5Server
 print("Settingup Storage Server")
 hdf5 = h5Server("C:\\temp\\" + filename)
 print("Starting Storage Server")

@@ -40,18 +40,20 @@ This work is based on efforts from [Mark Omo](https://github.com/ferret-guy) and
 2. ``` pip install . ``` or ```python setup.py install ```
 
 ### To install pre requisites on Windows:
+**opencv**  
 3. ```pip3 install opencv-contrib-python```  
 
-If you want tiff or hd5 storage capabilities donwload
+**tiff** or **hd5**  
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#imagecodecs```
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#tifffile```
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#h5py```   
 
-matching your python installation and CPU architecture.
+matching your python installation (e.g. 3.8) and CPU architecture (e.g. 64).
 
-If you want to use blackfly camera: 
-* download Spinnaker SDK from https://flir.app.boxcn.net/v/SpinnakerSDK and install development options
-* download spinnaker_python from same location matching your python and CPU archtecture. 
+**blackfly**  
+Spinnaker provides SDK and python bindings. The versions of those two programs need to match.
+* Spinnaker SDK is at https://flir.app.boxcn.net/v/SpinnakerSDK, install development options
+* download spinnaker_python from same location 
 
 Then in CMD window:  
 
@@ -59,29 +61,33 @@ Then in CMD window:
 5. ``` pip3 install imagecodecs....```  
 6. ``` pip3 install tifffile....```   
 7. ``` pip3 install h5py....```  
-8. ``` pip3 install spinnaker_python...whl```
+8. ``` pip3 install spinnaker_python...```
 
 with ```....``` replaced by TAB-key.
 
 9. Make sure you have ```C:\temp``` direcory if you use the example storage programs.
 
 ### To install OpenCV on Raspi:  
+
 3. ```cd ~```
 4. ```sudo pip3 install opencv-contrib-python==4.1.0.25```
 5. ```sudo pip3 install tifffile h5py platform imagecodecs```
 
 ## How to create config files
-A. Determine the specifications of your camera. 
+A. Specifications of your camera  
 
-On Windows the Camera utility will give you resolution options and frames per second. To investigate other options you can use OSB studio, establish camera capture device and inspect video options. 
+On Windows, the Camera utility will give you resolution options and frames per second.
+To investigate other options you can use OBS studio (or any other capture program), establish camera capture device and inspect video options. 
+When the `test_camer_display.py` is started and DEBUG logging is enabled, it will list all camera options the system offers. When an option states `-1` it likely is not available for that camera.
 
-B. You will need to create a configuration file.
+B. Configuration file  
 
-Use one of the existing camera configutrations in ```examples/configs``` or create your own one. As first step set appropriate resolution and frames per second. As second step figure out the exposure and autoexposure settings.
+Use one of the existing camera configutrations in ```examples/configs``` or create your own. 
+As first step set appropriate resolution and frames per second. 
+As second step figure out the exposure and autoexposure settings.
 
-C. Then start with a program in ```.\examples``` such as ```test_camera.py```. 
-
-You should not need to edit python files in capture or streamer folder.
+C. Run ```test_camera_display.py``` from ```.\examples```
+You need to set the proper config file in this program. You should not need to edit python files in capture or streamer folder.
 
 ## Capture modules
 
@@ -109,20 +115,27 @@ Interface for picamera module. Depricated since cv2Capture is more efficient for
 
 ## Example Programs
 **Display**:   
-In general display should occur in main program. OpenCV requires waitkey to be executed in order to update the display and limites update rate to about 30 fps.
+In general display should occur in main program. 
+OpenCV requires waitkey to be executed in order to update the display and limits update rate to about 50-90 fps.
 
 **Queue**: 
 Data transfer between the main program and capture and storage threads. 
 
 **Examples**: 
-* ```test_saveavi_display.py``` example for multiple camera and save to avi files
-* ```test_blackfly.py``` tests the blackfly capture module and reports framerate. No display.
+* ```test_camera_display.py``` tests camera capture for all capture platforms except blackfly.  
 * ```test_blackfly_display.py``` tests the blackfly capture module, displays images and reports framerate.  
-* ```test_blackfly_savehdf5.py``` same as above, no display but incoporates saving to disk.  
-* ```test_camera.py``` tests camera capture for all capture platforms except blackfly.  
 
 * ```test_display.py``` testing of opencv display framerate, no camera, just refresh rate.
 * ```test_savehd5.py``` testing of the disk throughput with hdf5, no camera
+* ```test_savetiff.py``` testing of the disk throughput with tiff, no camera
+* ```test_saveavi.py``` testing of the disk throughput with avi, no camera, only 3 color planes per image possible
+* ```test_blackfly.py``` tests the blackfly capture module and reports framerate, no display
+
+* ```test_saveavi_display.py``` example for multiple camera and save to avi files
+* ```test_blackfly_savehdf5.py``` no display but incoporates saving to disk  
+* ```test_blackfly_savetiff.py``` no display but incoporates saving to disk  
+* ```test_blackfly_savehdf5_display.py``` display and incoporates saving to disk  
+* ```test_blackfly_savetiff_display.py``` display andincoporates saving to disk  
 
 ## Changes
 ```
@@ -137,7 +150,8 @@ realpython:
 https://realpython.com/python-concurrency/  
 https://realpython.com/python-sleep/ 
 https://realpython.com/async-io-python/  
-python for the lab  
+
+python for the lab:  
 https://www.pythonforthelab.com/blog/handling-and-sharing-data-between-threads/  
 
 
