@@ -68,6 +68,8 @@ with ```....``` replaced by TAB-key.
 
 9. Make sure you have ```C:\temp``` directory if you use the example storage programs.
 
+10. To get best tiff performance intalling libtiff is advised: https://github.com/uutzinger/Windows_Install_Scripts/blob/master/Buildinglibtiff.md
+
 ### To install OpenCV on Raspi:  
 
 3. ```cd ~```

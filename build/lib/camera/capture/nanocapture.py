@@ -5,7 +5,6 @@
 #
 # Fall 2020, Update Queue
 # Fall 2019, First release
-#
 ###############################################################################
 
 ###############################################################################
@@ -91,7 +90,7 @@ def gstreamer_pipeline(
         #################
         exposure_time = exposure_time * 1000            # microseconds to ns
         exp_time_str = '"' + str(exposure_time) + ' ' + str(exposure_time) + '" '
-        nvarguscamerasrc_str = (                                                                                                                                                                                                                                                                                                        
+        nvarguscamerasrc_str = (  
             'nvarguscamerasrc '          +
             'name="NanoCam" '            +
             'do-timestamp=true '         +
@@ -163,13 +162,13 @@ class nanoCapture(Thread):
             self._camera_res = res
         else: 
             self._camera_res = configs['camera_res']
-        self._capture_width                       = self._camera_res[0] 
-        self._capture_height                      = self._camera_res[1]
-        self._output_res                          = configs['output_res']
-        self._output_width                        = self._output_res[0]
-        self._output_height                       = self._output_res[1]
-        self._framerate                           = configs['fps']
-        self._flip_method                         = configs['flip']
+        self._capture_width  = self._camera_res[0] 
+        self._capture_height = self._camera_res[1]
+        self._output_res     = configs['output_res']
+        self._output_width   = self._output_res[0]
+        self._output_height  = self._output_res[1]
+        self._framerate      = configs['fps']
+        self._flip_method    = configs['flip']
 
         # Threading Locks
         self.capture_lock    = Lock()
@@ -257,7 +256,7 @@ class nanoCapture(Thread):
                 if not capture_queue.full():
                     capture_queue.put((self.frame_time, img), block=False)
                 else:
-                    self.logger.log(logging.DEBUG, "Status:Capture Queue is full!")                                    
+                    self.logger.log(logging.DEBUG, "Status:Capture Queue is full!")               
             else:
                 self.frame = img
 
@@ -321,7 +320,7 @@ class nanoCapture(Thread):
     @property
     def exposure(self):              
         if self.capture_open:
-            return self.capture._exposure                       
+            return self.capture._exposure  
         else: return float("NaN")
     @exposure.setter
     def exposure(self, val):

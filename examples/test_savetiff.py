@@ -6,8 +6,9 @@
 ##########################################################################
 # Results
 # =======
-#   48-49 cubes per second, now down to 14
-#   CPU Usage: 1-2.6%
+#   48-49 cubes per second with libtiff
+#   30 cubes per second with libtiff 
+#   Native tiff library is about 13 cubes per second on SSD
 ##########################################################################
 import logging
 import time
