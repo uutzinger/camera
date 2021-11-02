@@ -8,7 +8,6 @@
 # =======
 #   48-49 cubes per second, now down to 14
 #   CPU Usage: 1-2.6%
-#   Disk IO: 250MB/s
 ##########################################################################
 import logging
 import time

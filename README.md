@@ -130,6 +130,7 @@ Data transfer between the main program and capture and storage threads.
 * ```test_savehd5.py``` testing of the disk throughput with hdf5, no camera
 * ```test_savetiff.py``` testing of the disk throughput with tiff, no camera
 * ```test_saveavi.py``` testing of the disk throughput with avi, no camera, only 3 color planes per image possible
+* ```test_savemkv.py``` testing of the disk throughput with mkv/mp4v, no camera, only 3 color planes per image possible
 * ```test_blackfly.py``` tests the blackfly capture module and reports framerate, no display
 
 * ```test_saveavi_display.py``` example for multiple camera and save to avi files

@@ -15,35 +15,37 @@ from threading import Event
 #
 import logging
 import time
-import tifffile
 
+#
+import cv2
 
 ###############################################################################
 # Disk Storage Server
 ###############################################################################
 
+
 ###############################################################################
-# tiff data format
+# mkv data format
 ###############################################################################
 
-class tiffServer(Thread):
-    """Tiff file save """
+class mkvServer(Thread):
+    """mkv mp4v save """
 
     # Initialize the storage Thread
     # Opens Capture Device
-    def __init__(self, filename):
+    def __init__(self, filename,fps,size):
         # initialize logger 
-        self.logger = logging.getLogger("tiffStorageServer")
+        self.logger = logging.getLogger("mkvStorageServer")
 
         # Threading Locks, Events
         self.stopped = True
         self.framearray_lock = Lock()
 
-        # Initialize TIFF
+        # Initialize MKV
         if filename is not None:
-            self.tiff = tifffile.TiffWriter(filename, bigtiff=True)
+            self.mkv = cv2.VideoWriter(filename, cv2.VideoWriter_fourcc(*'mp4v'), fps, size)
         else:
-            self.logger.log(logging.ERROR, "Status:Need to provide filename to store data!")
+            self.logger.log(logging.ERROR, "Status:Need to provide filename to store mkv!")
             return False
 
         # Init Frame and Thread
@@ -59,7 +61,7 @@ class tiffServer(Thread):
 
     def stop(self):
         """stop the thread"""
-        self.tiff.close()
+        self.mkv.release()
         self.stopped = True
 
     def start(self, storage_queue = None):
@@ -73,29 +75,25 @@ class tiffServer(Thread):
     def update(self, storage_queue):
         """ run the thread """
         last_cps_time = time.time()
-        num_cubes = 0
+        num_frames = 0
         while not self.stopped:
             # Storage througput calculation
             current_time = time.time()
             if (current_time - last_cps_time) >= 5.0: # framearray rate every 5 secs
-                self.measured_cps = num_cubes/5.0
+                self.measured_cps = num_frames/5.0
                 self.logger.log(logging.DEBUG, "Status:CPS:{}".format(self.measured_cps))
-                num_cubes = 0
+                num_frames = 0
                 last_cps_time = current_time
 
             if storage_queue is not None:
                 if not storage_queue.empty(): 
-                    (cube_time, data_cube) = storage_queue.get(block=True, timeout=None)
-                    self.tiff.write(data_cube, compression='PACKBITS', photometric='MINISBLACK', contiguous=False, metadata ={'time': cube_time, 'author': 'camera'} )
-                    # compression = 'LZW', 'LZMA', 'ZSTD', 'JPEG', 'PACKBITS', 'NONE', 'LERC'
-                    # compression ='jpeg', 'png', 'zlib'
-                    num_cubes += 1
+                    (frame_time, frame) = storage_queue.get(block=True, timeout=None)
+                    self.mkv.write(frame)
+                    num_frames += 1
             else:
                 if self.new_framearray: 
-                    self.tiff.write(self.framearray, compression='LZW', photometric='MINISBLACK', contiguous=False, metadata ={'time': self.framearrayTime, 'author': 'camera'} )
-                    # Compression = 'LZW', 'LZMA', 'ZSTD', 'JPEG', 'PACKBITS', 'NONE', 'LERC'
-                    # compression ='jpeg', 'png', 'zlib'
-                    num_cubes += 1
+                    self.mkv.write(self.framearray)
+                    num_frames += 1
                 # run this no more than 100 times per second
                 delay_time = 0.01 - (time.time() - current_time)
                 if delay_time > 0.0:
@@ -127,4 +125,4 @@ class tiffServer(Thread):
     def new_framearray(self, val):
         """ override wether new array is available """
         with self.framearray_lock:
-            self._new_frame_array = val
+            self._new_frame_array 

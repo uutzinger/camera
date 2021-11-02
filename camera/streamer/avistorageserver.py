@@ -41,7 +41,7 @@ class aviServer(Thread):
         self.stopped = True
         self.framearray_lock = Lock()
 
-        # Initialize TIFF
+        # Initialize AVI
         if filename is not None:
             self.avi = cv2.VideoWriter(filename, cv2.VideoWriter_fourcc(*'MJPG'), fps, size)
         else:

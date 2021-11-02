@@ -6,7 +6,7 @@
 ##########################################################################
 # Results
 # =======
-#   90 blocks per second is approx 20 blocks/s
+#   470 frames per second is approx 100 regular blocks/s
 #   CPU Usage: 10%
 ##########################################################################
 import logging
@@ -33,12 +33,12 @@ storageQueue = Queue(maxsize=5)
 
 # Setting up Storage
 now = datetime.now()
-filename = now.strftime("%Y%m%d%H%M%S") + ".avi"
-from camera.streamer.avistorageserver import aviServer
+filename = now.strftime("%Y%m%d%H%M%S") + ".mkv"
+from camera.streamer.mkvstorageserver import mkvServer
 print("Settingup Storage Server")
-avi = aviServer("C:\\temp\\" + filename, fps, size)
+mkv = mkvServer("C:\\temp\\" + filename, fps, size)
 print("Starting Storage Server")
-avi.start(storageQueue)
+mkv.start(storageQueue)
 
 num_cubes = 0 
 cube_time = 0
@@ -58,4 +58,4 @@ while True:
         num_cubes = 0
 
 # Cleanup
-avi.stop()
+mkv.stop()
