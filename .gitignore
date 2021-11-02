@@ -2,7 +2,6 @@
 .idea
 __pycache__
 _build
-build
 *.pyc
 .env
 bundles
@@ -11,3 +10,5 @@ bundles
 dist
 **/*.egg-info
 .vscode
+build
+**/build
