@@ -5,8 +5,8 @@
 ##########################################################################
 # Results
 # =======
-# 60/sec
-# 0.4ms per append 
+# 100/sec (includes randomnumber generated datacube)
+# 0.4ms per append -> 2500 datacubes/s
 ##########################################################################
 import collections
 import logging
@@ -15,9 +15,7 @@ import numpy as np
 from datetime import datetime
 from queue import Queue
 
-
 circular_buffer = collections.deque(maxlen=100)
-
 
 # Setting up logging
 logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARNING
