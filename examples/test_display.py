@@ -3,8 +3,8 @@
 ##########################################################################
 # Results
 # =======
-#     80-90 frames displayed
-#     CPU Usage: 0.5-1.5%
+#     230 frames displayed
+#     CPU Usage: 4%
 ##########################################################################
 import logging
 import time
@@ -14,8 +14,7 @@ import cv2
 width = 720       # 1920, 720
 height = 540      # 1080, 540
 
-display_interval = 1./100.  # lets attempt 100fps (my max is 85-90)
-loop_interval = 1./200.     # update main loop every 5ms
+display_interval = 1./300.  #
 window_name = 'Camera'
 
 # synthetic data
@@ -47,7 +46,6 @@ last_display = time.time()
 # Main Loop
 while (cv2.getWindowProperty(window_name, 0) >= 0):
     current_time = time.time()
-    start_time   = time.perf_counter()
 
     # update displayed frames per second
     if current_time - last_dps_time >= dps_measure_time:
@@ -64,17 +62,9 @@ while (cv2.getWindowProperty(window_name, 0) >= 0):
         cv2.imshow(window_name, frame)
         num_frames += 1
         last_display = current_time
-
         key = cv2.waitKey(1) 
         if (key == 27) or (key & 0xFF == ord('q')):
             break
-
-    # avoid looping unnecessarely, 
-    # this is only relevant for low fps
-    end_time = time.perf_counter()
-    delay_time = loop_interval - (end_time - start_time)
-    if  delay_time >= 0.005:
-        time.sleep(delay_time)  # this creates at least 3ms delay, regardless of delay_time
 
 # Cleanup
 cv2.destroyAllWindows()

@@ -82,7 +82,7 @@ class h5Server(Thread):
             current_time = time.time()
             if (current_time - last_cps_time) >= 5.0: # framearray rate every 5 secs
                 self.measured_cps = num_cubes/5.0
-                self.logger.log(logging.DEBUG, "Status:CPS:{}".format(self.measured_cps))
+                self.logger.log(logging.INFO, "Status:CPS:{}".format(self.measured_cps))
                 num_cubes = 0
                 last_cps_time = current_time
 

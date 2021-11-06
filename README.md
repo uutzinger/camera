@@ -32,31 +32,32 @@ This work is based on efforts from [Mark Omo](https://github.com/ferret-guy) and
   * Jetson Nano uses cv2.CAP_GSTREAMER
   * RTSP uses cv2.CAP_GSTREAMER
 
-```cv2.CAP_GSTREAMER``` requires custom built opencv on Windows as gstreamer is not enabled by default. See my windows installation scripts on [Github](https://github.com/uutzinger/Windows_Install_Scripts). GSTREAMER is enabled by default on jetson nano opencv.
+On windows GSTREAMER is not enabled by default. If you want RTSP functionaly you need to custom built opencv. See my windows installation instructions on [Github](https://github.com/uutzinger/Windows_Install_Scripts). 
 
 ## Installation
 
+**camera**  
 1. ``` cd "folder where you have this Readme.md file" ```
-2. ``` pip install . ``` or ```python setup.py install ```
+2. ``` pip install . ``` or 
+    - ```python setup.py bdist_wheel```
+    - ```pip3 install .\dist\*.whl```
 
-### To install pre requisites on Windows:
-**opencv** 
-
+**opencv**   
 3. ```pip3 install opencv-contrib-python```  
 
-**tiff** or **hd5**  
+**tiff** and **hd5**  
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#imagecodecs```
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#tifffile```
 * ```https://www.lfd.uci.edu/~gohlke/pythonlibs/#h5py```   
 
-matching your python installation (e.g. 3.8) and CPU architecture (e.g. 64).
+Make sure the version matches your python installation (e.g. 3.8) and CPU architecture (e.g. 64).
 
 **blackfly**  
 Spinnaker provides SDK and python bindings. The versions of those two programs need to match.
 * Spinnaker SDK is at https://flir.app.boxcn.net/v/SpinnakerSDK, install development options
 * download spinnaker_python from same location 
 
-Then in CMD window:  
+To install the downloaded wheels, in CMD window:  
 
 4. ``` cd Downloads```   
 5. ``` pip3 install imagecodecs....```  
@@ -64,11 +65,8 @@ Then in CMD window:
 7. ``` pip3 install h5py....```  
 8. ``` pip3 install spinnaker_python...```
 
-with ```....``` replaced by TAB-key.
-
 9. Make sure you have ```C:\temp``` directory if you use the example storage programs.
-
-10. To get best tiff performance intalling libtiff is advised: https://github.com/uutzinger/Windows_Install_Scripts/blob/master/Buildinglibtiff.md
+10. To get better tiff performance, installing libtiff is advised: https://github.com/uutzinger/Windows_Install_Scripts/blob/master/Buildinglibtiff.md
 
 ### To install OpenCV on Raspi:  
 
@@ -76,7 +74,7 @@ with ```....``` replaced by TAB-key.
 4. ```sudo pip3 install opencv-contrib-python==4.1.0.25```
 5. ```sudo pip3 install tifffile h5py platform imagecodecs```
 
-## How to create config files
+## How to create camera config files
 A. Specifications of your camera  
 
 On Windows, the Camera utility will give you resolution options and frames per second.
@@ -125,8 +123,10 @@ OpenCV requires waitkey to be executed in order to update the display and limits
 Data transfer between the main program and capture and storage threads. 
 
 **Examples**: 
-* ```test_camera_display.py``` tests camera capture for all capture platforms except blackfly.  
-* ```test_blackfly_display.py``` tests the blackfly capture module, displays images and reports framerate.  
+* ```capture_display.py``` tests camera capture for all capture platforms except blackfly.  
+* ```blackfly_display.py``` tests the blackfly capture module, displays images and reports framerate.  
+* ```capture_saveavi_display.py``` display and save to avi files
+* ```capture_savemkv_display.py``` display and save to avi files
 
 * ```test_display.py``` testing of opencv display framerate, no camera, just refresh rate.
 * ```test_savehd5.py``` testing of the disk throughput with hdf5, no camera
@@ -135,14 +135,14 @@ Data transfer between the main program and capture and storage threads.
 * ```test_savemkv.py``` testing of the disk throughput with mkv/mp4v, no camera, only 3 color planes per image possible
 * ```test_blackfly.py``` tests the blackfly capture module and reports framerate, no display
 
-* ```test_saveavi_display.py``` example for multiple camera and save to avi files
-* ```test_blackfly_savehdf5.py``` no display but incoporates saving to disk  
-* ```test_blackfly_savetiff.py``` no display but incoporates saving to disk  
-* ```test_blackfly_savehdf5_display.py``` display and incoporates saving to disk  
-* ```test_blackfly_savetiff_display.py``` display andincoporates saving to disk  
+* ```blackfly_savehdf5.py``` no display but incoporates saving to disk  
+* ```blackfly_savetiff.py``` no display but incoporates saving to disk  
+* ```blackfly_savehdf5_display.py``` display and incoporates saving to disk  
+* ```blackfly_savetiff_display.py``` display andincoporates saving to disk  
 
 ## Changes
 ```
+2021 - November added mkvServer, wheel installation, cleanup
 2021 - October added aviServer and multicamera example, PySpin trigger fix
 2021 - September updated PySpin trigger out polarity setting  
 2020 - Release  

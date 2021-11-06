@@ -1,12 +1,11 @@
 ##########################################################################
-# Testing of storage server thread.
-# A data cube is 5.5MBytes in size
+# Testing of circular buffer
 # No camera involved
 ##########################################################################
 # Results
 # =======
-# 100/sec (includes randomnumber generated datacube)
-# 0.4ms per append -> 2500 datacubes/s
+# 80-100/sec (includes randomnumber generated datacube)
+# 0.5ms per append
 ##########################################################################
 import collections
 import logging
@@ -21,9 +20,6 @@ circular_buffer = collections.deque(maxlen=100)
 logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARNING
 logger = logging.getLogger("Storage")
 
-# Setting up input and output Queue
-storageQueue = Queue(maxsize=5)
-
 # Setting up Storage
 now = datetime.now()
 append_time = 0.
@@ -35,7 +31,8 @@ cube_time = 0
 # Main Loop
 while True:
     current_time = time.time()
-    data_cube = np.random.randint(0, 255, (14, 540, 720), 'uint8')
+    data_cube = np.random.randint(0, 255, (14, 540, 720), 'uint8') 
+    # data_cube = np.zeros((14, 540, 720), 'uint8')
     start_time = time.perf_counter()
     circular_buffer.append(data_cube)
     end_time = time.perf_counter()

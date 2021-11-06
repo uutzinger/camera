@@ -35,7 +35,7 @@ class cv2Capture(Thread):
     # Initialize the Camera Thread
     # Opens Capture Device and Sets Capture Properties
     ############################################################################
-    def __init__(self, configs, camera_num: int = 0, res: (int, int) = None,            # width, height
+    def __init__(self, configs, camera_num: int = 0, res: (int, int) = None,    # width, height
                  exposure: float = None):
         # initialize 
         self.logger     = logging.getLogger("cv2Capture{}".format(camera_num))
@@ -146,7 +146,7 @@ class cv2Capture(Thread):
                         if not capture_queue.full():
                             capture_queue.put((self.frame_time, img), block=False)
                         else:
-                            self.logger.log(logging.DEBUG, "Status:Capture Queue is full!")
+                            self.logger.log(logging.WARNING, "Status:Capture Queue is full!")
                     else:
                         self.frame = img
                 else:
@@ -176,14 +176,14 @@ class cv2Capture(Thread):
                         if not capture_queue.full():
                             capture_queue.put((self.frame_time, tmpf), block=False)
                         else:
-                            self.logger.log(logging.DEBUG, "Status:Capture Queue is full!")                                    
+                            self.logger.log(logging.WARNING, "Status:Capture Queue is full!")                                    
                     else:
                         self.frame = tmpf
 
             # FPS calculation
             if (current_time - last_fps_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_fps = num_frames/5.0
-                self.logger.log(logging.DEBUG, "Status:FPS:{}".format(self.measured_fps))
+                self.logger.log(logging.INFO, "Status:FPS:{}".format(self.measured_fps))
                 num_frames = 0
                 last_fps_time = current_time
 
@@ -235,15 +235,15 @@ class cv2Capture(Thread):
     def width(self, val):
         """ sets video capture width """
         if (val is None) or (val == -1):
-            self.logger.log(logging.DEBUG, "Status:Width not changed:{}".format(val))
+            self.logger.log(logging.WARNING, "Status:Width not changed:{}".format(val))
             return
         if self.capture_open:
             with self.capture_lock: 
                 isok = self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, val)
             if isok:
-                self.logger.log(logging.DEBUG, "Status:Width:{}".format(val))
+                self.logger.log(logging.INFO, "Status:Width:{}".format(val))
             else:
-                self.logger.log(logging.CRITICAL, "Status:Failed to set width to {}!".format(val))
+                self.logger.log(logging.ERROR, "Status:Failed to set width to {}!".format(val))
 
     @property
     def height(self):
@@ -256,15 +256,15 @@ class cv2Capture(Thread):
     def height(self, val):
         """ sets video capture height """
         if (val is None) or (val == -1):
-            self.logger.log(logging.DEBUG, "Status:Height not changed:{}".format(val))
+            self.logger.log(logging.WARNING, "Status:Height not changed:{}".format(val))
             return
         if self.capture_open:
             with self.capture_lock: 
                 isok = self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, int(val))
             if isok:
-                self.logger.log(logging.DEBUG, "Status:Height:{}".format(val))
+                self.logger.log(logging.INFO, "Status:Height:{}".format(val))
             else:
-                self.logger.log(logging.CRITICAL, "Status:Failed to set height to {}!".format(val))
+                self.logger.log(logging.ERROR, "Status:Failed to set height to {}!".format(val))
 
     @property
     def resolution(self):
@@ -283,19 +283,19 @@ class cv2Capture(Thread):
                     isok0 = self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, int(val[0]))
                     isok1 = self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, int(val[1]))
                 if isok0 and isok1:
-                    self.logger.log(logging.DEBUG, "Status:Width:{}".format(val[0]))
-                    self.logger.log(logging.DEBUG, "Status:Height:{}".format(val[1]))
+                    self.logger.log(logging.INFO, "Status:Width:{}".format(val[0]))
+                    self.logger.log(logging.INFO, "Status:Height:{}".format(val[1]))
                 else:
-                    self.logger.log(logging.CRITICAL, "Status:Failed to set resolution to {},{}!".format(val[0],val[1]))
+                    self.logger.log(logging.ERROR, "Status:Failed to set resolution to {},{}!".format(val[0],val[1]))
             else: # given only one value for resolution
                 with self.capture_lock: 
                     isok0 = self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, int(val))
                     isok1 = self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, int(val))
                 if isok0 and isok1:
-                    self.logger.log(logging.DEBUG, "Status:Width:{}".format(val))
-                    self.logger.log(logging.DEBUG, "Status:Height:{}".format(val))
+                    self.logger.log(logging.INFO, "Status:Width:{}".format(val))
+                    self.logger.log(logging.INFO, "Status:Height:{}".format(val))
                 else:
-                    self.logger.log(logging.CRITICAL, "Status:Failed to set resolution to {},{}!".format(val,val))
+                    self.logger.log(logging.ERROR, "Status:Failed to set resolution to {},{}!".format(val,val))
         else: # camera not open
             self.logger.log(logging.CRITICAL, "Status:Failed to set resolution, camera not open!")
 
@@ -311,15 +311,15 @@ class cv2Capture(Thread):
         """ # sets current exposure """
         self._exposure = val
         if (val is None) or (val == -1):
-            self.logger.log(logging.CRITICAL, "Status:Can not set exposure to {}!".format(val))
+            self.logger.log(logging.WARNING, "Status:Can not set exposure to {}!".format(val))
             return
         if self.capture_open:
             with self.capture_lock:
                 isok = self.capture.set(cv2.CAP_PROP_EXPOSURE, self._exposure)
             if isok:
-                self.logger.log(logging.DEBUG, "Status:Exposure:{}".format(val))
+                self.logger.log(logging.INFO, "Status:Exposure:{}".format(val))
             else:
-                self.logger.log(logging.CRITICAL, "Status:Failed to set expsosure to:{}".format(val))
+                self.logger.log(logging.ERROR, "Status:Failed to set expsosure to:{}".format(val))
 
     @property
     def autoexposure(self):
@@ -332,15 +332,15 @@ class cv2Capture(Thread):
     def autoexposure(self, val):
         """ sets autoexposure """
         if (val is None) or (val == -1):
-            self.logger.log(logging.CRITICAL, "Status:Can not set Autoexposure to:{}".format(val))
+            self.logger.log(logging.WARNING, "Status:Can not set Autoexposure to:{}".format(val))
             return
         if self.capture_open:
             with self.capture_lock:
                 isok = self.capture.set(cv2.CAP_PROP_AUTO_EXPOSURE, val)
             if isok:
-                self.logger.log(logging.DEBUG, "Status:Autoexposure:{}".format(val))
+                self.logger.log(logging.INFO, "Status:Autoexposure:{}".format(val))
             else:
-                self.logger.log(logging.CRITICAL, "Status:Failed to set Autoexposure to:{}".format(val))
+                self.logger.log(logging.ERROR, "Status:Failed to set Autoexposure to:{}".format(val))
 
     @property
     def fps(self):
@@ -353,15 +353,15 @@ class cv2Capture(Thread):
     def fps(self, val):
         """ set frames per second in camera """
         if (val is None) or (val == -1):
-            self.logger.log(logging.CRITICAL, "Status:Can not set framerate to:{}".format(val))
+            self.logger.log(logging.WARNING, "Status:Can not set framerate to:{}".format(val))
             return
         if self.capture_open:
             with self.capture_lock:
                 isok = self.capture.set(cv2.CAP_PROP_FPS, val)
             if isok:
-                self.logger.log(logging.DEBUG, "Status:FPS:{}".format(val))
+                self.logger.log(logging.INFO, "Status:FPS:{}".format(val))
             else:
-                self.logger.log(logging.CRITICAL, "Status:Failed to set FPS to:{}".format(val))
+                self.logger.log(logging.ERROR, "Status:Failed to set FPS to:{}".format(val))
 
     @staticmethod
     def decode_fourcc(val):
@@ -381,7 +381,7 @@ class cv2Capture(Thread):
     def fourcc(self, val):
         """ set video encoding format in camera """
         if (val is None) or (val == -1):
-            self.logger.log(logging.CRITICAL, "Status:Can not set FOURCC to:{}!".format(val))
+            self.logger.log(logging.WARNING, "Status:Can not set FOURCC to:{}!".format(val))
             return
         if isinstance(val, str):  # we need to convert from FourCC to integer
             self._fourcc     = cv2.VideoWriter_fourcc(val[0],val[1],val[2],val[3])
@@ -393,9 +393,9 @@ class cv2Capture(Thread):
             with self.capture_lock: 
                 isok = self.capture.set(cv2.CAP_PROP_FOURCC, self._fourcc)
             if isok :
-                self.logger.log(logging.DEBUG, "Status:FOURCC:{}".format(self._fourcc_str))
+                self.logger.log(logging.INFO, "Status:FOURCC:{}".format(self._fourcc_str))
             else:
-                self.logger.log(logging.CRITICAL, "Status:Failed to set FOURCC to:{}".format(self._fourcc_str))
+                self.logger.log(logging.ERROR, "Status:Failed to set FOURCC to:{}".format(self._fourcc_str))
 
     @property
     def buffersize(self):
@@ -408,15 +408,15 @@ class cv2Capture(Thread):
     def buffersize(self, val):
         """ set opencv camera buffersize """
         if val is None or val == -1:
-            self.logger.log(logging.CRITICAL, "Status:Can not set buffer size to:{}".format(val))
+            self.logger.log(logging.WARNING, "Status:Can not set buffer size to:{}".format(val))
             return
         if self.capture_open:
             with self.capture_lock:
                 isok = self.capture.set(cv2.CAP_PROP_BUFFERSIZE, val)
             if isok:
-                self.logger.log(logging.DEBUG, "Status:Buffersize:{}".format(val))
+                self.logger.log(logging.INFO, "Status:Buffersize:{}".format(val))
             else:
-                self.logger.log(logging.CRITICAL, "Status:Failed to set buffer size to:{}".format(val))
+                self.logger.log(logging.ERROR, "Status:Failed to set buffer size to:{}".format(val))
 
     def cv2SettingsDebug(self):
         """ return opencv camera properties """

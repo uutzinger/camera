@@ -6,9 +6,8 @@
 ##########################################################################
 # Results
 # =======
-#   48-49 cubes per second with libtiff
-#   30 cubes per second with libtiff 
-#   Native tiff library is about 13 cubes per second on SSD
+#   30-50 cubes per second with libtiff onto SSD
+#   13    cubes per second without libtiff onton SSD
 ##########################################################################
 import logging
 import time
@@ -35,7 +34,7 @@ now = datetime.now()
 filename = now.strftime("%Y%m%d%H%M%S") + ".tiff"
 from camera.streamer.tiffstorageserver import tiffServer
 print("Settingup Storage Server")
-tiff = tiffServer("C:\\temp\\" + filename)
+tiff = tiffServer("D:\\temp\\" + filename)
 print("Starting Storage Server")
 tiff.start(storageQueue)
 

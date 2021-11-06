@@ -1,13 +1,10 @@
 ##########################################################################
 # Testing of storage server thread.
-# A data cube is 5.5MBytes in size
-# It is either copied to shared memory or send via aueue to thread.
 # No camera involved
 ##########################################################################
 # Results
-# =======
-#   470 frames per second is approx 100 regular blocks/s
-#   CPU Usage: 10%
+#   450=500 frames per second
+#   CPU Usage: 8-10%
 ##########################################################################
 import logging
 import time

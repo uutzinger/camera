@@ -96,12 +96,5 @@ while(cv2.getWindowProperty(window_name, 0) >= 0):
         num_frames_displayed = 0
         last_fps_time = current_time
 
-    # avoid looping unnecessarely, 
-    # this is only relevant for low fps
-    end_time = time.perf_counter()
-    delay_time = loop_interval - (end_time - start_time)
-    if  delay_time >= 0.005:
-        time.sleep(delay_time)  # this creates at least 3ms delay, regardless of delay_time
-
 camera.stop()
 cv2.destroyAllWindows()

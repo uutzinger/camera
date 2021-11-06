@@ -2,7 +2,7 @@
 # Testing of blackfly capture thread.
 # No display of images
 # A data cube has 14 images of 720x540 and is 5.5MBytes in size.
-# The camera shuld achieve 525 frames per second.
+# The camera should achieve 525 frames per second.
 # The combining 14 frames into a datacube should occur 37.5 times per second
 ##########################################################################
 # Results

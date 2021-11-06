@@ -244,7 +244,7 @@ class nanoCapture(Thread):
             # FPS calculation
             if (current_time - last_fps_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_fps = num_frames/5.0
-                self.logger.log(logging.DEBUG, "Status:FPS:{}".format(self.measured_fps))
+                self.logger.log(logging.INFO, "Status:FPS:{}".format(self.measured_fps))
                 num_frames = 0
                 last_fps_time = current_time
 
@@ -256,7 +256,7 @@ class nanoCapture(Thread):
                 if not capture_queue.full():
                     capture_queue.put((self.frame_time, img), block=False)
                 else:
-                    self.logger.log(logging.DEBUG, "Status:Capture Queue is full!")               
+                    self.logger.log(logging.WARNING, "Status:Capture Queue is full!")               
             else:
                 self.frame = img
 
@@ -331,9 +331,9 @@ class nanoCapture(Thread):
         if self.capture_open:
             with self.capture_lock:
                 os.system("v4l2-ctl -c exposure_absolute={} -d {}".format(val, self.camera_num))
-            self.logger.log(logging.DEBUG, "Status:Exposure:{}".format(self._exposure))
+            self.logger.log(logging.INFO, "Status:Exposure:{}".format(self._exposure))
         else:
-            self.logger.log(logging.CRITICAL, "Status:Failed to set exposure to{}!".format(val))
+            self.logger.log(logging.ERROR, "Status:Failed to set exposure to{}!".format(val))
 
 ###############################################################################
 # Testing

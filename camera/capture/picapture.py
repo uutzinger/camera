@@ -174,7 +174,7 @@ class piCapture(Thread):
                     if not capture_queue.full():
                         capture_queue.put((self.frame_time, img), block=False)
                     else:
-                        self.logger.log(logging.DEBUG, "Status:Capture Queue is full!")
+                        self.logger.log(logging.WARNING, "Status:Capture Queue is full!")
                 else:
                     self.frame = img
             else:
@@ -204,14 +204,14 @@ class piCapture(Thread):
                     if not capture_queue.full():
                         capture_queue.put((self.frame_time, tmpf), block=False)
                     else:
-                        self.logger.log(logging.DEBUG, "Status:Capture Queue is full!")                                    
+                        self.logger.log(logging.WARNING, "Status:Capture Queue is full!")                                    
                 else:
                     self.frame = tmpf
 
             # FPS calculation
             if (current_time - last_fps_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_fps = num_frames/5.0
-                self.logger.log(logging.DEBUG, "Status:FPS:{}".format(self.measured_fps))
+                self.logger.log(logging.INFO, "Status:FPS:{}".format(self.measured_fps))
                 num_frames = 0
                 last_fps_time = current_time
 
@@ -324,11 +324,11 @@ class piCapture(Thread):
         if self.capture_open:
             if len(val) > 1:
                 with self.capture_lock: self.capture.resolution = val
-                self.logger.log(logging.DEBUG, "Status:Width:{},Height:{}".format(val[0],val[1]))
+                self.logger.log(logging.INFO, "Status:Width:{},Height:{}".format(val[0],val[1]))
                 self._resolution = val
             else:
                 with self.capture_lock: self.capture.resolution = (val, val)
-                self.logger.log(logging.DEBUG, "Status:Width:{},Height:{}".format(val,val))
+                self.logger.log(logging.INFO, "Status:Width:{},Height:{}".format(val,val))
                 self._resolution = (val, val)                    
         else:
             self.logger.log(logging.CRITICAL, "Status:Can not set resolution, camera not open!")
@@ -339,7 +339,7 @@ class piCapture(Thread):
         val = int(val)
         if self.capture_open:
             with self.capture_lock: self.capture.resolution = (val, self.capture.resolution[1])
-            self.logger.log(logging.DEBUG, "Status:Width:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Width:{}".format(val))
 
         else:
             self.logger.log(logging.CRITICAL, "Status:Can not set resolution, camera not open!")
@@ -350,7 +350,7 @@ class piCapture(Thread):
         val = int(val)
         if self.capture_open:
             with self.capture_lock: self.capture.resolution = (self.capture.resolution[0], val)
-            self.logger.log(logging.DEBUG, "Status:Height:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Height:{}".format(val))
         else:
             self.logger.log(logging.CRITICAL, "Status:Can not set resolution, camera not open!")
 
@@ -360,7 +360,7 @@ class piCapture(Thread):
         val = float(val)
         if self.capture_open:
             with self.capture_lock: self.capture.framerate = val
-            self.logger.log(logging.DEBUG, "Status:FPS:{}".format(val))
+            self.logger.log(logging.INFO, "Status:FPS:{}".format(val))
         else:
             self.logger.log(logging.CRITICAL, "Status:Can not set franerate, camera not open!")
 
@@ -369,7 +369,7 @@ class piCapture(Thread):
         if val is None: return
         if self.capture_open:
             with self.capture_lock: self.capture.shutter_speed  = val
-            self.logger.log(logging.DEBUG, "Status:Exposure:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Exposure:{}".format(val))
             self._exposure = self.exposure
         else:
             self.logger.log(logging.CRITICAL, "Status:Can not set exposure, camera not open!")
@@ -415,7 +415,7 @@ class piCapture(Thread):
         if val is None: return
         if self.capture_open:
             with self.capture_lock: self.capture.awb_mode  = val
-            self.logger.log(logging.DEBUG, "Status:AWB Mode:{}".format(val))
+            self.logger.log(logging.INFO, "Status:AWB Mode:{}".format(val))
         else:
             self.logger.log(logging.CRITICAL, "Status:Can not set autowb, camera not open!")
  
@@ -425,10 +425,10 @@ class piCapture(Thread):
         if self.capture_open:
             if len(val) > 1:
                 with self.capture_lock: self.capture.awb_gains  = val
-                self.logger.log(logging.DEBUG, "Status:AWB Gains:red:{},blue:{}".format(val[0], val[1]))
+                self.logger.log(logging.INFO, "Status:AWB Gains:red:{},blue:{}".format(val[0], val[1]))
             else:
                 with self.capture_lock: self.capture.awb_gains = (val, val)
-                self.logger.log(logging.DEBUG, "Status:AWB Gain:{},{}".format(val,val))
+                self.logger.log(logging.INFO, "Status:AWB Gain:{},{}".format(val,val))
         else:
             self.logger.log(logging.CRITICAL, "Status:Can not set autowb gains, camera not open!")
 
@@ -492,7 +492,7 @@ class piCapture(Thread):
         val = int(val)
         if self.capture_open:
             with self.capture_lock: self.capture.brightness = val
-            self.logger.log(logging.DEBUG, "Status:Brightness:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Brightness:{}".format(val))
         else: 
             self.logger.log(logging.CRITICAL, "Status:Can not set brightnes, camera not open!")
 
@@ -502,7 +502,7 @@ class piCapture(Thread):
         val = int(val)
         if self.capture_open:
             with self.capture_lock: self.capture.iso = val
-            self.logger.log(logging.DEBUG, "Status:ISO:{}".format(val))
+            self.logger.log(logging.INFO, "Status:ISO:{}".format(val))
         else: 
             self.logger.log(logging.CRITICAL, "Status:Can not set ISO, camera not open!")
 
@@ -511,7 +511,7 @@ class piCapture(Thread):
         if val is None: return
         if self.capture_open:
             with self.capture_lock: self.capture.exposure_mode = val
-            self.logger.log(logging.DEBUG, "Status:Exposure Mode:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Exposure Mode:{}".format(val))
         else: 
             self.logger.log(logging.CRITICAL, "Status:Can not set exposure mode, camera not open!")
 
@@ -521,7 +521,7 @@ class piCapture(Thread):
         val = int(val)
         if self.capture_open:
             with self.capture_lock: self.capture.exposure_compensation = val
-            self.logger.log(logging.DEBUG, "Status:Exposure Compensation:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Exposure Compensation:{}".format(val))
         else: 
             self.logger.log(logging.CRITICAL, "Status:Can not set exposure compensation, camera not open!")
 
@@ -530,7 +530,7 @@ class piCapture(Thread):
         if val is None: return
         if self.capture_open:
             with self.capture_lock: self.capture.drc_strength = val
-            self.logger.log(logging.DEBUG, "Status:DRC Strength:{}".format(val))
+            self.logger.log(logging.INFO, "Status:DRC Strength:{}".format(val))
         else: 
             self.logger.log(logging.CRITICAL, "Status:Can not set drc strength, camera not open!")
 
@@ -540,7 +540,7 @@ class piCapture(Thread):
         val = int(val)
         if self.capture_open:
             with self.capture_lock: self.capture.contrast = val
-            self.logger.log(logging.DEBUG, "Status:Contrast:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Contrast:{}".format(val))
         else: 
             self.logger.log(logging.CRITICAL, "Status:Can not set contrast, camera not open!")
     #
@@ -613,7 +613,7 @@ class piCapture(Thread):
         if val is None:  return
         if self.capture_open:
             with self.capture_lock: self.capture.flash_mode = val
-            self.logger.log(logging.DEBUG, "Status:Flash Mode:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Flash Mode:{}".format(val))
         else: 
             self.logger.log(logging.CRITICAL, "Status:Can not set flash mode, camera not open!")
 
@@ -622,7 +622,7 @@ class piCapture(Thread):
         if val is None:  return
         if self.capture_open:
             with self.capture_lock: self.capture.clock_mode = val
-            self.logger.log(logging.DEBUG, "Status:Clock Mode:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Clock Mode:{}".format(val))
         else: 
             self.logger.log(logging.CRITICAL, "Status:Can not set capture clock, camera not open!")
 
@@ -631,7 +631,7 @@ class piCapture(Thread):
         if val is None:  return
         if self.capture_open:
             with self.capture_lock: self.capture.sharpness = val
-            self.logger.log(logging.DEBUG, "Status:Sharpness:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Sharpness:{}".format(val))
         else:
             self.logger.log(logging.CRITICAL, "Status:Can not set sharpness, camera not open!")
 
@@ -640,7 +640,7 @@ class piCapture(Thread):
         if val is None:  return
         if self.capture_open:
             with self.capture_lock: self.capture.color_effects = val
-            self.logger.log(logging.DEBUG, "Status:Color Effects:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Color Effects:{}".format(val))
         else:
             self.logger.log(logging.CRITICAL, "Status:Can not set color effects, camera not open!")
 
@@ -649,7 +649,7 @@ class piCapture(Thread):
         if val is None:  return
         if self.capture_open:
             with self.capture_lock: self.capture.image_effect = val
-            self.logger.log(logging.DEBUG, "Status:Image Effect:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Image Effect:{}".format(val))
         else:
             self.logger.log(logging.CRITICAL, "Status:Can not set image effect, camera not open!")
 
@@ -658,7 +658,7 @@ class piCapture(Thread):
         if val is None:  return
         if self.capture_open:
             with self.capture_lock: self.capture.image_denoise = val
-            self.logger.log(logging.DEBUG, "Status:Image Denoise:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Image Denoise:{}".format(val))
         else:
             self.logger.log(logging.CRITICAL, "Status:Can not set image denoise, camera not open!")
 
@@ -667,7 +667,7 @@ class piCapture(Thread):
         if val is None:  return
         if self.capture_open:
             with self.capture_lock: self.capture.video_denoise = val
-            self.logger.log(logging.DEBUG, "Status:Video Denoise:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Video Denoise:{}".format(val))
         else:
             self.logger.log(logging.CRITICAL, "Status:Can not set video denoise, camera not open!")
 
@@ -676,7 +676,7 @@ class piCapture(Thread):
         if val is None:  return
         if self.capture_open:
             with self.capture_lock: self.capture.video_stabilization = val
-            self.logger.log(logging.DEBUG, "Status:Video Stabilization:{}".format(val))
+            self.logger.log(logging.INFO, "Status:Video Stabilization:{}".format(val))
         else:
             self.logger.log(logging.CRITICAL, "Status:Can not set video stabilization, camera not open!")
 

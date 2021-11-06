@@ -1,15 +1,10 @@
 ##########################################################################
 # Testing of storage server thread.
-# A data cube is 5.5MBytes in size
 # No camera involved
 ##########################################################################
 # Results
-# =======
-# With Queue:
-#   48-49 cubes per second
-#   CPU Usage: 1-2.6%
-#   Disk IO: 250MB/s
-#   Loop delay does not change results
+#   28-33 cubes per second
+#   CPU Usage: 1%
 ##########################################################################
 import h5py
 import logging
@@ -18,7 +13,6 @@ import numpy as np
 from datetime import datetime
 from queue import Queue
 
-looptime = 0.001
 data_cube = np.random.randint(0, 255, (14, 540, 720), 'uint8')
 
 # Setting up logging
@@ -33,7 +27,7 @@ now = datetime.now()
 filename = now.strftime("%Y%m%d%H%M%S") + ".hdf5"
 from camera.streamer.h5storageserver import h5Server
 print("Settingup Storage Server")
-hdf5 = h5Server("C:\\temp\\" + filename)
+hdf5 = h5Server("D:\\temp\\" + filename)
 print("Starting Storage Server")
 hdf5.start(storageQueue)
 
