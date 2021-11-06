@@ -89,5 +89,6 @@ Example Program using camera
 
    # Clean up
    camera.stop()
+   mkv.stop()
    cv2.destroyAllWindows()
 
