@@ -1,9 +1,5 @@
- 
 ###############################################################################
 # RTSP video capture
-# Uses opencv video capture to capture system's camera
-# Adapts to operating system and allows configuation of codec
-# BitBuckets FRC 4183
 # 2019
 ###############################################################################
 

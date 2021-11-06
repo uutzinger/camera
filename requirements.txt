@@ -2,5 +2,4 @@ opencv-python>=3.0.0
 tifffile>=2012.7.25
 h5py>=3.0.0
 numpy>=1.0.0
-Cython>=0.29.0
 imagecodecs>=2019.1.1

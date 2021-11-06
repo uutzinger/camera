@@ -13,19 +13,19 @@ here = os.path.abspath(os.path.dirname(__file__))
 
 # Import the README and use it as the long-description.
 # Note: this will only work if 'README.md' is present in your MANIFEST.in file!
-with io.open(os.path.join(here, "README.md"), encoding="utf-8") as f:
+with io.open(os.path.join(here, "README.rst"), encoding="utf-8") as f:
     long_description = f.read()
 
 setup(
 
-    name='camera',
+    name='camera-util',
 
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # http://packaging.python.org/en/latest/tutorial.html#version
-    version='1.0.0',
+    version='1.0.1',
 
-    description=("Python wrapper for USB, blackfly, Raspi, Jetson Nano cameras"
+    description=("Python wrapper for USB, blackfly, Raspi, Jetson Nano cameras"  
                  "Works on Windows, Raspian, JetsonNano, MacOS"   ),
 
     # The project's main homepage.
@@ -60,11 +60,11 @@ setup(
         #   3 - Alpha
         #   4 - Beta
         #   5 - Production/Stable
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
 
         # Indicate who your project is intended for
-        #'Intended Audience :: Developers',
-        'Topic :: Drivers',
+        'Intended Audience :: Developers',
+        'Topic :: Multimedia :: Video :: Capture',
 
         # Pick your license as you wish (should match "license" above)
         'License :: OSI Approved :: MIT License',
@@ -79,5 +79,5 @@ setup(
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
-    packages=["camera", "camera.capture", "camera.streamer"],
+    packages=["camera", "camera.capture", "camera.streamer", "camera.processor"],
 )

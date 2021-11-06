@@ -22,7 +22,7 @@ from numba import vectorize
 ###############################################################################
 # Basic Image Processor
 ###############################################################################
-# Numpy Vectorized
+# Numpy Vectorized Image Processor
 @vectorize(['uint16(uint8, uint16, uint8)'], nopython=True, fastmath=True)
 def bgflat(data_cube, background, whitefield):
     return np.multiply(np.subtract(data_cube, background), whitefield)

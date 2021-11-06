@@ -140,7 +140,6 @@ class blackflyCapture(Thread):
         #   Automatic Gain (off)
         #   Gamma (set to 1.0 then off)
         #   Automatic Exposure (off preferred for high frame rate)
-        # Some more needed off for version 2.5
         #   Acquisition Mode = Continous
         #   Acquisiton Frame Rate Enable = True
         #   Exposure Mode Timed

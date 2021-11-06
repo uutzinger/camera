@@ -1,6 +1,6 @@
-# Camera
+# Camera Util
 
-- [Camera](#camera)
+- [Camera Util](#camera-util)
   * [Overview](#overview)
   * [Requirements](#requirements)
   * [Installation](#installation)
@@ -63,9 +63,7 @@ On windows GSTREAMER is not enabled by default. If you want RTSP functionaly you
 
 **camera**  
 1. ``` cd "folder where you have this Readme.md file" ```
-2. ``` pip install . ``` or 
-    - ```python setup.py bdist_wheel```
-    - ```pip3 install .\dist\*.whl```
+2. ``` pip install . ``` or  ```python setup.py bdist_wheel``` and ```pip3 install .\dist\*.whl```
 
 **opencv**   
 3. ```pip3 install opencv-contrib-python```  

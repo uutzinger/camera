@@ -5,12 +5,12 @@ import time
 import numpy as np
 data_cube1 = np.random.randint(0, 255, (540, 720, 14), 'uint8')
 data_cube2 = np.random.randint(0, 255, (14, 540, 720), 'uint8')
-img = np.random.randint(0, 255, (540, 720), 'uint8')
 frame_idx = 0 
 counts = 0
 assignment_time1 = 0.0
 assignment_time2 = 0.0
 while True:
+    img = np.random.randint(0, 255, (540, 720), 'uint8')
     before_time1 = time.perf_counter()
     data_cube1[:,:,frame_idx] = img # 23ms
     after_time1 = time.perf_counter()
