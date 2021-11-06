@@ -1,5 +1,30 @@
 # Camera
 
+- [Camera](#camera)
+  * [Overview](#overview)
+  * [Requirements](#requirements)
+  * [Installation](#installation)
+    + [To install OpenCV on Raspi:](#to-install-opencv-on-raspi-)
+  * [How to create camera config files](#how-to-create-camera-config-files)
+  * [Run Example](#run-example)
+    + [Example Programs](#example-programs)
+  * [Capture modules](#capture-modules)
+    + [**blackflyCapture**](#--blackflycapture--)
+    + [**nanoCapture**](#--nanocapture--)
+    + [**cv2Capture**](#--cv2capture--)
+    + [**rtspCapture**](#--rtspcapture--)
+    + [**piCapture**](#--picapture--)
+  * [Changes](#changes)
+  * [References](#references)
+  * [Camera Settings](#camera-settings)
+    + [Sony IMX287 FLIR Blackfly S BFS-U3-04S2M](#sony-imx287-flir-blackfly-s-bfs-u3-04s2m)
+    + [OV5647 OmniVision RasPi](#ov5647-omnivision-raspi)
+    + [IMX219 Sony RasPi](#imx219-sony-raspi)
+    + [ELP USB Camera](#elp-usb-camera)
+    + [Dell Internal USB](#dell-internal-usb)
+
+<small><i><a href='http://ecotrust-canada.github.io/markdown-toc/'>Table of contents generated with markdown-toc</a></i></small>
+
 ## Overview
 A collection of python threaded camera support routines for  
 * USB and laptop internal webcams
@@ -79,7 +104,7 @@ A. Specifications of your camera
 
 On Windows, the Camera utility will give you resolution options and frames per second.
 To investigate other options you can use OBS studio (or any other capture program), establish camera capture device and inspect video options. 
-When the `test_camer_display.py` is started and DEBUG logging is enabled, it will list all camera options the system offers. When an option states `-1` it likely is not available for that camera.
+When the `capture_display.py` is started and DEBUG logging is enabled, it will list all camera options the video system offers. When an option states `-1` it likely is not available for that camera.
 
 B. Configuration file  
 
@@ -87,34 +112,12 @@ Use one of the existing camera configutrations in ```examples/configs``` or crea
 As first step set appropriate resolution and frames per second. 
 As second step figure out the exposure and autoexposure settings.
 
-C. Run ```test_camera_display.py``` from ```.\examples```
-You need to set the proper config file in this program. You should not need to edit python files in capture or streamer folder.
+## Run Example
 
-## Capture modules
+Run ```capture_display.py``` from ```.\examples```
+You need to set the proper config file in the program. You should not need to edit python files in capture or streamer folder.
 
-### **blackflyCapture**
-Simplifies the settings needed for the Blackfly camera.   
-Supports trigger out during frame exposure and trigger in for frame start.  
-Optimized settings to achieve full frame rate with S BFS-U3-04S2M.
-
-### **nanoCapture**
-Uses gstreamer pipeline for Jetson Nano.  
-Pipline for nvidia conversion and nvarguscamera capture.  
-Settings optimized for Sony IMX219 Raspi v2 Module.
-
-### **cv2Capture**
-Uses the cv2 capture architecture.  
-The video subsystem is choosen based on the operating system.  
-
-### **rtspCapture**
-gstreamer based rtsp network stream capture for all platforms.  
-gstreamer is called through OpenCV.  
-By default OpenCV supports ffmpeg and not gstreamer. Jetson Nano does not support ffmpeg but opencv is prebuilt with gstreamer for that platform.
-
-### **piCapture**
-Interface for picamera module. Depricated since cv2Capture is more efficient for the Raspberry Pi.
-
-## Example Programs
+### Example Programs
 **Display**:   
 In general display should occur in main program. 
 OpenCV requires waitkey to be executed in order to update the display and limits update rate to about 50-90 fps.
@@ -139,6 +142,30 @@ Data transfer between the main program and capture and storage threads.
 * ```blackfly_savetiff.py``` no display but incoporates saving to disk  
 * ```blackfly_savehdf5_display.py``` display and incoporates saving to disk  
 * ```blackfly_savetiff_display.py``` display andincoporates saving to disk  
+
+## Capture modules
+
+### **blackflyCapture**
+Simplifies the settings needed for the Blackfly camera.   
+Supports trigger out during frame exposure and trigger in for frame start.  
+Optimized settings to achieve full frame rate with S BFS-U3-04S2M.
+
+### **nanoCapture**
+Uses gstreamer pipeline for Jetson Nano.  
+Pipline for nvidia conversion and nvarguscamera capture.  
+Settings optimized for Sony IMX219 Raspi v2 Module.
+
+### **cv2Capture**
+Uses the cv2 capture architecture.  
+The video subsystem is choosen based on the operating system.  
+
+### **rtspCapture**
+gstreamer based rtsp network stream capture for all platforms.  
+gstreamer is called through OpenCV.  
+By default OpenCV supports ffmpeg and not gstreamer. Jetson Nano does not support ffmpeg but opencv is prebuilt with gstreamer for that platform.
+
+### **piCapture**
+Interface for picamera module. Depricated since cv2Capture is more efficient for the Raspberry Pi.
 
 ## Changes
 ```
