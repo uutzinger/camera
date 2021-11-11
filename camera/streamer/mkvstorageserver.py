@@ -33,7 +33,7 @@ class mkvServer(Thread):
 
     # Initialize the storage Thread
     # Opens Capture Device
-    def __init__(self, filename,fps,size):
+    def __init__(self, filename, fps, size):
         # initialize logger 
         self.logger = logging.getLogger("mkvStorageServer")
 

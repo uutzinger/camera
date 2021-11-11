@@ -167,6 +167,7 @@ Interface for picamera module. Depricated since cv2Capture is more efficient for
 
 ## Changes
 ```
+2021 - November added rtp server and client
 2021 - November added mkvServer, wheel installation, cleanup
 2021 - October added aviServer and multicamera example, PySpin trigger fix
 2021 - September updated PySpin trigger out polarity setting  

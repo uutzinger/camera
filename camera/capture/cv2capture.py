@@ -90,8 +90,6 @@ class cv2Capture(Thread):
 
         self.capture_open = self.capture.isOpened()
 
-        self.cv2SettingsDebug() # check camera properties and print to debug
-
         if self.capture_open:
             # Apply settings to camera
             if self._camera_res[0] > 0:
@@ -417,59 +415,6 @@ class cv2Capture(Thread):
                 self.logger.log(logging.INFO, "Status:Buffersize:{}".format(val))
             else:
                 self.logger.log(logging.ERROR, "Status:Failed to set buffer size to:{}".format(val))
-
-    def cv2SettingsDebug(self):
-        """ return opencv camera properties """
-        if self.capture_open:   
-            self.logger.log(logging.DEBUG, "POS_MSEC:    {}".format(self.capture.get(cv2.CAP_PROP_POS_MSEC)))
-            self.logger.log(logging.DEBUG, "POS_FRAMES:  {}".format(self.capture.get(cv2.CAP_PROP_POS_FRAMES)))           # 
-            self.logger.log(logging.DEBUG, "AVI_RATIO:   {}".format(self.capture.get(cv2.CAP_PROP_POS_AVI_RATIO)))        # 
-            self.logger.log(logging.DEBUG, "WIDTH:       {}".format(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH)))          # 
-            self.logger.log(logging.DEBUG, "HEIGHT:      {}".format(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT)))         # 
-            self.logger.log(logging.DEBUG, "FPS:         {}".format(self.capture.get(cv2.CAP_PROP_FPS)))                  # 
-            self.logger.log(logging.DEBUG, "FOURCC:      {}".format(self.capture.get(cv2.CAP_PROP_FOURCC)))               # 
-            tmp = self.decode_fourcc(self.capture.get(cv2.CAP_PROP_FOURCC))         
-            self.logger.log(logging.DEBUG, "FOURCC:      {}".format(tmp))                                                 # 
-            self.logger.log(logging.DEBUG, "FRAME_CNT:   {}".format(self.capture.get(cv2.CAP_PROP_FRAME_COUNT)))          # 
-            self.logger.log(logging.DEBUG, "FORMAT:      {}".format(self.capture.get(cv2.CAP_PROP_FORMAT)))               # 
-            self.logger.log(logging.DEBUG, "MODE:        {}".format(self.capture.get(cv2.CAP_PROP_MODE)))                 # 
-            self.logger.log(logging.DEBUG, "BRIGHTNESS:  {}".format(self.capture.get(cv2.CAP_PROP_BRIGHTNESS)))           # 
-            self.logger.log(logging.DEBUG, "CONTRAST:    {}".format(self.capture.get(cv2.CAP_PROP_CONTRAST)))             #
-            self.logger.log(logging.DEBUG, "SATURATION:  {}".format(self.capture.get(cv2.CAP_PROP_SATURATION)))           # 
-            self.logger.log(logging.DEBUG, "HUE:         {}".format(self.capture.get(cv2.CAP_PROP_HUE)))                  # 
-            self.logger.log(logging.DEBUG, "GAIN:        {}".format(self.capture.get(cv2.CAP_PROP_GAIN)))                 # 
-            self.logger.log(logging.DEBUG, "EXPOSURE:    {}".format(self.capture.get(cv2.CAP_PROP_EXPOSURE)))             #
-            self.logger.log(logging.DEBUG, "CONV_RGB:    {}".format(self.capture.get(cv2.CAP_PROP_CONVERT_RGB)))          # 
-            self.logger.log(logging.DEBUG, "RECT:        {}".format(self.capture.get(cv2.CAP_PROP_RECTIFICATION)))        # 
-            self.logger.log(logging.DEBUG, "MONO:        {}".format(self.capture.get(cv2.CAP_PROP_MONOCHROME)))           # 
-            self.logger.log(logging.DEBUG, "SHARP:       {}".format(self.capture.get(cv2.CAP_PROP_SHARPNESS)))            # 
-            self.logger.log(logging.DEBUG, "AUTO_EXP:    {}".format(self.capture.get(cv2.CAP_PROP_AUTO_EXPOSURE)))        # 
-            self.logger.log(logging.DEBUG, "GAMMA:       {}".format(self.capture.get(cv2.CAP_PROP_GAMMA)))                # 
-            self.logger.log(logging.DEBUG, "TRIGGER:     {}".format(self.capture.get(cv2.CAP_PROP_TRIGGER)))              # 
-            self.logger.log(logging.DEBUG, "TRIGGER_DEL: {}".format(self.capture.get(cv2.CAP_PROP_TRIGGER_DELAY)))        # 
-            self.logger.log(logging.DEBUG, "AUTOWB:      {}".format(self.capture.get(cv2.CAP_PROP_AUTO_WB)))              # 
-            self.logger.log(logging.DEBUG, "WB_TEMP:     {}".format(self.capture.get(cv2.CAP_PROP_WB_TEMPERATURE)))       # 
-            self.logger.log(logging.DEBUG, "WB_BLUE:     {}".format(self.capture.get(cv2.CAP_PROP_WHITE_BALANCE_BLUE_U))) # 
-            self.logger.log(logging.DEBUG, "WB_RED:      {}".format(self.capture.get(cv2.CAP_PROP_WHITE_BALANCE_RED_V)))  # 
-            self.logger.log(logging.DEBUG, "TEMP:        {}".format(self.capture.get(cv2.CAP_PROP_TEMPERATURE)))          # 
-            self.logger.log(logging.DEBUG, "ZOOM:        {}".format(self.capture.get(cv2.CAP_PROP_ZOOM)))                 # 
-            self.logger.log(logging.DEBUG, "FOCUS:       {}".format(self.capture.get(cv2.CAP_PROP_FOCUS)))                # 
-            self.logger.log(logging.DEBUG, "GUID:        {}".format(self.capture.get(cv2.CAP_PROP_GUID)))                 # 
-            self.logger.log(logging.DEBUG, "ISO:         {}".format(self.capture.get(cv2.CAP_PROP_ISO_SPEED)))            # 
-            self.logger.log(logging.DEBUG, "BACKLIGHT:   {}".format(self.capture.get(cv2.CAP_PROP_BACKLIGHT)))            # 
-            self.logger.log(logging.DEBUG, "PAN:         {}".format(self.capture.get(cv2.CAP_PROP_PAN)))                  # 
-            self.logger.log(logging.DEBUG, "TILT:        {}".format(self.capture.get(cv2.CAP_PROP_TILT)))                 #
-            self.logger.log(logging.DEBUG, "ROLL:        {}".format(self.capture.get(cv2.CAP_PROP_ROLL)))                 # 
-            self.logger.log(logging.DEBUG, "IRIS:        {}".format(self.capture.get(cv2.CAP_PROP_IRIS)))                 # 
-            self.logger.log(logging.DEBUG, "SETTINGS:    {}".format(self.capture.get(cv2.CAP_PROP_SETTINGS)))             # 
-            self.logger.log(logging.DEBUG, "BUFFERSIZE:  {}".format(self.capture.get(cv2.CAP_PROP_BUFFERSIZE)))           # 
-            self.logger.log(logging.DEBUG, "AUTOFOCUS:   {}".format(self.capture.get(cv2.CAP_PROP_AUTOFOCUS)))            # 
-            self.logger.log(logging.DEBUG, "SAR_NUM:     {}".format(self.capture.get(cv2.CAP_PROP_SAR_NUM)))              # 
-            self.logger.log(logging.DEBUG, "SAR_DEN:     {}".format(self.capture.get(cv2.CAP_PROP_SAR_DEN)))              # 
-            self.logger.log(logging.DEBUG, "BACKEND:     {}".format(self.capture.get(cv2.CAP_PROP_BACKEND)))              # 
-            self.logger.log(logging.DEBUG, "CHANNEL:     {}".format(self.capture.get(cv2.CAP_PROP_CHANNEL)))              # 
-        else: 
-            self.logger.log(logging.DEBUG, "NaN")
 
 ###############################################################################
 # Testing

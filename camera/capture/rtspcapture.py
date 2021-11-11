@@ -1,5 +1,9 @@
+ 
 ###############################################################################
 # RTSP video capture
+# Uses opencv video capture to capture rtsp stream
+# Adapts to operating system and allows configuation of codec
+# Urs Utzinger
 # 2019
 ###############################################################################
 
@@ -14,7 +18,6 @@ from threading import Lock
 #
 import logging
 import time
-import sys
 import platform
 
 # Open Computer Vision
@@ -99,11 +102,13 @@ class rtspCapture(Thread):
                 # might not need the two queue statements above
                 self.capture = cv2.VideoCapture(gst, apiPreference=cv2.CAP_GSTREAMER)
         elif plat == "MacOS":
-            gst = 'rtspsrc location=' + self._rtsp + ' latency=10 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink'
+            gst = 'rtspsrc location=' + self._rtsp + ' latency=10 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false'
             self.capture = cv2.VideoCapture(gst, apiPreference=cv2.CAP_GSTREAMER)
         else:
-            gst = 'rtspsrc location=' + self._rtsp + ' latency=10 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink'
+            gst = 'rtspsrc location=' + self._rtsp + ' latency=10 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert ! appsink sync=false'
             self.capture = cv2.VideoCapture(gst, apiPreference=cv2.CAP_GSTREAMER)
+
+        self.logger.log(logging.INFO, gst)
 
         self.capture_open = self.capture.isOpened()        
         if not self.capture_open:
@@ -128,7 +133,6 @@ class rtspCapture(Thread):
     def update(self, capture_queue):
         """ run the thread """
         last_fps_time = time.time()
-        last_exposure_time = last_fps_time
         num_frames = 0
         while not self.stopped:
             current_time = time.time()

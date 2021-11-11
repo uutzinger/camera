@@ -21,6 +21,8 @@ window_name = 'Camera'
 test_img = np.random.randint(0, 255, (height, width), 'uint8') # random image
 frame = np.zeros((height,width), dtype=np.uint8) # pre allocate
 
+cv2SettingsDebug(
+    
 # Setting up logging
 logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARNING
 logger = logging.getLogger("Display")

@@ -33,7 +33,7 @@ def probeCameras():
     return arr
 
 # Camera Signature
-# In case we have multiple camera, we can search for default driver settings
+# In case we have multiple cameras, we can search for default driver settings
 # and compare to camera signature, opencv unfortunately does not return the 
 # serial number of the camera
 # Example: Generic Webcam: 640, 480, YUYV
@@ -113,26 +113,22 @@ mkv.start(storageQueue)
 
 # Create camera interface
 print("Starting Capture")
-# you will need to create camera0 = ... for each camera
-# Create camera interface based on computer OS you are running
 
+# Create camera interface based on computer OS you are running
+# plat can be Windows, Linux, MaxOS
 plat = platform.system()
-if plat == 'Windows': 
-    from camera.capture.cv2capture import cv2Capture
-    camera = cv2Capture(configs, camera_index) # 0 is camera number
-elif plat == 'Linux':
-    if platform.machine() == "aarch64":  # This is jetson nano for me
+if plat == 'Linux':
+    if platform.machine() == "aarch64": # this is jetson nano for me
         from camera.capture.nanocapture import nanoCapture
-        camera = nanoCapture(configs, camera_index) # 0 is camera number
-    elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # this is reaspberry pi for me
+        camera = nanoCapture(configs, camera_index)
+    elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # this is raspberry for me
         from camera.capture.cv2capture import cv2Capture
-        camera = cv2Capture(configs, camera_index) # 0 is camera number
-elif plat == 'MacOS': # 
-    from camera.capture.cv2capture import cv2Capture
-    camera = cv2Capture(configs, camera_index) # 0 is camera number
+        camera = cv2Capture(configs, camera_index)
 else:
     from camera.capture.cv2capture import cv2Capture
-    camera = cv2Capture(configs, camera_index) # 0 is camera number
+    camera = cv2Capture(configs, camera_index)
+print("Getting Images")
+camera.start(captureQueue)
 
 print("Getting Images")
 camera.start(captureQueue)

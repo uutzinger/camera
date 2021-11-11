@@ -38,23 +38,21 @@ logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARN
 logger = logging.getLogger("CV2Capture")
 
 # Create camera interface based on computer OS you are running
+# plat can be Windows, Linux, MaxOS
 plat = platform.system()
-if plat == 'Windows': 
-    from camera.capture.cv2capture import cv2Capture
-    camera = cv2Capture(configs)
-elif plat == 'Linux':
-    if platform.machine() == "aarch64": # for me this is jetson nano
+if plat == 'Linux':
+    if platform.machine() == "aarch64": # this is jetson nano for me
         from camera.capture.nanocapture import nanoCapture
-        camera = nanoCapture(configs)
+        camera = nanoCapture(configs, camera_index)
     elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # this is raspberry for me
         from camera.capture.cv2capture import cv2Capture
-        camera = cv2Capture(configs)
-elif plat == 'MacOS':
-    from camera.capture.cv2capture import cv2Capture
-    camera = cv2Capture(configs)
+        camera = cv2Capture(configs, camera_index)
 else:
     from camera.capture.cv2capture import cv2Capture
-    camera = cv2Capture(configs)
+    camera = cv2Capture(configs, camera_index)
+print("Getting Images")
+camera.start(captureQueue)
+
 
 print("Getting Images")
 camera.start()

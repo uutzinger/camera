@@ -102,26 +102,21 @@ logger = logging.getLogger("CV2Capture")
 # Increase maxsize if you get queue is full statements
 captureQueue = Queue(maxsize=32)
 
-configs['output_res']
-
 # Create camera interface based on computer OS you are running
+# plat can be Windows, Linux, MaxOS
 plat = platform.system()
-if plat == 'Windows': 
-    from camera.capture.cv2capture import cv2Capture
-    camera = cv2Capture(configs, camera_index)
-elif plat == 'Linux':
-    if platform.machine() == "aarch64": # for me this is jetson nano
+if plat == 'Linux':
+    if platform.machine() == "aarch64": # this is jetson nano for me
         from camera.capture.nanocapture import nanoCapture
         camera = nanoCapture(configs, camera_index)
     elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # this is raspberry for me
         from camera.capture.cv2capture import cv2Capture
         camera = cv2Capture(configs, camera_index)
-elif plat == 'MacOS':
-    from camera.capture.cv2capture import cv2Capture
-    camera = cv2Capture(configs, camera_index)
 else:
     from camera.capture.cv2capture import cv2Capture
-    camera = cv2Capture(configs)
+    camera = cv2Capture(configs, camera_index)
+print("Getting Images")
+camera.start(captureQueue)
 
 print("Getting Images")
 camera.start(captureQueue)
