@@ -54,51 +54,27 @@ class rtpServer(Thread):
 
         # https://answers.opencv.org/question/202017/how-to-use-gstreamer-pipeline-in-opencv/
 
+        gst = 'appsrc ! videoconvert ! '
         plat = platform.system()
-        if plat == "Windows":
+        if plat == "Linux":
+            if platform.machine() == 'aarch64': # Jetson Nano https://developer.nvidia.com/embedded/dlc/l4t-accelerated-gstreamer-guide-32-2 
+                # control-rate 1 variable, 2 constant, 0 default
+                # preset 0 ultrafast, 1 fast, 2 medium, 3 slow
+                gst = ( gst + 
+                    'omxh264enc control-rate=1 bitrate={:d} preset-level=1 ! '.format(self._bitrate*1000)   +
+                    'video/x-h264,stream-format=(string)byte-stream ! h264parse ! ' )
+            elif platform.machine() == 'armv6l' or platform.machine() == 'armv7l': # Raspberry Pi
+                gst = ( gst + 
+                    'omxh264enc control-rate=1 target-bitrate={:d} ! '.format(self._bitrate*1000)           +
+                    'video/x-h264,stream-format=(string)byte-stream ! h264parse ! ' )
+        else:
             if self._gpuavail:
                 # preset 3 = lowlatency
-                gst = (
-                    'appsrc ! videoconvert ! '                                                              + 
-                    'nvh264enc zerolatency=1 rc-mode=vbr max-bitrate={:d} ! '.format(self._bitrate) +
-                    'rtph264pay config-interval=1 pt=96 ! '                                                 +
-                    'udpsink host={:s} port={:d}'.format(self._host, self._port) )
+                gst = gst + 'nvh264enc zerolatency=1 rc-mode=vbr max-bitrate={:d} ! '.format(self._bitrate) 
             else:
-                gst = (
-                    'appsrc ! videoconvert ! '                                                              + 
-                    'x264enc tune=zerolatency bitrate={:d} speed-preset=superfast ! '.format(self._bitrate) +
-                    'rtph264pay config-interval=1 pt=96 ! '                                                 +
-                    'udpsink host={:s} port={:d}'.format(self._host, self._port) )
-        elif plat == "Linux":
-            if platform.machine() == 'aarch64': # Jetson Nano https://developer.nvidia.com/embedded/dlc/l4t-accelerated-gstreamer-guide-32-2 
-                gst = (
-                    # control-rate 1 variable, 2 constant, 0 default
-                    # preset 0 ultrafast, 1 fast, 2 medium, 3 slow
-                    'appsrc ! videoconvert ! '                                                              + 
-                    'omxh264enc control-rate=1 bitrate={:d} preset-level=1 ! '.format(self._bitrate*1000)   +
-                    'video/x-h264,stream-format=(string)byte-stream ! h264parse ! '                         +
-                    'rtph264pay config-interval=1 pt=96 ! '                                                 +
-                    'udpsink host={:s} port={:d}'.format(self._host, self._port) )
-            elif platform.machine() == 'armv6l' or platform.machine() == 'armv7l': # Raspberry Pi
-                gst = (
-                    'appsrc ! videoconvert ! '                                                              +
-                    'omxh264enc control-rate=1 target-bitrate={:d} ! '.format(self._bitrate*1000)           +
-                    'video/x-h264,stream-format=(string)byte-stream ! h264parse ! '                         +
-                    'rtph264pay config-interval=1 pt=96 ! '                                                 +
-                    'udpsink host={:s} port={:d}'.format(self._host, self._port) )
-        elif plat == "MacOS":
-            gst = (
-                'appsrc ! videoconvert ! '                                                              + 
-                'x264enc tune=zerolatency bitrate={:d} speed-preset=superfast ! '.format(self._bitrate) +
-                'rtph264pay config-interval=1 pt=96 ! '                                                 +
-                'udpsink host={:s} port={:d}'.format(self._host, self._port) )
-        else:
-            gst = (
-                'appsrc ! videoconvert ! '                                                              + 
-                'x264enc tune=zerolatency bitrate={:d} speed-preset=superfast ! '.format(self._bitrate) +
-                'rtph264pay config-interval=1 pt=96 ! '                                                 +
-                'udpsink host={:s} port={:d}'.format(self._host, self._port) )
+                gst = gst + 'x264enc tune=zerolatency bitrate={:d} speed-preset=superfast ! '.format(self._bitrate) 
 
+        gst = gst + 'rtph264pay config-interval=1 pt=96 ! udpsink host={:s} port={:d}'.format(self._host, self._port)
         self.logger.log(logging.INFO, gst)
 
         self.rtp = cv2.VideoWriter(gst, apiPreference=cv2.CAP_GSTREAMER, fourcc=self._fourcc, fps=self._fps, frameSize=self._res, isColor=self._isColor)

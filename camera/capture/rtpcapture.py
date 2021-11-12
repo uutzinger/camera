@@ -34,13 +34,14 @@ class rtpCapture(Thread):
 
     # Initialize the Camera Thread
     # Opens Capture Device
-    def __init__(self, port: int = 554):
+    def __init__(self, port: int = 554, gpu: (bool) = False):
 
         # initialize 
         self.logger     = logging.getLogger("rtpCapture")
 
         # populate settings
-        self._port    = port
+        self._port           = port
+        self._gpuavail       = gpu
 
         # Threading Locks, Events
         self.capture_lock    = Lock() # before changing capture settings lock them
@@ -67,28 +68,21 @@ class rtpCapture(Thread):
 
         # https://answers.opencv.org/question/202017/how-to-use-gstreamer-pipeline-in-opencv/
 
+        gst = 'udpsrc port={:d} caps=application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96 ! rtph264depay ! '.format(self._port)
         plat = platform.system()
-        if plat == "Windows":
-            gst = 'udpsrc port={:d} caps=application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96 ! rtph264depay ! decodebin ! videoconvert ! appsink sync=false'.format(self._port)
-            self.logger.log(logging.INFO, gst)
-            self.capture = cv2.VideoCapture(gst, cv2.CAP_GSTREAMER)
-        elif plat == "Linux":
+        if plat == "Linux":
             if platform.machine() == 'aarch64': # Jetson Nano
-                gst = 'udpsrc port={:d} caps=application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96 ! rtph264depay ! h264parse ! omxh264dec ! nvvidconv ! appsink sync=false'.format(self._port)
-                self.logger.log(logging.INFO, gst)
-                self.capture = cv2.VideoCapture(gst, apiPreference=cv2.CAP_GSTREAMER)
+                gst = gst + 'h264parse ! omxh264dec ! nvvidconv ! '
             elif platform.machine() == 'armv6l' or platform.machine() == 'armv7l': # Raspberry Pi
-                gst = 'udpsrc port={:d} caps=application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96 ! rtph264depay ! h264parse ! v4l2h264dec capture-io-mode=4 ! v4l2convert output-io-mode=5 capture-io-mode=4 ! appsink sync=false'.format(self._port)
-                self.logger.log(logging.INFO, gst)
-                self.capture = cv2.VideoCapture(gst, apiPreference=cv2.CAP_GSTREAMER)
-        elif plat == "MacOS":
-            gst = 'udpsrc port={:d} caps=application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96 ! rtph264depay ! decodebin ! videoconvert ! appsink sync=false'.format(self._port)
-            self.logger.log(logging.INFO, gst)
-            self.capture = cv2.VideoCapture(gst, apiPreference=cv2.CAP_GSTREAMER)
-        else:
-            gst = 'udpsrc port={:d} caps=application/x-rtp,media=(string)video,clock-rate=(int)90000,encoding-name=(string)H264,payload=(int)96 ! rtph264depay ! decodebin ! videoconvert ! appsink sync=false'.format(self._port)
-            self.logger.log(logging.INFO, gst)
-            self.capture = cv2.VideoCapture(gst, apiPreference=cv2.CAP_GSTREAMER)
+                gst = gst + 'h264parse ! v4l2h264dec capture-io-mode=4 ! v4l2convert output-io-mode=5 capture-io-mode=4 ! '
+        elif:
+            if self._gpuavail:
+                gst = gst + 'nvh264dec ! videoconvert ! '
+            else:
+                gst = gst + 'decodebin ! videoconvert ! '
+        gst = gst + 'appsink sync=false'
+        self.logger.log(logging.INFO, gst)
+        self.capture = cv2.VideoCapture(gst, cv2.CAP_GSTREAMER)
 
         self.capture_open = self.capture.isOpened()        
         if not self.capture_open:
