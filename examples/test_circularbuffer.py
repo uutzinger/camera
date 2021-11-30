@@ -12,7 +12,6 @@ import logging
 import time
 import numpy as np
 from datetime import datetime
-from queue import Queue
 
 circular_buffer = collections.deque(maxlen=100)
 
@@ -48,4 +47,3 @@ while True:
         append_time = 0.
 
 # Cleanup
-hdf5.stop()

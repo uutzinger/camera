@@ -35,5 +35,5 @@ configs = {
                                         # 5=upright diagonal flip 
                                         # 6=vertical 
                                         # 7=uperleft diagonal flip
-    'displayfps'       : 30             # frame rate for display server
+    'displayfps'       : 10             # frame rate for display server
     }

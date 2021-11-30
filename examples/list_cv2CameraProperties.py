@@ -72,7 +72,7 @@ i = 10
 while i > 0:
     cap = cv2.VideoCapture(index)
     if cap.read()[0]:
-        logger.log(logging.DEBUG, "Camera{}:".format(index))
+        logger.log(logging.DEBUG, "Camera {}:".format(index))
         logger.log(logging.DEBUG, "=============================")
         cv2SettingsDebug(cap,logger)
     index += 1

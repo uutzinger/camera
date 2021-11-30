@@ -46,35 +46,42 @@ Example program using camera
 
    # Setting up logging
    logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARNING
-
-   # Setting up input/output queue
-   captureQueue = Queue(maxsize=32)
-   storageQueue = Queue(maxsize=64)
+   logger = logging.getLogger("Main")
 
    # Setting up storage
    from camera.streamer.mkvstorageserver import mkvServer
    mkv = mkvServer("C:\\temp\\" + "Test.mkv", configs['fps'], configs['camera_res'])
-   mkv.start(storageQueue)
+   mkv.start()
 
    # Create camera interface 
    from camera.capture.cv2capture import cv2Capture
    camera = cv2Capture(configs, 0)
-   camera.start(captureQueue)
-
-   while(cv2.getWindowProperty('Camera', 0) >= 0):
+   camera.start()
+   
+   stop = False
+   while((cv2.getWindowProperty('Camera', 0) >= 0) and (not stop)):
       current_time = time.time()
 
       # Wait for new image
-      (frame_time, frame) = captureQueue.get(block=True, timeout=None)
+      (frame_time, frame) = camera.capture.get(block=True, timeout=None)
+      # take care of camera log messages
+      while not camera.log.empty():
+         (level, msg)=camera.log.get_nowait()
+         logger.log(level, msg)
+
 
       # Put image into storage queue
-      if not storageQueue.full():
-         storageQueue.put((frame_time, frame), block=False) 
+      if not mkv.queue.full():
+         mkv.queue.put_nowait((frame_time, frame)) 
+      # take care of storage log messages
+      while not mkv.log.empty():
+         (level, msg)=mkv.log.get_nowait()
+         logger.log(level, msg)
 
       # Display
       if (current_time - last_display) >= display_interval:
          cv2.imshow('Camera', frame)
-         if cv2.waitKey(1) & 0xFF == ord('q'): break
+         if cv2.waitKey(1) & 0xFF == ord('q'): stop = True
          last_display = current_time
       
       # Do other things 

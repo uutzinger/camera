@@ -9,27 +9,8 @@ import cv2
 import logging
 import time
 import platform
-from queue import Queue
-import numpy as np
 
-# Probe the cameras, return indeces, fourcc, default resolution
-def probeCameras():
-    # check for up to 10 cameras
-    index = 0
-    arr = []
-    i = 10
-    while i > 0:
-        cap = cv2.VideoCapture(index)
-        if cap.read()[0]:
-            tmp = cap.get(cv2.CAP_PROP_FOURCC)
-            fourcc = "".join([chr((int(tmp) >> 8 * i) & 0xFF) for i in range(4)])
-            width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-            height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-            cap.release()
-            arr.append({"index": index, "fourcc": fourcc, "width": width, "height": height})
-        index += 1
-        i -= 1
-    return arr
+from camera.utils import probeCameras
 
 loop_interval = 1.0/200.0
 
@@ -41,31 +22,32 @@ loop_interval = 1.0/200.0
 # Example: FLIRLepton: 160, 120, BGR3
 widthSig = 640
 heightSig = 480
-#fourccSig = "YUYV"
 fourccSig = "\x16\x00\x00\x00"
 
 # default camera starts at 0 by operating system
 camera_index = 0
-# # Scan all camera
-# camprops = probeCameras()
-# # Try to find the one that matches our signature
-# score = 0
-# for i in range(len(camprops)):
-#     try: found_fourcc = 1 if camprops[i]['fourcc'] == fourccSig else 0            
-#     except: found_fourcc = 0
-#     try: found_width = 1  if camprops[i]['width']  == widthSig  else 0
-#     except: found_width =  0
-#     try: found_height = 1 if camprops[i]['height'] == heightSig else 0   
-#     except: found_height = 0
-#     tmp = found_fourcc+found_width+found_height
-#     if tmp > score:
-#         score = tmp
-#         camera_index = i
+# Scan up to 5 cameras
+camprops = probeCameras(5)
+# Try to find the one that matches our signature
+score = 0
+for i in range(len(camprops)):
+    try: found_fourcc = 1 if camprops[i]['fourcc'] == fourccSig else 0            
+    except: found_fourcc = 0
+    try: found_width = 1  if camprops[i]['width']  == widthSig  else 0
+    except: found_width =  0
+    try: found_height = 1 if camprops[i]['height'] == heightSig else 0   
+    except: found_height = 0
+    tmp = found_fourcc+found_width+found_height
+    if tmp > score:
+        score = tmp
+        camera_index = i
 
+# Can import or define camera configuration below
+#
+# -Eluktronics Max-15 internal camera
+# from examples.configs.eluk_configs import configs as configs
 # -Dell Inspiron 15 internal camer
 # from configs.dell_internal_configs  import configs as configs
-# -Eluktronics Max-15 internal camera
-from configs.eluk_configs import configs as configs
 # -Generic webcam
 # from configs.generic_1080p import configs as configs
 # -Nano Jetson IMX219 camera
@@ -78,12 +60,31 @@ from configs.eluk_configs import configs as configs
 # -FLIR Lepton 3.5
 # from configs.FLIRlepton35 import confgis as configs
 
-if configs['displayfps'] >= configs['fps']:
+configs = {
+    'camera_res'      : (1280, 720 ),   # width & height
+    'exposure'        : -6,             # -1,0 = auto, 1...max=frame interval, 
+    'autoexposure'    : 1.0,            # depends on camera: 0.25 or 0.75(auto) or 1(auto), -1,0
+    'fps'             : 30,             # 15, 30, 40, 90, 120, 180
+    'fourcc'          : -1,             # n.a.
+    'buffersize'      : -1,             # n.a.
+    'output_res'      : (-1, -1),       # Output resolution, -1,-1 no change
+    'flip'            : 0,              # 0=norotation 
+                                        # 1=ccw90deg 
+                                        # 2=rotation180 
+                                        # 3=cw90 
+                                        # 4=horizontal 
+                                        # 5=upright diagonal flip 
+                                        # 6=vertical 
+                                        # 7=uperleft diagonal flip
+    'displayfps'       : 30             # frame rate for display server
+}
+
+if configs['displayfps'] >= 0.8*configs['fps']:
     display_interval = 0
 else:
     display_interval = 1.0/configs['displayfps']
 
-dps_measure_time = 5.0 # average measurements over 5 secs
+dps_measure_time = 5.0 # assess performance every 5 secs
 
 window_name      = 'Camera'
 font             = cv2.FONT_HERSHEY_SIMPLEX
@@ -98,10 +99,6 @@ cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARNING
 logger = logging.getLogger("CV2Capture")
 
-# Setting up input and/or output Queue
-# Increase maxsize if you get queue is full statements
-captureQueue = Queue(maxsize=32)
-
 # Create camera interface based on computer OS you are running
 # plat can be Windows, Linux, MaxOS
 plat = platform.system()
@@ -115,33 +112,34 @@ if plat == 'Linux':
 else:
     from camera.capture.cv2capture import cv2Capture
     camera = cv2Capture(configs, camera_index)
-print("Getting Images")
-camera.start(captureQueue)
 
-print("Getting Images")
-camera.start(captureQueue)
+logger.log(logging.INFO, "Getting Images")
+camera.start()
 
 # Initialize Variables
-last_display   = time.time()
-last_fps_time  = time.time()
+last_display   = time.perf_counter()
+last_fps_time  = time.perf_counter()
 measured_dps   = 0
 num_frames_received    = 0
 num_frames_displayed   = 0
 
 while(cv2.getWindowProperty(window_name, 0) >= 0):
-    current_time = time.time()
-    #start_time   = time.perf_counter()
+
+    current_time = time.perf_counter()
 
     # wait for new image
-    (frame_time, frame) = captureQueue.get(block=True, timeout=None)
+    (frame_time, frame) = camera.capture.get(block=True, timeout=None)
     num_frames_received += 1
+    while not camera.log.empty():
+        (level, msg) = camera.log.get_nowait()
+        logger.log(level, "{}".format(msg))
 
-    if current_time - last_fps_time >= dps_measure_time:
+    if (current_time - last_fps_time) >= dps_measure_time:
         measured_fps = num_frames_received/dps_measure_time
-        logger.log(logging.INFO, "Status:Frames received per second:{}".format(measured_fps))
+        logger.log(logging.INFO, "MAIN:Frames received per second:{}".format(measured_fps))
         num_frames_received = 0
         measured_dps = num_frames_displayed/dps_measure_time
-        logger.log(logging.INFO, "Status:Frames displayed per second:{}".format(measured_dps))
+        logger.log(logging.INFO, "MAIN:Frames displayed per second:{}".format(measured_dps))
         num_frames_displayed = 0
         last_fps_time = current_time
 
@@ -151,19 +149,19 @@ while(cv2.getWindowProperty(window_name, 0) >= 0):
         cv2.putText(frame_display,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
         cv2.imshow(window_name, frame_display)
         # quit the program if users enter q or closes the display window
-        # the waitKey function limits the display frame rate to about 30fps for me
+        # the waitKey function limits the display frame rate
         # without waitKey the opencv window is not refreshed
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
         last_display = current_time
         num_frames_displayed += 1
 
-    # avoid looping unnecessarely, 
-    # this is only relevant for low fps
+    # avoid looping unnecessarely, this is only relevant for low fps and non blocking capture
     #end_time = time.perf_counter()
-    #delay_time = loop_interval - (end_time - start_time)
+    #delay_time = loop_interval - (end_time - current_time)
     #if  delay_time >= 0.005:
     #    time.sleep(delay_time)  # this creates at least 3ms delay, regardless of delay_time
 
+# Clean up
 camera.stop()
 cv2.destroyAllWindows()

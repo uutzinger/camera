@@ -102,7 +102,7 @@ A. Specifications of your camera
 
 On Windows, the Camera utility will give you resolution options and frames per second.
 To investigate other options you can use OBS studio (or any other capture program), establish camera capture device and inspect video options. 
-When the `capture_display.py` is started and DEBUG logging is enabled, it will list all camera options the video system offers. When an option states `-1` it likely is not available for that camera.
+`list_cv2CameraProperties.py` will show all camera options the video system offers. When an option states `-1` it likely is not available for that camera.
 
 B. Configuration file  
 
@@ -141,6 +141,18 @@ Data transfer between the main program and capture and storage threads.
 * ```blackfly_savehdf5_display.py``` display and incoporates saving to disk  
 * ```blackfly_savetiff_display.py``` display andincoporates saving to disk  
 
+## Pip upload
+```
+py -3 setup.py check
+py -3 setup.py sdist
+py -3 setup.py bdist_wheel
+pip3 install dist/.whl
+py -3 -m twine upload --repository camutil dist/*
+twine upload --repository-url https://test.pypi.org/legacy/ dist/pyexample-0.1.0.tar.gz
+twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+twine upload dist/*
+```
+
 ## Capture modules
 
 ### **blackflyCapture**
@@ -167,6 +179,7 @@ Interface for picamera module. Depricated since cv2Capture is more efficient for
 
 ## Changes
 ```
+2021 - November moved queue into class
 2021 - November added rtp server and client
 2021 - November added mkvServer, wheel installation, cleanup
 2021 - October added aviServer and multicamera example, PySpin trigger fix

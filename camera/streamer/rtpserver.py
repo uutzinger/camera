@@ -1,9 +1,8 @@
  
 ###############################################################################
 # RTP point to point server
-# Urs Utzinger
-# 2021
-#
+# 2021 Initial Release
+# Urs Utzinger 
 ###############################################################################
 
 ###############################################################################
@@ -11,36 +10,38 @@
 ###############################################################################
 
 # Multi Threading
-from threading import Thread
-from threading import Lock
-import platform
+from threading import Thread, Lock
+from queue import Queue
 
-#
-import logging
-import time
+# System
+import logging, time
+import platform
 
 # Open Computer Vision
 import cv2
 
 ###############################################################################
-# Video Server
+# RTP Server
 ###############################################################################
 
 class rtpServer(Thread):
     """
-    rtp h264 video network stream
+    Create rtp h264 video network stream
     """
 
     # Initialize the RTP Thread
-    # Opens Capture Device
-    def __init__(self, resolution: (int, int) = (320, 240), fps: int = 16, host: str = '127.0.0.1', port: int = 554,  bitrate: int = 2048, GPU: bool = False):
+    def __init__(self, 
+        resolution: tuple(int, int) = (320, 240), 
+        fps: int     = 16,
+        host: str    = '127.0.0.1', 
+        port: int    = 554,  
+        bitrate: int = 2048, 
+        gpu: bool    = False):
 
-        # initialize LOGGER
-        self.logger = logging.getLogger("rtpServer")
-
-        # Threading Locks, Events
-        self.frame_lock = Lock()
-        self.stopped    = True
+        # Threading Queue, Locks, Events
+        self.queue           = Queue(maxsize=32)
+        self.log             = Queue(maxsize=32)
+        self.stopped         = True
 
         # populate desired settings from configuration file or function call
         self._port    = port
@@ -50,7 +51,7 @@ class rtpServer(Thread):
         self._fourcc  = 0
         self._bitrate = bitrate
         self._isColor = True
-        self._gpuavail = GPU
+        self._gpuavail = gpu
 
         # https://answers.opencv.org/question/202017/how-to-use-gstreamer-pipeline-in-opencv/
 
@@ -75,17 +76,15 @@ class rtpServer(Thread):
                 gst = gst + 'x264enc tune=zerolatency bitrate={:d} speed-preset=superfast ! '.format(self._bitrate) 
 
         gst = gst + 'rtph264pay config-interval=1 pt=96 ! udpsink host={:s} port={:d}'.format(self._host, self._port)
-        self.logger.log(logging.INFO, gst)
+        self.log.put_nowait((logging.INFO, gst))
 
         self.rtp = cv2.VideoWriter(gst, apiPreference=cv2.CAP_GSTREAMER, fourcc=self._fourcc, fps=self._fps, frameSize=self._res, isColor=self._isColor)
-        self.stream_open = self.rtp.isOpened() 
-        if not self.stream_open:
-            self.logger.log(logging.CRITICAL, "Status:Failed to create rtp stream!")
-
-        # Init Frame and Thread
-        self.frame     = None
-        self.new_frame = False
-        self.measured_fps = 0.0
+        self.rtp_open = self.rtp.isOpened() 
+        if not self.rtp_open:
+            self.log.put_nowait((logging.CRITICAL, "RTP:Failed to create rtp stream!"))
+            return False
+            
+        self.measured_Cps = 0.0
 
         Thread.__init__(self)
 
@@ -97,71 +96,80 @@ class rtpServer(Thread):
         """stop the thread"""
         self.stopped = True
 
-    def start(self, rtp_queue = None):
-        """ set the thread start conditions """
+    def start(self):
+        """set the thread start conditions"""
         self.stopped = False
-        T = Thread(target=self.update, args=(rtp_queue,))
+        T = Thread(target=self.update)
         T.daemon = True # run in background
         T.start()
 
     # After starting the thread, this runs continously
-    def update(self, rtp_queue):
-        """ run the thread """
-        last_fps_time = time.time()
+    def update(self):
+        """run the thread"""
+        last_time = time.time()
         num_frames = 0
         
         while not self.stopped:
-            # rtp through put calculation
+            if self.rtp is not None:
+                (frame_time, frame) = self.queue.get(block=True, timeout=None)
+                self.rtp.write(frame)
+                num_frames += 1
+
+            # RTP through put calculation
             current_time = time.time()
-            if (current_time - last_fps_time) >= 5.0: # update frame rate every 5 secs
-                self.measured_fps = num_frames/5.0
-                self.logger.log(logging.INFO, "Status:FPS:{}".format(self.measured_fps))
+            if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
+                self.measured_cps = num_frames/5.0
+                self.log.put_nowait((logging.INFO, "RTP:FPS:{}".format(self.measured_cps)))
+                last_time = current_time
                 num_frames = 0
-                last_fps_time = current_time
 
-            # take image from queue and sent to rtp
-            if rtp_queue is not None:
-                if not rtp_queue.empty(): 
-                    (frame_time, frame) = rtp_queue.get(block=True, timeout=None)
-                    self.rtp.write(frame)
-                    num_frames += 1
-            else:
-                if self.new_frame: 
-                    self.rtp.write(self.frame)
-                    num_frames += 1
-                # run this no more than 100 times per second
-                delay_time = 0.01 - (time.time() - current_time)
-                if delay_time > 0.0:
-                    time.sleep(delay_time)
+        self.rtp.release()        
 
-            if self.stopped:
-                self.rtp.release()        
 
-    #
-    # Frame routines ##################################################
-    # Each camera stores frames locally
-    ###################################################################
+if __name__ == '__main__':
 
-    @property
-    def frame(self):
-        """ returns most recent frame """
-        self._new_frame = False
-        return self._frame
+    import numpy as np
 
-    @frame.setter
-    def frame(self, img):
-        """ set new frame content """
-        with self.frame_lock:
-            self._frame = img
-            self._new_frame = True
+    fps=  30
+    display_interval = 1./fps
+    height =540
+    width = 720
+    depth = 3
 
-    @property
-    def new_frame(self):
-        """ check if new frame available """
-        out = self._new_frame
-        return out
+    logging.basicConfig(level=logging.DEBUG)
+    logger = logging.getLogger("RTP")
+   
+    # Setting up RTP
+    rtp = rtpServer(
+        resolution =(width,height),
+        fps        = fps, 
+        host       = '127.0.0.1', 
+        port       = 554,
+        bitrate    = 2048, 
+        gpu        = False)
+    logger.log(logging.DEBUG, "Starting RTP Server")
+    rtp.start()
 
-    @new_frame.setter
-    def new_frame(self, val):
-        """ override wether new frame is available """
-        self._new_frame = val
+    # synthetic image
+    cube = np.random.randint(0, 255, (height, width, depth), 'uint8') 
+
+    last_display = time.time()
+    num_frame = 0
+    while True:
+        current_time = time.time()
+
+        if (current_time - last_display) > display_interval:
+            num_frame += 1
+            last_display = current_time
+
+            try:
+                rtp.queue.put_nowait(cube)
+            except: pass
+
+            try: 
+                (level, msg)=rtp.log.get_nowait()
+                logger.log(level, "RTP:{}".format(msg))
+            except: pass
+
+    hdf5.stop()
+    cv2.destroyAllWindows()

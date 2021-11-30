@@ -29,12 +29,10 @@
 #   CPU Usage: 5-6%
 #   Disk IO: 195-200MB/s
 ##########################################################################
-import h5py
 import logging
 import time
 import numpy as np
 from datetime import datetime
-from queue import Queue
 
 looptime = 0.001
 data_cube = np.zeros((14,540,720), dtype=np.uint8)
@@ -46,38 +44,32 @@ from configs.blackfly_configs  import configs
 logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARNING
 logger = logging.getLogger("Main")
 
-# Setting up input and output Queue
-captureQueue = Queue(maxsize=32)
-storageQueue = Queue(maxsize=2)
-
 # Setting up Storage
 from camera.streamer.h5storageserver import h5Server
-print("Starting Storage Server")
+logger.log(logging.INFO, "Starting Storage Server")
 now = datetime.now()
 filename = now.strftime("%Y%m%d%H%M%S") + ".hdf5"
 hdf5 = h5Server("C:\\temp\\" + filename)
-print("Starting Storage Server")
-hdf5.start(storageQueue)
+hdf5.start()
 
 # Create camera interface
 from camera.capture.blackflycapture import blackflyCapture
-print("Starting Capture")
+logger.log(logging.INFO, "Starting Capture")
 camera = blackflyCapture(configs)
-print("Getting Images")
-camera.start(captureQueue)
+camera.start()
 
 # Initialize Variables
 frame_idx = 0     # 14 frames is one dataset
 num_cubes_sent = 0
 num_cubes_received = 0
-last_cps_time = time.time()
+last_time = time.time()
 
 # Main Loop
 while(True):
     current_time = time.time()
 
     # wait for new image
-    (frame_time, frame) = captureQueue.get(block=True, timeout=None)
+    (frame_time, frame) = camera.capture.get(block=True, timeout=None)
     data_cube[frame_idx,:,:] = frame
     frame_idx += 1
 
@@ -86,18 +78,18 @@ while(True):
         frame_idx = 0
         num_cubes_received += 1
 
-        if not storageQueue.full():
-            storageQueue.put((frame_time, data_cube), block=False) 
+        if not hdf5.queue.full():
+            hdf5.queue.put_nowait((frame_time, data_cube)) 
             num_cubes_sent += 1
         else:
-            self.logger.log(logging.DEBUG, "Status:Storage Queue is full!")
+            logger.log(logging.WARNING, "Status:Storage Queue is full!")
 
-    if current_time - last_cps_time >= 5.0:
+    if current_time - last_time >= 5.0:
         measured_cps = num_cubes_received/5.0
-        logger.log(logging.DEBUG, "Status:Cubes received per second:{}".format(measured_cps))
+        logger.log(logging.INFO, "Status:Cubes received per second:{}".format(measured_cps))
         measured_cps = num_cubes_sent/5.0
-        logger.log(logging.DEBUG, "Status:Cubes sent per second:{}".format(measured_cps))
-        last_cps_time = current_time
+        logger.log(logging.INFO, "Status:Cubes sent per second:{}".format(measured_cps))
+        last_time = current_time
         num_cubes_received = 0
         num_cubes_sent = 0
 

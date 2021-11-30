@@ -8,7 +8,6 @@ import cv2
 import logging
 import platform
 import time
-from queue import Queue
 
 # default camera starts at 0 by operating system
 camera_index = 0
@@ -24,7 +23,7 @@ cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 # -Dell Inspiron 15 internal camer
 # from configs.dell_internal_configs  import configs as configs
 # -Eluktronics Max-15 internal camera
-from eluk_configs import configs as configs
+from configs.eluk_configs import configs as configs
 # -Generic webcam
 # from configs.generic_1080p import configs as configs
 # -Nano Jetson IMX219 camera
@@ -52,16 +51,14 @@ if rtp_size[0]<=0 or rtp_size[1]<=0:
 logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARNING
 logger = logging.getLogger("Capture2rtp")
 
-# Setting up input and/or output Queue
-# Increase maxsize if you get queue is full statements
-captureQueue = Queue(maxsize=32)
-rtpQueue     = Queue(maxsize=32)
-
 # Setting up Storage
 from camera.streamer.rtpserver import rtpServer
-print("Starting rtp Server")
+logger.log(logging.INFO, "Starting rtp Server")
 rtp = rtpServer(resolution = rtp_size, fps=rtp_fps, host='127.0.0.1', port=554, bitrate=2048, GPU=False)
-rtp.start(rtpQueue)
+while not rtp.log.empty():
+    (level, msg)=rtp.log.get_nowait()
+    logger.log(level, msg)
+rtp.start()
 
 # Create camera interface based on computer OS you are running
 # plat can be Windows, Linux, MaxOS
@@ -77,35 +74,42 @@ else:
     from camera.capture.cv2capture import cv2Capture
     camera = cv2Capture(configs, camera_index)
 
-print("Getting Images")
-camera.start(captureQueue)
+logger.log(logging.INFO, "Getting Images")
+while not camera.log.empty():
+    (level, msg)=camera.log.get_nowait()
+    logger.log(level, msg)
+camera.start()
 
 # Initialize Variables
 last_rtp = time.time()
-
-while True:
-    current_time = time.time()
-
+stop = False
+while(not stop):
     # wait for new image
-    (frame_time, frame) = captureQueue.get(block=True, timeout=None)
+    (frame_time, frame) = camera.capture.get(block=True, timeout=None)
+    while not camera.log.empty():
+        (level, msg)=camera.log.get_nowait()
+        logger.log(level, msg)
 
     # display and transmit
+    current_time = time.time()
     if (current_time - last_rtp) >= rtp_interval:
+        last_rtp = current_time
         # annotate image
         frame_rtp=frame.copy()
         cv2.putText(frame_rtp,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation, font, fontScale, fontColor, lineType)
         # transmit image
-        if not rtpQueue.full():
-            rtpQueue.put((frame_time, frame_rtp), block=False) 
+        if not rtp.queue.full():
+            rtp.queue.put_nowait((frame_time, frame_rtp)) 
         else:
             logger.log(logging.WARNING, "Status:rtp Queue is full!")
-
         # show the captured images
         cv2.imshow(window_name, frame_rtp)
         # quit the program if users enter q or closes the display window
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-        last_rtp = current_time
+        if cv2.waitKey(1) & 0xFF == ord('q'): stop = True
+
+    while not rtp.log.empty():
+        (level, msg)=rtp.log.get_nowait()
+        logger.log(level, msg)
 
 camera.stop()
 rtp.stop()

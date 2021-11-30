@@ -4,14 +4,13 @@
 ##########################################################################
 # Results
 # =======
-#   70-80 frames per second
+#   95-100 frames per second
 #   CPU Usage: 8-10%
 ##########################################################################
 import logging
 import time
 import numpy as np
 from datetime import datetime
-from queue import Queue
 
 width  = 720      # 1920, 720
 height = 540      # 1080, 540
@@ -20,40 +19,40 @@ fps  = 100        # hopeful
 size = (width, height)
 
 # synthetic image, needs to be (height, width, depth)
-data_cube = np.random.randint(0, 255, (height, width, depth), 'uint8') 
+image = np.random.randint(0, 255, (height, width, depth), 'uint8') 
 
 # Setting up logging
 logging.basicConfig(level=logging.INFO) # options are: DEBUG, INFO, ERROR, WARNING
 logger = logging.getLogger("Storage")
 
-# Setting up input and output Queue
-storageQueue = Queue(maxsize=5)
-
 # Setting up Storage
 now = datetime.now()
 filename = now.strftime("%Y%m%d%H%M%S") + ".avi"
 from camera.streamer.avistorageserver import aviServer
-print("Settingup Storage Server")
+logger.log(logging.INFO, "Settingup Storage Server")
 avi = aviServer("C:\\temp\\" + filename, fps, size)
-print("Starting Storage Server")
-avi.start(storageQueue)
+logger.log(logging.INFO, "Starting Storage Server")
+avi.start()
 
-num_cubes = 0 
-cube_time = 0
-last_cps_time = time.time()
+num_images = 0 
+last_time = time.time()
 
 # Main Loop
 while True:
     current_time = time.time()
 
-    storageQueue.put((cube_time, data_cube), block=True, timeout=None) 
-    num_cubes += 1
+    avi.queue.put((current_time, image), block=True, timeout=None) 
+    num_images += 1
 
-    if current_time - last_cps_time >= 5.0:
-        measured_cps = num_cubes/5.0
-        logger.log(logging.INFO, "Status:Cubes sent to storeage per second:{}".format(measured_cps))
-        last_cps_time = current_time
-        num_cubes = 0
+    while not avi.log.empty():
+        (level, msg)=avi.log.get_nowait()
+        logger.log(level, "Status:{}".format(msg))
+
+    if current_time - last_time >= 5.0:
+        measured_fps = num_images/5.0
+        logger.log(logging.INFO, "Status:Cubes sent to storeage per second:{}".format(measured_fps))
+        last_time = current_time
+        num_images = 0
 
 # Cleanup
 avi.stop()

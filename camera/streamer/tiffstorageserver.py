@@ -9,46 +9,44 @@
 
 # Multi Threading
 from threading import Thread
-from threading import Lock
-from threading import Event
+from queue import Queue
 
-#
-import logging
-import time
+# System
+import logging, time
+
+# TIFF
 import tifffile
 
 
 ###############################################################################
-# Disk Storage Server
-###############################################################################
-
-###############################################################################
-# tiff data format
+# TIFF Storage Server
 ###############################################################################
 
 class tiffServer(Thread):
-    """Tiff file save """
+    """
+    Tiff saver
+    """
 
     # Initialize the storage Thread
     # Opens Capture Device
-    def __init__(self, filename):
-        # initialize logger 
-        self.logger = logging.getLogger("tiffStorageServer")
+    def __init__(self, filename = None):
 
-        # Threading Locks, Events
-        self.stopped = True
-        self.framearray_lock = Lock()
+        # Threading Queue, Locks, Events
+        self.queue           = Queue(maxsize=32)
+        self.log             = Queue(maxsize=32)
+        self.stopped         = True
 
         # Initialize TIFF
         if filename is not None:
-            self.tiff = tifffile.TiffWriter(filename, bigtiff=True)
+            try:
+                self.tiff = tifffile.TiffWriter(filename, bigtiff=True)
+            except:
+                self.log.put_nowait((logging.ERROR, "TIFF:Could not create TIFF!"))
+                return False
         else:
-            self.logger.log(logging.ERROR, "Status:Need to provide filename to store data!")
+            self.log.put_nowait((logging.ERROR, "TIFF:Need to provide filename to store data!"))
             return False
 
-        # Init Frame and Thread
-        self.framearray = None
-        self.new_framearray  = False
         self.measured_cps = 0.0
 
         Thread.__init__(self)
@@ -59,72 +57,90 @@ class tiffServer(Thread):
 
     def stop(self):
         """stop the thread"""
-        self.tiff.close()
         self.stopped = True
 
-    def start(self, storage_queue = None):
+    def start(self):
         """ set the thread start conditions """
         self.stopped = False
-        T = Thread(target=self.update, args=(storage_queue,))
+        T = Thread(target=self.update)
         T.daemon = True # run in background
         T.start()
 
     # After Stating of the Thread, this runs continously
-    def update(self, storage_queue):
-        """ run the thread """
-        last_cps_time = time.time()
+    def update(self):
+        """run the thread"""
+        last_time = time.time()
         num_cubes = 0
+
         while not self.stopped:
+            (cube_time, data_cube) = self.queue.get(block=True, timeout=None)
+            self.tiff.write(data_cube, compression='PACKBITS', photometric='MINISBLACK', contiguous=False, metadata ={'time': cube_time, 'author': 'camera'} )
+            # compression = 'LZW', 'LZMA', 'ZSTD', 'JPEG', 'PACKBITS', 'NONE', 'LERC'
+            # compression ='jpeg', 'png', 'zlib'
+            num_cubes += 1
+
+
             # Storage througput calculation
             current_time = time.time()
-            if (current_time - last_cps_time) >= 5.0: # framearray rate every 5 secs
+            if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
                 self.measured_cps = num_cubes/5.0
-                self.logger.log(logging.INFO, "Status:CPS:{}".format(self.measured_cps))
+                self.log.put_nowait((logging.INFO, "TIFF:CPS:{}".format(self.measured_cps)))
                 num_cubes = 0
-                last_cps_time = current_time
+                last_time = current_time
 
-            if storage_queue is not None:
-                if not storage_queue.empty(): 
-                    (cube_time, data_cube) = storage_queue.get(block=True, timeout=None)
-                    self.tiff.write(data_cube, compression='PACKBITS', photometric='MINISBLACK', contiguous=False, metadata ={'time': cube_time, 'author': 'camera'} )
-                    # compression = 'LZW', 'LZMA', 'ZSTD', 'JPEG', 'PACKBITS', 'NONE', 'LERC'
-                    # compression ='jpeg', 'png', 'zlib'
-                    num_cubes += 1
-            else:
-                if self.new_framearray: 
-                    self.tiff.write(self.framearray, compression='LZW', photometric='MINISBLACK', contiguous=False, metadata ={'time': self.framearrayTime, 'author': 'camera'} )
-                    # Compression = 'LZW', 'LZMA', 'ZSTD', 'JPEG', 'PACKBITS', 'NONE', 'LERC'
-                    # compression ='jpeg', 'png', 'zlib'
-                    num_cubes += 1
-                # run this no more than 100 times per second
-                delay_time = 0.01 - (time.time() - current_time)
-                if delay_time > 0.0:
-                    time.sleep(delay_time)
- 
-    #
-    # Data handling routines
-    ###################################################################
+        self.tiff.close()
 
-    @property
-    def framearray(self):
-        """ returns most recent storage array """
-        with self.framearray_lock:
-            self._new_frame_array = False
-            return self._frame_array
-    @framearray.setter
-    def framearray(self, val):
-        """ set new array content """
-        with self.framearray_lock:
-            self._frame_array =  val
-            self._new_frame_array = True
+if __name__ == '__main__':
 
-    @property
-    def new_framearray(self):
-        """ check if new array available """
-        with self.framearray_lock:
-            return self._new_frame_array
-    @new_framearray.setter
-    def new_framearray(self, val):
-        """ override wether new array is available """
-        with self.framearray_lock:
-            self._new_frame_array = val
+    import numpy as np
+    from datetime import datetime
+    import cv2
+
+    display_interval =  0.01
+    height =540
+    width = 720
+    depth = 3 # can display only 3 colors ;-)
+
+    logging.basicConfig(level=logging.DEBUG)
+    logger = logging.getLogger("TIFF")
+   
+    # Setting up Storage
+    now = datetime.now()
+    filename = now.strftime("%Y%m%d%H%M%S") + ".hdf5"
+    tiff = tiffServer("C:\\temp\\" + filename)
+    logger.log(logging.DEBUG, "Starting TIFF Server")
+    tiff.start()
+
+    # synthetic image
+    image = np.random.randint(0, 255, (depth, height, width), 'uint8') 
+
+    window_handle = cv2.namedWindow("TIFF", cv2.WINDOW_AUTOSIZE)
+    font          = cv2.FONT_HERSHEY_SIMPLEX
+    textLocation  = (10,20)
+    fontScale     = 1
+    fontColor     = (255,255,255)
+    lineType      = 2
+
+    last_display = time.time()
+    num_frames = 0
+    while(cv2.getWindowProperty("TIFF", 0) >= 0):
+        current_time = time.time()
+
+        if (current_time - last_display) > display_interval:
+            last_display = current_time
+            frame = image[1,:,:].copy()
+            cv2.putText(frame,"Frame:{}".format(num_frames), textLocation, font, fontScale, fontColor, lineType)
+            cv2.imshow('TIFF', frame)
+            num_frames += 1
+            key = cv2.waitKey(1) 
+            if (key == 27) or (key & 0xFF == ord('q')): break
+
+            try: tiff.queue.put_nowait((current_time, image))
+            except: pass
+
+        while not tiff.log.empty():
+            (level, msg)=tiff.log.get_nowait()
+            logger.log(level, "TIFF:{}".format(msg))
+
+    tiff.stop()
+    cv2.destroyAllWindows()

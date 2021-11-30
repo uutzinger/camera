@@ -8,29 +8,9 @@
 import cv2
 import logging
 import time
-import numpy as np
 from datetime import datetime
-from queue import Queue
 import platform
-
-# Probe the cameras, return indeces, fourcc, default resolution
-def probeCameras():
-    # check for up to 10 cameras
-    index = 0
-    arr = []
-    i = 10
-    while i > 0:
-        cap = cv2.VideoCapture(index)
-        if cap.read()[0]:
-            tmp = cap.get(cv2.CAP_PROP_FOURCC)
-            fourcc = "".join([chr((int(tmp) >> 8 * i) & 0xFF) for i in range(4)])
-            width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-            height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-            cap.release()
-            arr.append({"index": index, "fourcc": fourcc, "width": width, "height": height})
-        index += 1
-        i -= 1
-    return arr
+from camera.utils import probeCameras
 
 # Camera Signature
 # In case we have multiple camera, we can search for default driver settings
@@ -46,7 +26,7 @@ fourccSig = "\x16\x00\x00\x00"
 camera_index = 0
 
 # Scan all camera
-camprops = probeCameras()
+camprops = probeCameras(10)
 # Try to find the one that matches our signature
 score = 0
 for i in range(len(camprops)):
@@ -79,7 +59,10 @@ from configs.eluk_configs import configs as configs
 # from configs.FLIRlepton35 import confgis as configs
 
 # Display
-display_interval = 1.0/configs['displayfps']
+if configs['displayfps'] >= configs['fps']: 
+    display_interval = 0
+else:
+    display_interval = 1.0/configs['displayfps']
 window_name      = 'Camera'
 font             = cv2.FONT_HERSHEY_SIMPLEX
 textLocation0    = (10,20)
@@ -94,27 +77,18 @@ cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 logging.basicConfig(level=logging.INFO) # options are: DEBUG, INFO, ERROR, WARNING
 logger = logging.getLogger("Main")
 
-# Setting up input and output Queue
-captureQueue = Queue(maxsize=64)
-storageQueue = Queue(maxsize=64)
-# here add additional queues if you have more than one camera. 
-# Each camera needs capture and saving queue
-
 # Setting up Storage
 from camera.streamer.avistorageserver import aviServer
-print("Starting Storage Server")
+logger.log(logging.INFO, "Starting Storage Server")
 now = datetime.now()
 fps  = configs['fps']
 size = configs['camera_res']
 filename = now.strftime("%Y%m%d%H%M%S") + ".avi"
 avi = aviServer("C:\\temp\\" + filename, fps, size)
-print("Starting Storage Server")
-avi.start(storageQueue)
+avi.start()
 
 # Create camera interface
-print("Starting Capture")
-# you will need to create camera0 = ... for each camera
-# Create camera interface based on computer OS you are running
+logger.log(logging.INFO, "Starting Capture")
 
 # Create camera interface based on computer OS you are running
 # plat can be Windows, Linux, MaxOS
@@ -130,32 +104,40 @@ else:
     from camera.capture.cv2capture import cv2Capture
     camera = cv2Capture(configs, camera_index)
 print("Getting Images")
-camera.start(captureQueue)
+camera.start()
 
 # Initialize Variables
 num_frames_sent      = 0           # keep track of data cubes sent to storage
-last_xps_time        = time.time() # keep track of time to dispay performance
+last_time            = time.time() # keep track of time to dispay performance
 last_display         = time.time() # keeo track of time to display images
 num_frames_displayed = 0           # keep trakc of how many frames are displayed
 measured_dps         = 0           # computed in main thread, number of frames displayed per second
 
 # Main Loop
-while(True):
+stop = False
+while(not stop):
     current_time = time.time()
 
     # wait for new image
-    (frame_time, frame) = captureQueue.get(block=True, timeout=None)
+    (frame_time, frame) = camera.capture.get(block=True, timeout=None)
     # if you have two cameras with different fps settings, we need to figure out here how to 
     # obtain images in non blocking fashion as the slowest would prevail and buffer over runs on faster
+    while not camera.log.empty():
+        (level, msg)=camera.log.get_nowait()
+        logger.log(level, msg)
     
-    if not storageQueue.full():
-        storageQueue.put((frame_time, frame), block=False) 
+    if not avi.queue.full():
+        avi.queue.put_nowait((frame_time, frame)) 
         num_frames_sent += 1
     else:
         logger.log(logging.WARNING, "Status:Storage Queue is full!")
 
+    while not avi.log.empty():
+        (level, msg)=avi.log.get_nowait()
+        logger.log(level, msg)
+
     # Display performance in main loop
-    if current_time - last_xps_time >= 5.0:
+    if current_time - last_time >= 5.0:
         # how many frames did we send to storage
         measured_fps_sent = num_frames_sent/5.0
         logger.log(logging.INFO, "Status:frames sent to storage per second:{}".format(measured_fps_sent))
@@ -164,7 +146,7 @@ while(True):
         measured_dps = num_frames_displayed/5.0
         logger.log(logging.INFO, "Status:frames displayed per second:{}".format(measured_dps))
         num_frames_displayed = 0
-        last_xps_time = current_time
+        last_time = current_time
 
     if (current_time - last_display) >= display_interval:
         frame_display = frame.copy()
@@ -174,8 +156,7 @@ while(True):
         cv2.putText(frame_display,"Storage FPS:{} [Hz]".format(avi.measured_cps),    textLocation2, font, fontScale, fontColor, lineType)
         cv2.imshow(window_name, frame_display)
         # quit the program if users enter q or closes the display window
-        if cv2.waitKey(1) & 0xFF == ord('q'): # this likely is the reason that display frame rate is not faster than 60fps.
-            break
+        if cv2.waitKey(1) & 0xFF == ord('q'): stop = True # this likely is the reason that display frame rate is not faster than 60fps.
         last_display = current_time
         num_frames_displayed += 1
 

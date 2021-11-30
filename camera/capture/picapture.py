@@ -9,13 +9,11 @@
 ###############################################################################
 
 # Multi Threading
-from threading import Thread
-from threading import Lock
+from threading import Thread, Lock
+from queue import Queue
 
 #
-import logging
-import time
-import sys
+import logging, time, sys
 
 # Open Computer Vision
 import cv2
@@ -33,16 +31,17 @@ class piCapture(Thread):
 
     # Initialize the Camera Thread
     # Opens Capture Device and Sets Capture Properties
-    def __init__(self, configs, camera_num: int = 0, res: (int, int) = None, 
-                 exposure: float = None):
-
-        # initialize 
-        self.logger     = logging.getLogger("piCapture{}".format(camera_num))
+    ############################################################################
+    def __init__(self, configs, 
+        camera_num: int = 0, 
+        res: tuple(int, int) = None, 
+        exposure: float = None):
 
         # populate desired settings from configuration file or function call
-        self.camera_num = camera_num
+        ############################################################################
+        self.camera_num      = camera_num
         if exposure is not None:
-            self._exposure    = exposure  
+            self._exposure   = exposure  
         else: 
             self._exposure   = configs['exposure']
         if res is not None:
@@ -57,39 +56,117 @@ class piCapture(Thread):
         self._framerate      = configs['fps']
         self._flip_method    = configs['flip']
 
-        # Threading Locks, Events
-        self.capture_lock    = Lock() # before changing capture settings lock them
-        self.frame_lock      = Lock() # When copying frame, lock it
+        # Threading Queue, Locks, Events
+        self.capture         = Queue(maxsize=32)
+        self.log             = Queue(maxsize=32)
         self.stopped         = True
 
         # open up the camera
-        self._open_capture()
+        self._open_cam(self)
 
-        # Init Frame and Thread
-        self.frame        = None
-        self.new_frame    = False
+        # Init vars
         self.frame_time   = 0.0
         self.measured_fps = 0.0
 
         Thread.__init__(self)
 
-    #
+    # Thread routines #################################################
+    # Start Stop and Update Thread
+    ###################################################################
+
+    def stop(self):
+        """stop the thread"""
+        self.stopped = True
+        # clrean up
+
+    def start(self):
+        """set the thread start conditions"""
+        self.stopped = False
+        T = Thread(target=self.update)
+        T.daemon = True # run in background
+        T.start()
+
+    # After Stating of the Thread, this runs continously
+    def update(self):
+        """ run the thread """
+        try:
+            self.stream = self.cam.capture_continuous(
+                self.rawCapture,
+                format="bgr", 
+                use_video_port=True)
+        except:
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Failed to create camera stream!"))
+
+        last_time = time.time()
+        num_frames = 0
+
+        for f in self.stream:
+            current_time = time.time()
+
+            img = f.array
+            self.rawCapture.truncate(0)
+            num_frames += 1
+            self.frame_time = int(current_time*1000)
+
+            if (img is not None) and (not self.capture.full()):
+
+                if (self._output_height > 0) or (self._flip_method > 0):
+                    # adjust output height
+                    img_resized = cv2.resize(img, self._output_res)
+                    # flip resized image
+                    if   self._flip_method == 0: # no flipping
+                        img_proc = img_resized
+                    elif self._flip_method == 1: # ccw 90
+                        img_proc = cv2.roate(img_resized, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                    elif self._flip_method == 2: # rot 180, same as flip lr & up
+                        img_proc = cv2.roate(img_resized, cv2.ROTATE_180)
+                    elif self._flip_method == 3: # cw 90
+                        img_proc = cv2.roate(img_resized, cv2.ROTATE_90_CLOCKWISE)
+                    elif self._flip_method == 4: # horizontal
+                        img_proc = cv2.flip(img_resized, 0)
+                    elif self._flip_method == 5: # upright diagonal. ccw & lr
+                        img_proc = cv2.flip(cv2.roate(img_resized, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
+                    elif self._flip_method == 6: # vertical
+                        img_proc = cv2.flip(img_resized, 1)
+                    elif self._flip_method == 7: # upperleft diagonal
+                        img_proc = cv2.transpose(img_resized)
+                    else:
+                        img_proc = img_resized # not a valid flip method
+                else:
+                    img_proc = img
+
+                self.capture.put_nowait((self.frame_time, img_proc))
+            else:
+                self.log.put_nowait((logging.WARNING, "PiCap:Capture Queue is full!"))
+
+            # FPS calculation
+            if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
+                self.measured_fps = num_frames/5.0
+                self.log.put_nowait((logging.INFO, "PICAM:FPS:{}".format(self.measured_fps)))
+                num_frames = 0
+                last_time = current_time
+
+        self.stream.close()
+        self.rawCapture.close()
+        self.cam.close()
+
     # Setup the Camera
     ############################################################################
-    def _open_capture(self):
-        """Open up the camera so we can begin capturing frames"""
+    def _open_cam(self):
+        """
+        Open up the camera so we can begin capturing frames
+        """
+        
         # Open PiCamera
         ###############
-        self.capture      = PiCamera(self.camera_num)
-        self.capture_open = not self.capture.closed
+        self.cam      = PiCamera(self.camera_num)
+        self.cam_open = not self.cam.closed
 
-        # self.cv2SettingsDebug() # check camera properties
-
-        if self.capture_open:
+        if self.cam_open:
             # Apply settings to camera
-            self.resolution = self._camera_res
-            self.rawCapture = PiRGBArray(self.capture)
-            self.fps          = self._framerate
+            self.resolution    = self._camera_res
+            self.rawCapture    = PiRGBArray(self.capture)
+            self.fps           = self._framerate
             if self._exposure <= 0:
                 # Auto Exposure and Auto White Balance
                 ############################################################
@@ -126,130 +203,9 @@ class piCapture(Thread):
                 self.iso          = 100              # Use ISO 100 setting, smallest analog and digital gains
                 self.exposure_mode= 'off'            # No automatic exposure control
                 self.exposure_compensation = 0       # No automatic expsoure controls compensation
-            # Output Configuration
-            self._output_res    = configs['output_res']
-            self._output_width  = self._output_res[0]
-            self._output_height = self._output_res[1]
         else:
-            self.logger.log(logging.CRITICAL, "Status:Failed to open camera!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Failed to open camera!"))
 
-    #
-    # Thread routines #################################################
-    # Start Stop and Update Thread
-    ###################################################################
-
-    def stop(self):
-        """stop the thread"""
-        self.stopped = True
-
-    def start(self, capture_queue = None):
-        """ set the thread start conditions """
-        self.stopped = False
-        try:
-            self.stream = self.capture.capture_continuous(self.rawCapture, 
-                                                          format="bgr", use_video_port=True)
-        except:
-            self.logger.log(logging.CRITICAL, "Status:Failed to create camera stream!")
-
-        T = Thread(target=self.update, args=(capture_queue,))
-        T.daemon = True # run in background
-        T.start()
-
-    # After Stating of the Thread, this runs continously
-    def update(self, capture_queue):
-        """ run the thread """
-        last_fps_time = time.time()
-        num_frames = 0
-        for f in self.stream:
-            current_time = time.time()
-
-            img = f.array
-            self.rawCapture.truncate(0)
-
-            num_frames += 1
-            self.frame_time = int(current_time*1000)
-
-            if (self._output_height <= 0) and (self._flip_method == 0):
-                if capture_queue is not None:
-                    if not capture_queue.full():
-                        capture_queue.put((self.frame_time, img), block=False)
-                    else:
-                        self.logger.log(logging.WARNING, "Status:Capture Queue is full!")
-                else:
-                    self.frame = img
-            else:
-                # adjust output height
-                tmp = cv2.resize(img, self._output_res)
-                # flip resized image
-                if   self._flip_method == 0: # no flipping
-                    tmpf = tmp
-                elif self._flip_method == 1: # ccw 90
-                    tmpf = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
-                elif self._flip_method == 2: # rot 180, same as flip lr & up
-                    tmpf = cv2.roate(tmp, cv.ROTATE_180)
-                elif self._flip_method == 3: # cw 90
-                    tmpf = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
-                elif self._flip_method == 4: # horizontal
-                    tmpf = cv2.flip(tmp, 0)
-                elif self._flip_method == 5: # upright diagonal. ccw & lr
-                    tmp_tmp = cv2.roate(tmp, cv.ROTATE_90_COUNTERCLOCKWISE)
-                    tmpf = cv2.flip(tmp_tmp, 1)
-                elif self._flip_method == 6: # vertical
-                    tmpf = cv2.flip(tmp, 1)
-                elif self._flip_method == 7: # upperleft diagonal
-                    tmpf = cv2.transpose(tmp)
-                else:
-                    tmpf = tmp
-                if capture_queue is not None:
-                    if not capture_queue.full():
-                        capture_queue.put((self.frame_time, tmpf), block=False)
-                    else:
-                        self.logger.log(logging.WARNING, "Status:Capture Queue is full!")                                    
-                else:
-                    self.frame = tmpf
-
-            # FPS calculation
-            if (current_time - last_fps_time) >= 5.0: # update frame rate every 5 secs
-                self.measured_fps = num_frames/5.0
-                self.logger.log(logging.INFO, "Status:FPS:{}".format(self.measured_fps))
-                num_frames = 0
-                last_fps_time = current_time
-
-            if self.stopped:
-                self.stream.close()
-                self.rawCapture.close()
-                self.capture.close()        
-
-    #
-    # Frame routines 
-    # If queue is not used
-    ###################################################################
-
-    @property
-    def frame(self):
-        """ returns most recent frame """
-        with self.frame_lock:
-            self._new_frame = False
-        return self._frame
-    @frame.setter
-    def frame(self, val):
-        """ set new frame content """
-        with self.frame_lock:
-            self._frame = val
-            self._new_frame = True
-
-    @property
-    def new_frame(self):
-        """ check if new frame available """
-        with self.frame_lock:
-            return self._new_frame
-    @new_frame.setter
-    def new_frame(self, val):
-        """ override wether new frame is available """
-        with self.frame_lock:
-            self._new_frame = val
-
-    #
     # Pi CSI camera routines ##########################################
     # Rading and Setting Camera Options
     ###################################################################
@@ -287,32 +243,32 @@ class piCapture(Thread):
 
     @property
     def resolution(self):            
-        if self.capture_open: 
-            return self.capture.resolution                            
+        if self.cam_open: 
+            return self.cam.resolution                            
         else: return float("NaN")
 
     @property
     def width(self):                 
-        if self.capture_open: 
-            return self.capture.resolution[0]
+        if self.cam_open: 
+            return self.cam.resolution[0]
         else: return float("NaN")
 
     @property
     def height(self):                
-        if self.capture_open: 
-            return self.capture.resolution[1]                         
+        if self.cam_open: 
+            return self.cam.resolution[1]                         
         else: return float("NaN")
 
     @property
     def fps(self):             
-        if self.capture_open: 
-            return self.capture.framerate+self.capture.framerate_delta 
+        if self.cam_open: 
+            return self.cam.framerate+self.cam.framerate_delta 
         else: return float("NaN")
 
     @property
     def exposure(self):              
-        if self.capture_open: 
-            return self.capture.exposure_speed                        
+        if self.cam_open: 
+            return self.cam.exposure_speed                        
         else: return float("NaN")
 
     # Write
@@ -321,58 +277,58 @@ class piCapture(Thread):
     @resolution.setter
     def resolution(self, val):
         if val is None: return
-        if self.capture_open:
+        if self.cam_open:
             if len(val) > 1:
-                with self.capture_lock: self.capture.resolution = val
-                self.logger.log(logging.INFO, "Status:Width:{},Height:{}".format(val[0],val[1]))
+                self.cam.resolution = val
+                self.log.put_nowait((logging.INFO, "PiCap:Width:{},Height:{}".format(val[0],val[1])))
                 self._resolution = val
             else:
-                with self.capture_lock: self.capture.resolution = (val, val)
-                self.logger.log(logging.INFO, "Status:Width:{},Height:{}".format(val,val))
+                self.cam.resolution = (val, val)
+                self.log.put_nowait((logging.INFO, "PiCap:Width:{},Height:{}".format(val,val)))
                 self._resolution = (val, val)                    
         else:
-            self.logger.log(logging.CRITICAL, "Status:Can not set resolution, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set resolution, camera not open!"))
 
     @width.setter
     def width(self, val):
         if val is None: return
         val = int(val)
-        if self.capture_open:
-            with self.capture_lock: self.capture.resolution = (val, self.capture.resolution[1])
-            self.logger.log(logging.INFO, "Status:Width:{}".format(val))
+        if self.cam_open:
+            self.cam.resolution = (val, self.cam.resolution[1])
+            self.log.put_nowait((logging.INFO, "PiCap:Width:{}".format(val)))
 
         else:
-            self.logger.log(logging.CRITICAL, "Status:Can not set resolution, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set resolution, camera not open!"))
 
     @height.setter
     def height(self, val):
         if val is None: return
         val = int(val)
-        if self.capture_open:
-            with self.capture_lock: self.capture.resolution = (self.capture.resolution[0], val)
-            self.logger.log(logging.INFO, "Status:Height:{}".format(val))
+        if self.cam_open:
+            self.cam.resolution = (self.cam.resolution[0], val)
+            self.log.put_nowait((logging.INFO, "PiCap:Height:{}".format(val)))
         else:
-            self.logger.log(logging.CRITICAL, "Status:Can not set resolution, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set resolution, camera not open!"))
 
     @fps.setter
     def fps(self, val):
         if val is None: return
         val = float(val)
-        if self.capture_open:
-            with self.capture_lock: self.capture.framerate = val
-            self.logger.log(logging.INFO, "Status:FPS:{}".format(val))
+        if self.cam_open:
+            self.cam.framerate = val
+            self.log.put_nowait((logging.INFO, "PiCap:FPS:{}".format(val)))
         else:
-            self.logger.log(logging.CRITICAL, "Status:Can not set franerate, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set franerate, camera not open!"))
 
     @exposure.setter
     def exposure(self, val):
         if val is None: return
-        if self.capture_open:
-            with self.capture_lock: self.capture.shutter_speed  = val
-            self.logger.log(logging.INFO, "Status:Exposure:{}".format(val))
+        if self.cam_open:
+            self.cam.shutter_speed  = val
+            self.log.put_nowait((logging.INFO, "PiCap:Exposure:{}".format(val)))
             self._exposure = self.exposure
         else:
-            self.logger.log(logging.CRITICAL, "Status:Can not set exposure, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set exposure, camera not open!"))
 
     #
     # Color Balancing ##################################################
@@ -386,26 +342,26 @@ class piCapture(Thread):
     # Read
     @property
     def awb_mode(self):              
-        if self.capture_open: 
-            return self.capture.awb_mode               
+        if self.cam_open: 
+            return self.cam.awb_mode               
         else: return float('NaN')
 
     @property
     def awb_gains(self):             
-        if self.capture_open: 
-            return self.capture.awb_gains              
+        if self.cam_open: 
+            return self.cam.awb_gains              
         else: return float('NaN')
 
     @property
     def analog_gain(self):           
-        if self.capture_open: 
-            return self.capture.analog_gain           
+        if self.cam_open: 
+            return self.cam.analog_gain           
         else: return float("NaN")
 
     @property
     def digital_gain(self):          
-        if self.capture_open: 
-            return self.capture.digital_gain           
+        if self.cam_open: 
+            return self.cam.digital_gain           
         else: return float("NaN")
 
     # Write
@@ -413,24 +369,24 @@ class piCapture(Thread):
     @awb_mode.setter
     def awb_mode(self, val):
         if val is None: return
-        if self.capture_open:
-            with self.capture_lock: self.capture.awb_mode  = val
-            self.logger.log(logging.INFO, "Status:AWB Mode:{}".format(val))
+        if self.cam_open:
+            self.cam.awb_mode  = val
+            self.log.put_nowait((logging.INFO, "PiCap:AWB Mode:{}".format(val)))
         else:
-            self.logger.log(logging.CRITICAL, "Status:Can not set autowb, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set autowb, camera not open!"))
  
     @awb_gains.setter
     def awb_gains(self, val):
         if val is None: return
-        if self.capture_open:
+        if self.cam_open:
             if len(val) > 1:
-                with self.capture_lock: self.capture.awb_gains  = val
-                self.logger.log(logging.INFO, "Status:AWB Gains:red:{},blue:{}".format(val[0], val[1]))
+                self.cam.awb_gains  = val
+                self.log.put_nowait((logging.INFO, "PiCap:AWB Gains:red:{},blue:{}".format(val[0], val[1])))
             else:
-                with self.capture_lock: self.capture.awb_gains = (val, val)
-                self.logger.log(logging.INFO, "Status:AWB Gain:{},{}".format(val,val))
+                self.cam.awb_gains = (val, val)
+                self.log.put_nowait((logging.INFO, "PiCap:AWB Gain:{},{}".format(val,val)))
         else:
-            self.logger.log(logging.CRITICAL, "Status:Can not set autowb gains, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set autowb gains, camera not open!"))
 
     # Can not set analog and digital gains, needs special code
     #@analog_gain.setter
@@ -450,38 +406,38 @@ class piCapture(Thread):
     # Read
     @property
     def brightness(self):            
-        if self.capture_open: 
-            return self.capture.brightness             
+        if self.cam_open: 
+            return self.cam.brightness             
         else: return float('NaN')
 
     @property
     def iso(self):                   
-        if self.capture_open: 
-            return self.capture.iso                    
+        if self.cam_open: 
+            return self.cam.iso                    
         else: return float("NaN")
 
     @property
     def exposure_mode(self):         
-        if self.capture_open: 
-            return self.capture.exposure_mode          
+        if self.cam_open: 
+            return self.cam.exposure_mode          
         else: return float("NaN")
 
     @property
     def exposure_compensation(self): 
-        if self.capture_open: 
-            return self.capture.exposure_compensation  
+        if self.cam_open: 
+            return self.cam.exposure_compensation  
         else: return float("NaN")
 
     @property
     def drc_strength(self):          
-        if self.capture_open: 
-            return self.capture.drc_strength           
+        if self.cam_open: 
+            return self.cam.drc_strength           
         else: return float('NaN')
 
     @property
     def contrast(self):              
-        if self.capture_open: 
-            return self.capture.contrast               
+        if self.cam_open: 
+            return self.cam.contrast               
         else: return float('NaN')
 
     # Write
@@ -490,59 +446,60 @@ class piCapture(Thread):
     def brightness(self, val):
         if val is None:  return
         val = int(val)
-        if self.capture_open:
-            with self.capture_lock: self.capture.brightness = val
-            self.logger.log(logging.INFO, "Status:Brightness:{}".format(val))
+        if self.cam_open:
+            self.cam.brightness = val
+            self.log.put_nowait((logging.INFO, "PiCap:Brightness:{}".format(val)))
         else: 
-            self.logger.log(logging.CRITICAL, "Status:Can not set brightnes, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set brightnes, camera not open!"))
 
     @iso.setter
     def iso(self, val):
         if val is None: return
         val = int(val)
-        if self.capture_open:
-            with self.capture_lock: self.capture.iso = val
-            self.logger.log(logging.INFO, "Status:ISO:{}".format(val))
+        if self.cam_open:
+            self.cam.iso = val
+            self.log.put_nowait((logging.INFO, "PiCap:ISO:{}".format(val)))
         else: 
-            self.logger.log(logging.CRITICAL, "Status:Can not set ISO, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set ISO, camera not open!"))
 
     @exposure_mode.setter
     def exposure_mode(self, val):
         if val is None: return
-        if self.capture_open:
-            with self.capture_lock: self.capture.exposure_mode = val
-            self.logger.log(logging.INFO, "Status:Exposure Mode:{}".format(val))
+        if self.cam_open:
+            self.cam.exposure_mode = val
+            self.log.put_nowait((logging.INFO, "PiCap:Exposure Mode:{}".format(val)))
         else: 
-            self.logger.log(logging.CRITICAL, "Status:Can not set exposure mode, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set exposure mode, camera not open!"))
 
     @exposure_compensation.setter
     def exposure_compensation(self, val):
         if val is None: return
         val = int(val)
-        if self.capture_open:
-            with self.capture_lock: self.capture.exposure_compensation = val
-            self.logger.log(logging.INFO, "Status:Exposure Compensation:{}".format(val))
+        if self.cam_open:
+            self.cam.exposure_compensation = val
+            self.log.put_nowait((logging.INFO, "PiCap:Exposure Compensation:{}".format(val)))
         else: 
-            self.logger.log(logging.CRITICAL, "Status:Can not set exposure compensation, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set exposure compensation, camera not open!"))
 
     @drc_strength.setter
     def drc_strength(self, val):
         if val is None: return
-        if self.capture_open:
-            with self.capture_lock: self.capture.drc_strength = val
-            self.logger.log(logging.INFO, "Status:DRC Strength:{}".format(val))
+        if self.cam_open:
+            self.cam.drc_strength = val
+            self.log.put_nowait((logging.INFO, "PiCap:DRC Strength:{}".format(val)))
         else: 
-            self.logger.log(logging.CRITICAL, "Status:Can not set drc strength, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set drc strength, camera not open!"))
 
     @contrast.setter
     def contrast(self, val):
         if val is None: return
         val = int(val)
-        if self.capture_open:
-            with self.capture_lock: self.capture.contrast = val
-            self.logger.log(logging.INFO, "Status:Contrast:{}".format(val))
+        if self.cam_open:
+            self.cam.contrast = val
+            self.log.put_nowait((logging.INFO, "PiCap:Contrast:{}".format(val)))
         else: 
-            self.logger.log(logging.CRITICAL, "Status:Can not set contrast, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set contrast, camera not open!"))
+
     #
     # Other Effects ####################################################
     #
@@ -560,50 +517,50 @@ class piCapture(Thread):
     # Read
     @property
     def flash_mode(self):            
-        if self.capture_open: 
-            return self.capture.flash_mode             
+        if self.cam_open: 
+            return self.cam.flash_mode             
         else: return float('NaN')
 
     @property
     def clock_mode(self):            
-        if self.capture_open: 
-            return self.capture.clock_mode             
+        if self.cam_open: 
+            return self.cam.clock_mode             
         else: return float('NaN')
 
     @property
     def sharpness(self):             
-        if self.capture_open: 
-            return self.capture.sharpness              
+        if self.cam_open: 
+            return self.cam.sharpness              
         else: return float('NaN')
 
     @property
     def color_effects(self):         
-        if self.capture_open: 
-            return self.capture.color_effects           
+        if self.cam_open: 
+            return self.cam.color_effects           
         else: return float('NaN')
 
     @property
     def image_effect(self):          
-        if self.capture_open: 
-            return self.capture.image_effect           
+        if self.cam_open: 
+            return self.cam.image_effect           
         else: return float('NaN')
 
     @property
     def image_denoise(self):         
-        if self.capture_open: 
-            return self.capture.image_denoise          
+        if self.cam_open: 
+            return self.cam.image_denoise          
         else: return float('NaN')
 
     @property
     def video_denoise(self):         
-        if self.capture_open: 
-            return self.capture.video_denoise          
+        if self.cam_open: 
+            return self.cam.video_denoise          
         else: return float('NaN')
 
     @property
     def video_stabilization(self):   
-        if self.capture_open: 
-            return self.capture.video_stabilization    
+        if self.cam_open: 
+            return self.cam.video_stabilization    
         else: return float('NaN')
 
     # Write
@@ -611,74 +568,74 @@ class piCapture(Thread):
     @flash_mode.setter
     def flash_mode(self, val):
         if val is None:  return
-        if self.capture_open:
-            with self.capture_lock: self.capture.flash_mode = val
-            self.logger.log(logging.INFO, "Status:Flash Mode:{}".format(val))
+        if self.cam_open:
+            self.cam.flash_mode = val
+            self.log.put_nowait((logging.INFO, "PiCap:Flash Mode:{}".format(val)))
         else: 
-            self.logger.log(logging.CRITICAL, "Status:Can not set flash mode, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set flash mode, camera not open!"))
 
     @clock_mode.setter
     def clock_mode(self, val):
         if val is None:  return
-        if self.capture_open:
-            with self.capture_lock: self.capture.clock_mode = val
-            self.logger.log(logging.INFO, "Status:Clock Mode:{}".format(val))
+        if self.cam_open:
+            self.cam.clock_mode = val
+            self.log.put_nowait((logging.INFO, "PiCap:Clock Mode:{}".format(val)))
         else: 
-            self.logger.log(logging.CRITICAL, "Status:Can not set capture clock, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set capture clock, camera not open!"))
 
     @sharpness.setter
     def sharpness(self, val):
         if val is None:  return
-        if self.capture_open:
-            with self.capture_lock: self.capture.sharpness = val
-            self.logger.log(logging.INFO, "Status:Sharpness:{}".format(val))
+        if self.cam_open:
+            self.cam.sharpness = val
+            self.log.put_nowait((logging.INFO, "PiCap:Sharpness:{}".format(val)))
         else:
-            self.logger.log(logging.CRITICAL, "Status:Can not set sharpness, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set sharpness, camera not open!"))
 
     @color_effects.setter
     def color_effects(self, val):
         if val is None:  return
-        if self.capture_open:
-            with self.capture_lock: self.capture.color_effects = val
-            self.logger.log(logging.INFO, "Status:Color Effects:{}".format(val))
+        if self.cam_open:
+            self.cam.color_effects = val
+            self.log.put_nowait((logging.INFO, "PiCap:Color Effects:{}".format(val)))
         else:
-            self.logger.log(logging.CRITICAL, "Status:Can not set color effects, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set color effects, camera not open!"))
 
     @image_effect.setter
     def image_effect(self, val):
         if val is None:  return
-        if self.capture_open:
-            with self.capture_lock: self.capture.image_effect = val
-            self.logger.log(logging.INFO, "Status:Image Effect:{}".format(val))
+        if self.cam_open:
+            self.cam.image_effect = val
+            self.log.put_nowait((logging.INFO, "PiCap:Image Effect:{}".format(val)))
         else:
-            self.logger.log(logging.CRITICAL, "Status:Can not set image effect, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set image effect, camera not open!"))
 
     @image_denoise.setter
     def image_denoise(self, val):
         if val is None:  return
-        if self.capture_open:
-            with self.capture_lock: self.capture.image_denoise = val
-            self.logger.log(logging.INFO, "Status:Image Denoise:{}".format(val))
+        if self.cam_open:
+            self.cam.image_denoise = val
+            self.log.put_nowait((logging.INFO, "PiCap:Image Denoise:{}".format(val)))
         else:
-            self.logger.log(logging.CRITICAL, "Status:Can not set image denoise, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set image denoise, camera not open!"))
 
     @video_denoise.setter
     def video_denoise(self, val):
         if val is None:  return
-        if self.capture_open:
-            with self.capture_lock: self.capture.video_denoise = val
-            self.logger.log(logging.INFO, "Status:Video Denoise:{}".format(val))
+        if self.cam_open:
+            self.cam.video_denoise = val
+            self.log.put_nowait((logging.INFO, "PiCap:Video Denoise:{}".format(val)))
         else:
-            self.logger.log(logging.CRITICAL, "Status:Can not set video denoise, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set video denoise, camera not open!"))
 
     @video_stabilization.setter
     def video_stabilization(self, val):
         if val is None:  return
-        if self.capture_open:
-            with self.capture_lock: self.capture.video_stabilization = val
-            self.logger.log(logging.INFO, "Status:Video Stabilization:{}".format(val))
+        if self.cam_open:
+            self.cam.video_stabilization = val
+            self.log.put_nowait((logging.INFO, "PiCap:Video Stabilization:{}".format(val)))
         else:
-            self.logger.log(logging.CRITICAL, "Status:Can not set video stabilization, camera not open!")
+            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set video stabilization, camera not open!"))
 
 ###############################################################################
 # Testing
@@ -686,19 +643,46 @@ class piCapture(Thread):
 
 if __name__ == '__main__':
 
-    logging.basicConfig(level=logging.DEBUG)
+    configs = {
+        'camera_res'      : (1280, 720),    # any amera: Camera width & height
+        'exposure'        : 10000,          # any camera: -1,0 = auto, 1...max=frame interval in microseconds
+        'autoexposure'    : 0,              # cv2 camera only, depends on camera: 0.25 or 0.75(auto), -1,0,1
+        'fps'             : 60,             # any camera: 1/10, 15, 30, 40, 90, 120 overlocked
+        'output_res'      : (-1, -1),       # Output resolution 
+        'flip'            : 0,              # 0=norotation 
+                                            # 1=ccw90deg 
+                                            # 2=rotation180 
+                                            # 3=cw90 
+                                            # 4=horizontal 
+                                            # 5=upright diagonal flip 
+                                            # 6=vertical 
+                                            # 7=uperleft diagonal flip
+        'displayfps'       : 30             # frame rate for display server
+    }
 
-    print("Starting Capture")
-    camera = piCapture(camera_num=0, res=(320,240))
+    logging.basicConfig(level=logging.DEBUG)
+    logger = logging.getLogger("Capture")
+
+    logger.log(logging.DEBUG, "Starting Capture")
+
+    camera = piCapture(configs, camera_num=0)
     camera.start()
 
-    window_handle = cv2.namedWindow("Pi Camera", cv2.WINDOW_AUTOSIZE)
+    logger.log(logging.DEBUG, "Starting Capture")
 
-    print("Getting Frames")
+    window_handle = cv2.namedWindow("Pi Camera", cv2.WINDOW_AUTOSIZE)
     while cv2.getWindowProperty("Pi Camera", 0) >= 0:
-        if camera.new_frame:
-            cv2.imshow('Pi Camera', camera.frame)
-        if cv2.waitKey(1) == 27:
-            break  # esc to quit
+        try:
+            (frame_time, frame) = camera.capture.get()
+            cv2.imshow('Pi Camera', frame)
+        except: pass
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):  break
+
+        try: 
+            (level, msg)=camera.log.get_nowait()
+            logger.log(level, "PiCap:{}".format(msg))
+        except: pass
+
     camera.stop()
     cv2.destroyAllWindows()

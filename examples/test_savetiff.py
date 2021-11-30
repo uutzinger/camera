@@ -6,14 +6,14 @@
 ##########################################################################
 # Results
 # =======
-#   30-50 cubes per second with libtiff onto SSD
+#   35-45 cubes per second with libtiff onto SSD
 #   13    cubes per second without libtiff onton SSD
+#   20-23 cubes per second with libtiff onto NVME
 ##########################################################################
 import logging
 import time
 import numpy as np
 from datetime import datetime
-from queue import Queue
 
 width  = 720      # 1920, 720
 height = 540      # 1080, 540
@@ -24,36 +24,36 @@ data_cube = np.random.randint(0, 255, (depth, height, width), 'uint8')
 
 # Setting up logging
 logging.basicConfig(level=logging.INFO) # options are: DEBUG, INFO, ERROR, WARNING
-logger = logging.getLogger("Storage")
-
-# Setting up input and output Queue
-storageQueue = Queue(maxsize=5)
+logger = logging.getLogger("Main")
 
 # Setting up Storage
 now = datetime.now()
 filename = now.strftime("%Y%m%d%H%M%S") + ".tiff"
 from camera.streamer.tiffstorageserver import tiffServer
-print("Settingup Storage Server")
-tiff = tiffServer("D:\\temp\\" + filename)
-print("Starting Storage Server")
-tiff.start(storageQueue)
+logger.log(logging.INFO, "Settingup Storage Server")
+tiff = tiffServer("C:\\temp\\" + filename)
+logger.log(logging.INFO, "Starting Storage Server")
+tiff.start()
 
 num_cubes = 0 
-cube_time = 0
-last_cps_time = time.time()
+last_time = time.time()
 
 # Main Loop
 while True:
     current_time = time.time()
 
-    storageQueue.put((cube_time, data_cube), block=True, timeout=None) 
+    tiff.queue.put((current_time, data_cube), block=True, timeout=None) 
     num_cubes += 1
 
-    if current_time - last_cps_time >= 5.0:
+    if (current_time - last_time) >= 5.0:
         measured_cps = num_cubes/5.0
         logger.log(logging.INFO, "Status:Cubes sent to storeage per second:{}".format(measured_cps))
-        last_cps_time = current_time
+        last_time = current_time
         num_cubes = 0
+
+    while not tiff.log.empty():
+        (level, msg)=tiff.log.get_nowait()
+        logger.log(level, "Status:{}".format(msg))
 
 # Cleanup
 tiff.stop()
