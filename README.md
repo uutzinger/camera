@@ -146,10 +146,7 @@ Data transfer between the main program and capture and storage threads.
 py -3 setup.py check
 py -3 setup.py sdist
 py -3 setup.py bdist_wheel
-pip3 install dist/.whl
-py -3 -m twine upload --repository camutil dist/*
-twine upload --repository-url https://test.pypi.org/legacy/ dist/pyexample-0.1.0.tar.gz
-twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+pip3 install dist/thenewpackage.whl
 twine upload dist/*
 ```
 

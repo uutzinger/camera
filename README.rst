@@ -23,7 +23,6 @@ Example program using camera
    import cv2
    import logging
    import time
-   from queue import Queue
 
    configs = {
     'camera_res'      : (1920, 1080),   # CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT
