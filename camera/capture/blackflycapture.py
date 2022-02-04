@@ -227,7 +227,37 @@ class blackflyCapture(Thread):
         # Camera Settings
         #################
 
-        # 1 Turn off features
+        # 1 Set Sensor
+        #   Binning, should be set before setting width and height
+        #   Width and Height
+        #   Offset, should be set after setting binning and resolution
+        #   Bit Depth (8, 10, 12 or 14bit), will also set Pixel Format to either Mono8 or Mono16, affects frame rte
+
+        # Binning Mode Vertical & Horizontal
+        #  hard coded features
+        # Binning only on chip
+        self.cam.BinningSelector.SetValue(PySpin.BinninSelector.Sensor)
+        if self.cam.BinningVerticalMode.GetAccessMode() == PySpin.RW:
+            self.cam.BinningVerticalMode.SetValue(PySpin.BinningVerticalMode_Sum)
+            try: self.log.put_nowait((logging.INFO, "PySpin:Camera:BinningVerticalMode: {}".format(self.cam.BinningVerticalMode.GetValue())))
+            except: pass
+        else:
+            try: self.log.put_nowait((logging.WARNING, "PySpin:Camera:BinningVerticalMode: no access"))
+            except: pass
+        if self.cam.BinningHorizontalMode.GetAccessMode() == PySpin.RW:
+            self.cam.BinningHorizontalMode.SetValue(PySpin.BinningHorizontalMode_Sum)
+            try: self.log.put_nowait((logging.INFO, "PySpin:Camera:BinningHorizonalMode: {}".format(self.cam.BinningHorizontalMode.GetValue())))
+            except: pass
+        else:
+            try: self.log.put_nowait((logging.WARNING, "PySpin:Camera:BinningHorizonalMode: no access"))
+            except: pass
+        # features changeable by user
+        self.adc         = self._adc
+        self.binning     = self._binning
+        self.offset      = self._offset
+        self.resolution  = self._camera_res
+
+        # 2 Turn off features
         #   ISP (off)
         #   Automatic Gain (off)
         #   Gamma (set to 1.0 then off)
@@ -311,31 +341,6 @@ class blackflyCapture(Thread):
         # features changable by client
         self.autoexposure = self._autoexposure # using user accessible function
         #
-        # 2 Set Sensor
-        #   Binning, should be set before setting width and height
-        #   Width and Height
-        #   Offset, should be set after setting binning and resolution
-        #   Bit Depth (8, 10, 12 or 14bit), will also set Pixel Format to either Mono8 or Mono16, affects frame rte
-        # hard coded features
-        if self.cam.BinningVerticalMode.GetAccessMode() == PySpin.RW:
-            self.cam.BinningVerticalMode.SetValue(PySpin.BinningVerticalMode_Sum)
-            try: self.log.put_nowait((logging.INFO, "PySpin:Camera:BinningVerticalMode: {}".format(self.cam.BinningVerticalMode.GetValue())))
-            except: pass
-        else:
-            try: self.log.put_nowait((logging.WARNING, "PySpin:Camera:BinningVerticalMode: no access"))
-            except: pass
-        if self.cam.BinningHorizontalMode.GetAccessMode() == PySpin.RW:
-            self.cam.BinningHorizontalMode.SetValue(PySpin.BinningHorizontalMode_Sum)
-            try: self.log.put_nowait((logging.INFO, "PySpin:Camera:BinningHorizonalMode: {}".format(self.cam.BinningHorizontalMode.GetValue())))
-            except: pass
-        else:
-            try: self.log.put_nowait((logging.WARNING, "PySpin:Camera:BinningHorizonalMode: no access"))
-            except: pass
-        # features changeable by user
-        self.binning    = self._binning
-        self.resolution = self._camera_res
-        self.offset     = self._offset
-        self.adc        = self._adc
 
         # 3a Digital Input for Trigger
         #   Set Input Trigger, if set to -1 use software trigger
@@ -491,7 +496,7 @@ class blackflyCapture(Thread):
             self._offset = (self.cam.OffsetX.GetValue(), self.cam.OffsetY.GetValue())
             return self._offset
         else: return (float("NaN"), float("NaN")) 
-    @resolution.setter
+    @offset.setter
     def offset(self, val):
         """sets sensor offset """
         if val is None: return
@@ -742,7 +747,7 @@ class blackflyCapture(Thread):
     def adc(self, val):
         """sets adc bit depth """
         if (val is None) or (val == -1):
-            try: self.log.put_nowait((logging.ERROR, "PySpin:Camera:Can not set exposure to {}!".format(val)))
+            try: self.log.put_nowait((logging.ERROR, "PySpin:Camera:Can not set adc bit depth to {}!".format(val)))
             except: pass
             return
         if self.capture_open:
@@ -813,6 +818,30 @@ class blackflyCapture(Thread):
         else: # camera not open
             try: self.log.put_nowait((logging.ERROR, "PySpin:Camera:Failed to set ADC, camera not open!"))
             except: pass
+
+    @property
+    def pixelformat(self):
+        """returns pixel format """
+        if self.capture_open:
+            _tmp = self.cam.PixelFormat.GetValue()
+            if _tmp == PySpin.PixelFormat_Mono8:
+                self._pixelformat = 'Mono8'
+            elif _tmp == PySpin.PixelFormat_Mono10:
+                self._pixelformat = 'Mono10'
+            elif _tmp == PySpin.PixelFormat_Mono10p:
+                self._pixelformat = 'Mono10p'
+            elif _tmp == PySpin.PixelFormat_Mono10Packed:
+                self._pixelformat = 'Mono10Packed'
+            elif _tmp == PySpin.PixelFormat_Mono12:
+                self._pixelformat = 'Mono12'
+            elif _tmp == PySpin.PixelFormat_Mono12p:
+                self._pixelformat = 'Mono12p'
+            elif _tmp == PySpin.PixelFormat_Mono12Packed:
+                self._pixelformat = 'Mono12Packed'
+            elif _tmp == PySpin.PixelFormat_Mono16:
+                self._pixelformat = 'Mono16'
+            return self._pixelformat
+        else: return -1
 
     @property
     def ttlinv(self):
