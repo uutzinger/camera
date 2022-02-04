@@ -58,7 +58,7 @@ Example program using camera
    camera.start()
    
    stop = False
-   while((cv2.getWindowProperty('Camera', 0) >= 0) and (not stop)):
+   while(not stop):
       current_time = time.time()
 
       # Wait for new image
@@ -81,8 +81,9 @@ Example program using camera
       if (current_time - last_display) >= display_interval:
          cv2.imshow('Camera', frame)
          if cv2.waitKey(1) & 0xFF == ord('q'): stop = True
+         if cv2.getWindowProperty('Camera', 0) < 0: stop = True
          last_display = current_time
-      
+  
       # Do other things 
 
    # Clean up

@@ -99,15 +99,11 @@ logger.log(logging.INFO, "Starting Capture")
 # Create camera interface based on computer OS you are running
 # plat can be Windows, Linux, MaxOS
 plat = platform.system()
-if plat == 'Linux':
-    if platform.machine() == "aarch64": # this is jetson nano for me
-        from camera.capture.nanocapture import nanoCapture
-        camera = nanoCapture(configs, camera_index)
-    elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # this is raspberry for me
-        from camera.capture.cv2capture import cv2Capture
-        camera = cv2Capture(configs, camera_index)
+if plat == 'Linux' and platform.machine() == "aarch64": # this is jetson nano for me
+    from camera.capture.nanocapture import nanoCapture
+    camera = nanoCapture(configs, camera_index)
 else:
-    from camera.capture.cv2capture import cv2Capture
+    from camera.capture.cv2capture_process import cv2Capture
     camera = cv2Capture(configs, camera_index)
 logger.log(logging.INFO, "Getting Images")
 camera.start()

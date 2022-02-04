@@ -43,10 +43,10 @@ class aviServer(Thread):
             try:
                 self.avi = cv2.VideoWriter(filename, cv2.VideoWriter_fourcc(*'MJPG'), fps, size)
             except:
-                self.log.put_nowait((logging.ERROR, "AVI:Could not create AVI!"))
+                if not self.log.full(): self.log.put_nowait((logging.ERROR, "AVI:Could not create AVI!"))
                 return False
         else:
-            self.log.put_nowait((logging.ERROR, "AVI:Need to provide filename to store avi!"))
+            if not self.log.full(): self.log.put_nowait((logging.ERROR, "AVI:Need to provide filename to store avi!"))
             return False
 
         Thread.__init__(self)
@@ -81,7 +81,7 @@ class aviServer(Thread):
             current_time = time.time()
             if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
                 self.measured_cps = num_frames/5.0
-                self.log.put_nowait((logging.INFO, "AVI:FPS:{}".format(self.measured_cps)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "AVI:FPS:{}".format(self.measured_cps)))
                 last_time = current_time
                 num_frames = 0
 

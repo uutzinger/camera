@@ -35,7 +35,7 @@ A collection of python threaded camera support routines for
 Also support to save as  
 * HD5  
 * tiff  
-* avi  
+* avi, mkv  
 
 Supported OS  
 * Windows
@@ -94,7 +94,7 @@ To install the downloaded wheels, in CMD window:
 ### To install OpenCV on Raspi:  
 
 3. ```cd ~```
-4. ```sudo pip3 install opencv-contrib-python==4.1.0.25```
+4. ```sudo pip3 install opencv-contrib-python==4.5.3.56``` as time progresses the version numnber might need to be increased.
 5. ```sudo pip3 install tifffile h5py platform imagecodecs```
 
 ## How to create camera config files
@@ -102,7 +102,7 @@ A. Specifications of your camera
 
 On Windows, the Camera utility will give you resolution options and frames per second.
 To investigate other options you can use OBS studio (or any other capture program), establish camera capture device and inspect video options. 
-`list_cv2CameraProperties.py` will show all camera options the video system offers. When an option states `-1` it likely is not available for that camera.
+`py -3 list_cv2CameraProperties.py` will show all camera options the video system offers. When an option states `-1` it likely is not available for that camera.
 
 B. Configuration file  
 
@@ -176,6 +176,7 @@ Interface for picamera module. Depricated since cv2Capture is more efficient for
 
 ## Changes
 ```
+2022 - January added queue as intialization option, updated cv2Capture
 2021 - November moved queue into class
 2021 - November added rtp server and client
 2021 - November added mkvServer, wheel installation, cleanup

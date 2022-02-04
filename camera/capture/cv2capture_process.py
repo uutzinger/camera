@@ -32,13 +32,14 @@ class cv2Capture(Process):
     def __init__(self, configs, 
         camera_num: int = 0, 
         res: tuple = None,    # width, height
-        exposure: float = None):
+        exposure: float = None,
+        queue_size: int = 32):
 
         Process.__init__(self)
 
         # Process Locks, Events, Queue, Log
         self.stopper  = Event()
-        self.log      = Queue(maxsize=32)
+        self.log      = Queue(maxsize=queue_size)
         self.capture  = Queue(maxsize=32)
 
         # populate desired settings from configuration file or function arguments
@@ -126,7 +127,7 @@ class cv2Capture(Process):
 
                 self.capture.put_nowait((current_time*1000., img_proc))
             else:
-                self.log.put_nowait((logging.WARNING, "CV2:Capture queue is full!"))
+                if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Capture queue is full!"))
 
             # FPS calculation
             if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
@@ -166,7 +167,7 @@ class cv2Capture(Process):
             if self._framerate > 0:
                 self.fps        = self._framerate      # desired fps
         else:
-            self.log.put_nowait((logging.CRITICAL, "CV2:Failed to open camera!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to open camera!"))
 
     #
     # Camera routines
@@ -184,15 +185,15 @@ class cv2Capture(Process):
     def width(self, val):
         """ sets video capture width """
         if (val is None) or (val == -1):
-            self.log.put_nowait((logging.WARNING, "CV2:Width not changed:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Width not changed:{}".format(val)))
             return
         if self.cam_open:
             with self.cam_lock: 
                 isok = self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, val)
             if isok:
-                self.log.put_nowait((logging.INFO, "CV2:Width:{}".format(val)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Width:{}".format(val)))
             else:
-                self.log.put_nowait((logging.ERROR, "CV2:Failed to set width to {}!".format(val)))
+                if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set width to {}!".format(val)))
 
     @property
     def height(self):
@@ -205,15 +206,15 @@ class cv2Capture(Process):
     def height(self, val):
         """ sets video capture height """
         if (val is None) or (val == -1):
-            self.log.put_nowait((logging.WARNING, "CV2:Height not changed:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Height not changed:{}".format(val)))
             return
         if self.cam_open:
             with self.cam_lock: 
                 isok = self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, int(val))
             if isok:
-                self.log.put_nowait((logging.INFO, "CV2:Height:{}".format(val)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Height:{}".format(val)))
             else:
-                self.log.put_nowait((logging.ERROR, "CV2:Failed to set height to {}!".format(val)))
+                if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set height to {}!".format(val)))
 
     @property
     def resolution(self):
@@ -232,21 +233,21 @@ class cv2Capture(Process):
                     isok0 = self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, int(val[0]))
                     isok1 = self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, int(val[1]))
                 if isok0 and isok1:
-                    self.log.put_nowait((logging.INFO, "CV2:Width:{}".format(val[0])))
-                    self.log.put_nowait((logging.INFO, "CV2:Height:{}".format(val[1])))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Width:{}".format(val[0])))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Height:{}".format(val[1])))
                 else:
-                    self.log.put_nowait((logging.ERROR, "CV2:Failed to set resolution to {},{}!".format(val[0],val[1])))
+                    if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set resolution to {},{}!".format(val[0],val[1])))
             else: # given only one value for resolution
                 with self.cam_lock: 
                     isok0 = self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, int(val))
                     isok1 = self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, int(val))
                 if isok0 and isok1:
-                    self.log.put_nowait((logging.INFO, "CV2:Width:{}".format(val)))
-                    self.log.put_nowait((logging.INFO, "CV2:Height:{}".format(val)))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Width:{}".format(val)))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Height:{}".format(val)))
                 else:
-                    self.log.put_nowait((logging.ERROR, "CV2:Failed to set resolution to {},{}!".format(val,val)))
+                    if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set resolution to {},{}!".format(val,val)))
         else: # camera not open
-            self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set resolution, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set resolution, camera not open!"))
 
     @property
     def exposure(self):
@@ -260,15 +261,15 @@ class cv2Capture(Process):
         """ # sets current exposure """
         self._exposure = val
         if (val is None) or (val == -1):
-            self.log.put_nowait((logging.WARNING, "CV2:Can not set exposure to {}!".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Can not set exposure to {}!".format(val)))
             return
         if self.cam_open:
             with self.cam_lock:
                 isok = self.cam.set(cv2.CAP_PROP_EXPOSURE, self._exposure)
             if isok:
-                self.log.put_nowait((logging.INFO, "CV2:Exposure:{}".format(val)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Exposure:{}".format(val)))
             else:
-                self.log.put_nowait((logging.ERROR, "CV2:Failed to set expsosure to:{}".format(val)))
+                if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set expsosure to:{}".format(val)))
 
     @property
     def autoexposure(self):
@@ -281,15 +282,15 @@ class cv2Capture(Process):
     def autoexposure(self, val):
         """ sets autoexposure """
         if (val is None) or (val == -1):
-            self.log.put_nowait((logging.WARNING, "CV2:Can not set Autoexposure to:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Can not set Autoexposure to:{}".format(val)))
             return
         if self.cam_open:
             with self.cam_lock:
                 isok = self.cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, val)
             if isok:
-                self.log.put_nowait((logging.INFO, "CV2:Autoexposure:{}".format(val)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Autoexposure:{}".format(val)))
             else:
-                self.log.put_nowait((logging.ERROR, "CV2:Failed to set Autoexposure to:{}".format(val)))
+                if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set Autoexposure to:{}".format(val)))
 
     @property
     def fps(self):
@@ -308,9 +309,9 @@ class cv2Capture(Process):
             with self.cam_lock:
                 isok = self.cam.set(cv2.CAP_PROP_FPS, val)
             if isok:
-                self.log.put_nowait((logging.INFO, "CV2:FPS:{}".format(val)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:FPS:{}".format(val)))
             else:
-                self.log.put_nowait((logging.ERROR, "CV2:Failed to set FPS to:{}".format(val)))
+                if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set FPS to:{}".format(val)))
 
     @staticmethod
     def decode_fourcc(val):
@@ -330,7 +331,7 @@ class cv2Capture(Process):
     def fourcc(self, val):
         """ set video encoding format in camera """
         if (val is None) or (val == -1):
-            self.log.put_nowait((logging.WARNING, "CV2:Can not set FOURCC to:{}!".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Can not set FOURCC to:{}!".format(val)))
             return
         if isinstance(val, str):  # we need to convert from FourCC to integer
             self._fourcc     = cv2.VideoWriter_fourcc(val[0],val[1],val[2],val[3])
@@ -342,9 +343,9 @@ class cv2Capture(Process):
             with self.cam_lock: 
                 isok = self.cam.set(cv2.CAP_PROP_FOURCC, self._fourcc)
             if isok :
-                self.log.put_nowait((logging.INFO, "CV2:FOURCC:{}".format(self._fourcc_str)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:FOURCC:{}".format(self._fourcc_str)))
             else:
-                self.log.put_nowait((logging.ERROR, "CV2:Failed to set FOURCC to:{}".format(self._fourcc_str)))
+                if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set FOURCC to:{}".format(self._fourcc_str)))
 
     @property
     def buffersize(self):
@@ -363,9 +364,9 @@ class cv2Capture(Process):
             with self.cam_lock:
                 isok = self.cam.set(cv2.CAP_PROP_BUFFERSIZE, val)
             if isok:
-                self.log.put_nowait((logging.INFO, "CV2:Buffersize:{}".format(val)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Buffersize:{}".format(val)))
             else:
-                self.log.put_nowait((logging.ERROR, "CV2:Failed to set buffer size to:{}".format(val)))
+                if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set buffer size to:{}".format(val)))
 
 ###############################################################################
 # Testing

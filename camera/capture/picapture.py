@@ -35,7 +35,8 @@ class piCapture(Thread):
     def __init__(self, configs, 
         camera_num: int = 0, 
         res: tuple(int, int) = None, 
-        exposure: float = None):
+        exposure: float = None,
+        queue_size: int = 32):
 
         # populate desired settings from configuration file or function call
         ############################################################################
@@ -57,7 +58,7 @@ class piCapture(Thread):
         self._flip_method    = configs['flip']
 
         # Threading Queue, Locks, Events
-        self.capture         = Queue(maxsize=32)
+        self.capture         = Queue(maxsize=queue_size)
         self.log             = Queue(maxsize=32)
         self.stopped         = True
 
@@ -95,7 +96,7 @@ class piCapture(Thread):
                 format="bgr", 
                 use_video_port=True)
         except:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Failed to create camera stream!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Failed to create camera stream!"))
 
         last_time = time.time()
         num_frames = 0
@@ -137,12 +138,12 @@ class piCapture(Thread):
 
                 self.capture.put_nowait((self.frame_time, img_proc))
             else:
-                self.log.put_nowait((logging.WARNING, "PiCap:Capture Queue is full!"))
+                if not self.log.full(): self.log.put_nowait((logging.WARNING, "PiCap:Capture Queue is full!"))
 
             # FPS calculation
             if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_fps = num_frames/5.0
-                self.log.put_nowait((logging.INFO, "PICAM:FPS:{}".format(self.measured_fps)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "PICAM:FPS:{}".format(self.measured_fps)))
                 num_frames = 0
                 last_time = current_time
 
@@ -204,7 +205,7 @@ class piCapture(Thread):
                 self.exposure_mode= 'off'            # No automatic exposure control
                 self.exposure_compensation = 0       # No automatic expsoure controls compensation
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Failed to open camera!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Failed to open camera!"))
 
     # Pi CSI camera routines ##########################################
     # Rading and Setting Camera Options
@@ -280,14 +281,14 @@ class piCapture(Thread):
         if self.cam_open:
             if len(val) > 1:
                 self.cam.resolution = val
-                self.log.put_nowait((logging.INFO, "PiCap:Width:{},Height:{}".format(val[0],val[1])))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Width:{},Height:{}".format(val[0],val[1])))
                 self._resolution = val
             else:
                 self.cam.resolution = (val, val)
-                self.log.put_nowait((logging.INFO, "PiCap:Width:{},Height:{}".format(val,val)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Width:{},Height:{}".format(val,val)))
                 self._resolution = (val, val)                    
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set resolution, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set resolution, camera not open!"))
 
     @width.setter
     def width(self, val):
@@ -295,10 +296,10 @@ class piCapture(Thread):
         val = int(val)
         if self.cam_open:
             self.cam.resolution = (val, self.cam.resolution[1])
-            self.log.put_nowait((logging.INFO, "PiCap:Width:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Width:{}".format(val)))
 
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set resolution, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set resolution, camera not open!"))
 
     @height.setter
     def height(self, val):
@@ -306,9 +307,9 @@ class piCapture(Thread):
         val = int(val)
         if self.cam_open:
             self.cam.resolution = (self.cam.resolution[0], val)
-            self.log.put_nowait((logging.INFO, "PiCap:Height:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Height:{}".format(val)))
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set resolution, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set resolution, camera not open!"))
 
     @fps.setter
     def fps(self, val):
@@ -316,19 +317,19 @@ class piCapture(Thread):
         val = float(val)
         if self.cam_open:
             self.cam.framerate = val
-            self.log.put_nowait((logging.INFO, "PiCap:FPS:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:FPS:{}".format(val)))
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set franerate, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set franerate, camera not open!"))
 
     @exposure.setter
     def exposure(self, val):
         if val is None: return
         if self.cam_open:
             self.cam.shutter_speed  = val
-            self.log.put_nowait((logging.INFO, "PiCap:Exposure:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Exposure:{}".format(val)))
             self._exposure = self.exposure
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set exposure, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set exposure, camera not open!"))
 
     #
     # Color Balancing ##################################################
@@ -371,9 +372,9 @@ class piCapture(Thread):
         if val is None: return
         if self.cam_open:
             self.cam.awb_mode  = val
-            self.log.put_nowait((logging.INFO, "PiCap:AWB Mode:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:AWB Mode:{}".format(val)))
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set autowb, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set autowb, camera not open!"))
  
     @awb_gains.setter
     def awb_gains(self, val):
@@ -381,12 +382,12 @@ class piCapture(Thread):
         if self.cam_open:
             if len(val) > 1:
                 self.cam.awb_gains  = val
-                self.log.put_nowait((logging.INFO, "PiCap:AWB Gains:red:{},blue:{}".format(val[0], val[1])))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:AWB Gains:red:{},blue:{}".format(val[0], val[1])))
             else:
                 self.cam.awb_gains = (val, val)
-                self.log.put_nowait((logging.INFO, "PiCap:AWB Gain:{},{}".format(val,val)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:AWB Gain:{},{}".format(val,val)))
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set autowb gains, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set autowb gains, camera not open!"))
 
     # Can not set analog and digital gains, needs special code
     #@analog_gain.setter
@@ -448,9 +449,9 @@ class piCapture(Thread):
         val = int(val)
         if self.cam_open:
             self.cam.brightness = val
-            self.log.put_nowait((logging.INFO, "PiCap:Brightness:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Brightness:{}".format(val)))
         else: 
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set brightnes, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set brightnes, camera not open!"))
 
     @iso.setter
     def iso(self, val):
@@ -458,18 +459,18 @@ class piCapture(Thread):
         val = int(val)
         if self.cam_open:
             self.cam.iso = val
-            self.log.put_nowait((logging.INFO, "PiCap:ISO:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:ISO:{}".format(val)))
         else: 
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set ISO, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set ISO, camera not open!"))
 
     @exposure_mode.setter
     def exposure_mode(self, val):
         if val is None: return
         if self.cam_open:
             self.cam.exposure_mode = val
-            self.log.put_nowait((logging.INFO, "PiCap:Exposure Mode:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Exposure Mode:{}".format(val)))
         else: 
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set exposure mode, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set exposure mode, camera not open!"))
 
     @exposure_compensation.setter
     def exposure_compensation(self, val):
@@ -477,18 +478,18 @@ class piCapture(Thread):
         val = int(val)
         if self.cam_open:
             self.cam.exposure_compensation = val
-            self.log.put_nowait((logging.INFO, "PiCap:Exposure Compensation:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Exposure Compensation:{}".format(val)))
         else: 
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set exposure compensation, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set exposure compensation, camera not open!"))
 
     @drc_strength.setter
     def drc_strength(self, val):
         if val is None: return
         if self.cam_open:
             self.cam.drc_strength = val
-            self.log.put_nowait((logging.INFO, "PiCap:DRC Strength:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:DRC Strength:{}".format(val)))
         else: 
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set drc strength, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set drc strength, camera not open!"))
 
     @contrast.setter
     def contrast(self, val):
@@ -496,9 +497,9 @@ class piCapture(Thread):
         val = int(val)
         if self.cam_open:
             self.cam.contrast = val
-            self.log.put_nowait((logging.INFO, "PiCap:Contrast:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Contrast:{}".format(val)))
         else: 
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set contrast, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set contrast, camera not open!"))
 
     #
     # Other Effects ####################################################
@@ -570,72 +571,72 @@ class piCapture(Thread):
         if val is None:  return
         if self.cam_open:
             self.cam.flash_mode = val
-            self.log.put_nowait((logging.INFO, "PiCap:Flash Mode:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Flash Mode:{}".format(val)))
         else: 
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set flash mode, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set flash mode, camera not open!"))
 
     @clock_mode.setter
     def clock_mode(self, val):
         if val is None:  return
         if self.cam_open:
             self.cam.clock_mode = val
-            self.log.put_nowait((logging.INFO, "PiCap:Clock Mode:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Clock Mode:{}".format(val)))
         else: 
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set capture clock, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set capture clock, camera not open!"))
 
     @sharpness.setter
     def sharpness(self, val):
         if val is None:  return
         if self.cam_open:
             self.cam.sharpness = val
-            self.log.put_nowait((logging.INFO, "PiCap:Sharpness:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Sharpness:{}".format(val)))
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set sharpness, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set sharpness, camera not open!"))
 
     @color_effects.setter
     def color_effects(self, val):
         if val is None:  return
         if self.cam_open:
             self.cam.color_effects = val
-            self.log.put_nowait((logging.INFO, "PiCap:Color Effects:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Color Effects:{}".format(val)))
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set color effects, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set color effects, camera not open!"))
 
     @image_effect.setter
     def image_effect(self, val):
         if val is None:  return
         if self.cam_open:
             self.cam.image_effect = val
-            self.log.put_nowait((logging.INFO, "PiCap:Image Effect:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Image Effect:{}".format(val)))
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set image effect, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set image effect, camera not open!"))
 
     @image_denoise.setter
     def image_denoise(self, val):
         if val is None:  return
         if self.cam_open:
             self.cam.image_denoise = val
-            self.log.put_nowait((logging.INFO, "PiCap:Image Denoise:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Image Denoise:{}".format(val)))
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set image denoise, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set image denoise, camera not open!"))
 
     @video_denoise.setter
     def video_denoise(self, val):
         if val is None:  return
         if self.cam_open:
             self.cam.video_denoise = val
-            self.log.put_nowait((logging.INFO, "PiCap:Video Denoise:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Video Denoise:{}".format(val)))
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set video denoise, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set video denoise, camera not open!"))
 
     @video_stabilization.setter
     def video_stabilization(self, val):
         if val is None:  return
         if self.cam_open:
             self.cam.video_stabilization = val
-            self.log.put_nowait((logging.INFO, "PiCap:Video Stabilization:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "PiCap:Video Stabilization:{}".format(val)))
         else:
-            self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set video stabilization, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "PiCap:Can not set video stabilization, camera not open!"))
 
 ###############################################################################
 # Testing

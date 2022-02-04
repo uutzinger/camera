@@ -39,10 +39,8 @@ from datetime import datetime
 # Camera configuration file
 from configs.blackfly_configs  import configs
 
-if configs['displayfps'] >= configs['fps']:
-    display_interval = 0
-else:
-    display_interval = 1.0/configs['displayfps']
+if configs['displayfps'] >= configs['fps']: display_interval = 0
+else:                                       display_interval = 1.0/configs['displayfps']
 
 dps_measure_time = 5.0 # average measurements over 5 secs
 

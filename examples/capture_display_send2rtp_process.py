@@ -19,10 +19,10 @@ def main():
     lineType       = 2
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 
+    from examples.configs.eluk_configs import configs as configs
     # -Dell Inspiron 15 internal camera
     #   from configs.dell_internal_configs  import configs as configs
     # -Eluktronics Max-15 internal camera
-    from examples.configs.eluk_configs import configs as configs
     # -Generic webcam
     #   from configs.generic_1080p import configs as configs
     # -Nano Jetson IMX219 camera
@@ -68,13 +68,9 @@ def main():
     # Create camera interface based on computer OS you are running
     # Works for Windows, Linux, MacOS
     plat = platform.system()
-    if plat == 'Linux':
-        if platform.machine() == "aarch64": # this is jetson nano for me
-            from camera.capture.nanocapture import nanoCapture
-            camera = nanoCapture(configs, camera_index)
-        elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # this is raspberry for me
-            from camera.capture.cv2capture import cv2Capture
-            camera = cv2Capture(configs, camera_index)
+    if plat == 'Linux' and platform.machine() == "aarch64": # this is jetson nano for me
+        from camera.capture.nanocapture import nanoCapture
+        camera = nanoCapture(configs, camera_index)
     else:
         from camera.capture.cv2capture_process import cv2Capture
         camera = cv2Capture(configs, camera_index)

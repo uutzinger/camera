@@ -44,10 +44,10 @@ class mkvServer(Thread):
             try: 
                 self.mkv = cv2.VideoWriter(filename, cv2.VideoWriter_fourcc(*'mp4v'), fps, size)
             except:
-                self.log.put_nowait((logging.ERROR, "MKV:Could not create MKV!"))
+                if not self.log.full(): self.log.put_nowait((logging.ERROR, "MKV:Could not create MKV!"))
                 return False
         else:
-            self.log.put_nowait((logging.ERROR, "MKV:Need to provide filename to store mkv!"))
+            if not self.log.full(): self.log.put_nowait((logging.ERROR, "MKV:Need to provide filename to store mkv!"))
             return False
 
         Thread.__init__(self)
@@ -82,7 +82,7 @@ class mkvServer(Thread):
             current_time = time.time()
             if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
                 self.measured_cps = num_frames/5.0
-                self.log.put_nowait((logging.INFO, "MKV:FPS:{}".format(self.measured_cps)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "MKV:FPS:{}".format(self.measured_cps)))
                 last_time = current_time
                 num_frames = 0
 

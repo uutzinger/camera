@@ -35,7 +35,8 @@ class rtpCapture(Thread):
     ############################################################################
     def __init__(self, configs,
         port: int          = 554,
-        gpu: (bool)        = False):
+        gpu: (bool)        = False,
+        queue_size: int = 32):
 
         # populate settings
         #########################################################
@@ -47,7 +48,7 @@ class rtpCapture(Thread):
         self._flip_method    = configs['flip']
 
         # Threading Locks, Events
-        self.log             = Queue(maxsize=32)
+        self.log             = Queue(maxsize=queue_size)
         self.capture         = Queue(maxsize=32)
         self.stopped         = True
         self.cam_lock        = Lock()
@@ -118,12 +119,12 @@ class rtpCapture(Thread):
 
                 self.capture.put_nowait((self.frame_time, img_proc))
             else:
-                self.log.put_nowait((logging.WARNING, "RTPCap:Capture Queue is full!"))
+                if not self.log.full(): self.log.put_nowait((logging.WARNING, "RTPCap:Capture Queue is full!"))
 
             # FPS calculation
             if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_fps = num_frames/5.0
-                self.logger.log(logging.INFO, "RTPCAP:FPS:{}".format(self.measured_fps))
+                if not self.log.full(): self.logger.log(logging.INFO, "RTPCAP:FPS:{}".format(self.measured_fps))
                 last_time = current_time
                 num_frames = 0
 
@@ -157,7 +158,7 @@ class rtpCapture(Thread):
 
         self.cam_open = self.cam.isOpened()        
         if not self.cam_open:
-            self.log.put_nowait((logging.CRITICAL, "RTPCap:Failed to open rtp stream!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "RTPCap:Failed to open rtp stream!"))
 
 ###############################################################################
 # Testing

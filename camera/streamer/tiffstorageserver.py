@@ -41,10 +41,10 @@ class tiffServer(Thread):
             try:
                 self.tiff = tifffile.TiffWriter(filename, bigtiff=True)
             except:
-                self.log.put_nowait((logging.ERROR, "TIFF:Could not create TIFF!"))
+                if not self.log.full(): self.log.put_nowait((logging.ERROR, "TIFF:Could not create TIFF!"))
                 return False
         else:
-            self.log.put_nowait((logging.ERROR, "TIFF:Need to provide filename to store data!"))
+            if not self.log.full(): self.log.put_nowait((logging.ERROR, "TIFF:Need to provide filename to store data!"))
             return False
 
         self.measured_cps = 0.0
@@ -84,7 +84,7 @@ class tiffServer(Thread):
             current_time = time.time()
             if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
                 self.measured_cps = num_cubes/5.0
-                self.log.put_nowait((logging.INFO, "TIFF:CPS:{}".format(self.measured_cps)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "TIFF:CPS:{}".format(self.measured_cps)))
                 num_cubes = 0
                 last_time = current_time
 

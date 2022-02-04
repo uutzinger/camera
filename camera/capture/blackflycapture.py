@@ -40,7 +40,8 @@ class blackflyCapture(Thread):
     def __init__(self, configs, 
         camera_num: int = 0, 
         res: tuple = None,       # width, height
-        exposure: float = None):
+        exposure: float = None,
+        queue_size: int = 32):
 
         # populate desired settings from configuration file or function arguments
         ########################################################################
@@ -68,7 +69,7 @@ class blackflyCapture(Thread):
         self._trigin         = configs['trigin']             # -1 no trigin,  1 = line 1
 
         # Threading Queue
-        self.capture         = Queue(maxsize=32)
+        self.capture         = Queue(maxsize=queue_size)
         self.log             = Queue(maxsize=64)
         self.stopped         = True
         self.cam_lock        = Lock()

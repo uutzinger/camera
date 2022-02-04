@@ -1,4 +1,5 @@
 {
     "python.pythonPath": "C:\\Python38\\python.exe",
-    "restructuredtext.confPath": ""
+    "restructuredtext.confPath": "",
+    "cmake.configureOnOpen": false
 }

@@ -39,10 +39,10 @@ class h5Server(Thread):
             try:
                 self.hdf5 = h5py.File(filename,'w')
             except:
-                self.log.put_nowait((logging.ERROR, "HDF5:Could not create HDF5!"))
+                if not self.log.full(): self.log.put_nowait((logging.ERROR, "HDF5:Could not create HDF5!"))
                 return False
         else:
-            self.log.put_nowait((logging.ERROR, "HDF5:Need to provide filename to store data!"))
+            if not self.log.full(): self.log.put_nowait((logging.ERROR, "HDF5:Need to provide filename to store data!"))
             return False
 
         # Init Frame and Thread
@@ -80,7 +80,7 @@ class h5Server(Thread):
             current_time = time.time()
             if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
                 self.measured_cps = num_cubes/5.0
-                self.log.put_nowait((logging.INFO, "HDF5:CPS:{}".format(self.measured_cps)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "HDF5:CPS:{}".format(self.measured_cps)))
                 last_time = current_time
                 num_cubes = 0
 

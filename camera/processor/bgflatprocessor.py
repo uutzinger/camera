@@ -10,7 +10,6 @@
 # Multi Threading
 from threading import Thread
 from threading import Lock
-from threading import Event
 
 #
 import logging

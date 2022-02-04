@@ -36,7 +36,8 @@ class rtspCapture(Thread):
     ############################################################################
     def __init__(self, configs, 
         rtsp: (str) = None, 
-        gpu: (bool) = False):
+        gpu: (bool) = False,
+        queue_size: int = 32):
         
         # populate desired settings from configuration file or function call
         if rtsp is not None: 
@@ -51,7 +52,7 @@ class rtspCapture(Thread):
 
         # Threading Locks, Events
         # Threading Queue, Locks, Events
-        self.capture         = Queue(maxsize=32)
+        self.capture         = Queue(maxsize=queue_size)
         self.log             = Queue(maxsize=32)
         self.stopped         = True
 
@@ -121,12 +122,12 @@ class rtspCapture(Thread):
 
                 self.capture.put_nowait((self.frame_time, img_proc))
             else:
-                self.log.put_nowait((logging.WARNING, "RTSPCap:Capture Queue is full!"))
+                if not self.log.full(): self.log.put_nowait((logging.WARNING, "RTSPCap:Capture Queue is full!"))
 
             # FPS calculation
             if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_fps = num_frames/5.0
-                self.log.put_nowait((logging.INFO, "RTSPCAM:FPS:{}".format(self.measured_fps)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "RTSPCAM:FPS:{}".format(self.measured_fps)))
                 num_frames = 0
                 last_time = current_time
 
@@ -159,7 +160,7 @@ class rtspCapture(Thread):
 
         self.cam_open = self.cam.isOpened()        
         if not self.cam_open:
-            self.log.put_nowait((logging.CRITICAL, "RTSPCap:Failed to open camera!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "RTSPCap:Failed to open camera!"))
 
 #
 # Testing 

@@ -76,12 +76,12 @@ class rtpServer(Thread):
                 gst = gst + 'x264enc tune=zerolatency bitrate={:d} speed-preset=superfast ! '.format(self._bitrate) 
 
         gst = gst + 'rtph264pay config-interval=1 pt=96 ! udpsink host={:s} port={:d}'.format(self._host, self._port)
-        self.log.put_nowait((logging.INFO, gst))
+        if not self.log.full(): self.log.put_nowait((logging.INFO, gst))
 
         self.rtp = cv2.VideoWriter(gst, apiPreference=cv2.CAP_GSTREAMER, fourcc=self._fourcc, fps=self._fps, frameSize=self._res, isColor=self._isColor)
         self.rtp_open = self.rtp.isOpened() 
         if not self.rtp_open:
-            self.log.put_nowait((logging.CRITICAL, "RTP:Failed to create rtp stream!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "RTP:Failed to create rtp stream!"))
             return False
             
         self.measured_Cps = 0.0
@@ -119,7 +119,7 @@ class rtpServer(Thread):
             current_time = time.time()
             if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_cps = num_frames/5.0
-                self.log.put_nowait((logging.INFO, "RTP:FPS:{}".format(self.measured_cps)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "RTP:FPS:{}".format(self.measured_cps)))
                 last_time = current_time
                 num_frames = 0
 
