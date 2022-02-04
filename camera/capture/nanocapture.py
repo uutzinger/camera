@@ -284,7 +284,6 @@ class nanoCapture(Thread):
                     'timeout=0 '                                    +
                     'blocksize=-1 '                                 +
                     'num-buffers=-1 '                               +
-                    'sensor-mode={:d} '.format(sensormode)          +
                     'tnr-strength=-1 '                              +
                     'tnr-mode=1 '                                   +
                     'aeantibanding=1 '                              +
