@@ -106,12 +106,12 @@ class nanoCapture(Thread):
                     #flip and resize is done in gstreamer
                     self.capture.put_nowait((current_time*1000., img))
                 else:
-                    if (not self.log.full()): self.log.put_nowait((logging.WARNING, "NanoCap:Capture Queue is full!"))
+                    if not self.log.full(): self.log.put_nowait((logging.WARNING, "NanoCap:Capture Queue is full!"))
 
             # FPS calculation
             if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_fps = num_frames/5.0
-                if (not self.log.full()): self.log.put_nowait((logging.INFO, "NanoCap:FPS:{}".format(self.measured_fps)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "NanoCap:FPS:{}".format(self.measured_fps)))
                 last_time = current_time
                 num_frames = 0
 
@@ -377,14 +377,14 @@ class nanoCapture(Thread):
             exposure_time  = self._exposure,
             flip_method    = self._flip_method)
 
-        self.log.put_nowait((logging.INFO, self.gst))
+        if not self.log.full(): self.log.put_nowait((logging.INFO, self.gst))
 
         self.cam = cv2.VideoCapture(self.gst, cv2.CAP_GSTREAMER)
 
         self.cam_open = self.cam.isOpened()
 
         if not self.cam_open:
-            self.log.put_nowait((logging.CRITICAL, "NanoCap:Failed to open camera!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "NanoCap:Failed to open camera!"))
 
     # Camera Routines
     ##################################################################
@@ -424,9 +424,9 @@ class nanoCapture(Thread):
         if self.cam_open:
             with self.cam_lock:
                 os.system("v4l2-ctl -c exposure_absolute={} -d {}".format(val, self._camera_num))
-            self.log.put_nowait((logging.INFO, "NanoCap:Exposure:{}".format(self._exposure)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "NanoCap:Exposure:{}".format(self._exposure)))
         else:
-            self.log.put_nowait((logging.ERROR, "NanoCap:Failed to set exposure to{}!".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.ERROR, "NanoCap:Failed to set exposure to{}!".format(val)))
 
 ###############################################################################
 # Testing

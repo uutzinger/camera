@@ -23,14 +23,14 @@ from numba import vectorize
 ###############################################################################
 # Numpy Vectorized Image Processor
 @vectorize(['uint16(uint8, uint16, uint8)'], nopython=True, fastmath=True)
-def bgflat(data_cube, background, whitefield):
-    return np.multiply(np.subtract(data_cube, background), whitefield)
+def bgflat(data_cube, background, flatfield):
+    return np.multiply(np.subtract(data_cube, background), flatfield)
 
 class bgflatProcessor(Thread):
     """Background removal, flat field correction, white balance """
 
     # Initialize the Processor Thread
-    def __init__(self, whitefield, res: (int, int, int) = (14, 540, 720), bg_delta: (int, int) = (64, 64) ):
+    def __init__(self, flatfield, res: (int, int, int) = (14, 540, 720), bg_delta: (int, int) = (64, 64) ):
         # initialize logger 
         self.logger = logging.getLogger("bgflatProcessor")
 
@@ -44,10 +44,10 @@ class bgflatProcessor(Thread):
         self.inten = np.zeros(res[0], 'uint16') 
         self.bg    = np.zeros((res[1],res[2]), 'uint8')
         self.data_cube_corr = np.zeros(res, 'uint16') 
-        if whitefield is None:
+        if flatfield is None:
             self.logger.log(logging.ERROR, "Status:Need to provide flatfield!")
             return False
-        else: self.wf = whitefield
+        else: self.ff = flatfield
 
         # Init Frame and Thread
         self.measured_cps = 0.0
@@ -91,7 +91,7 @@ class bgflatProcessor(Thread):
                 background_indx = np.argmin(self.inten) # search for minimum intensity 
                 self.bg = data_cube[background_indx, :, :]
                 # process
-                bgflat(data_cube, self.wf, self.bg, out = self.data_cube_corr)
+                bgflat(data_cube, self.ff, self.bg, out = self.data_cube_corr)
                 # put results into output queue
                 if not output_queue.full():
                     output_queue.put((cube_time, self.data_cube_corr), block=False)

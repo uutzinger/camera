@@ -153,7 +153,8 @@ class rtpCapture(Thread):
             else:
                 gst = gst + 'decodebin ! videoconvert ! '
         gst = gst + 'appsink sync=false'
-        self.logger.log(logging.INFO, gst)
+        if not self.log.full(): self.log.put_nowait((logging.INFO, gst))
+        
         self.cam = cv2.VideoCapture(gst, cv2.CAP_GSTREAMER)
 
         self.cam_open = self.cam.isOpened()        
@@ -177,8 +178,10 @@ if __name__ == '__main__':
     logger.log(logging.DEBUG, "Starting Capture")
 
     camera = rtpCapture(
+        configs,
         port=554, 
         gpu = False)
+    
     camera.start()
 
     logger.log(logging.DEBUG, "Getting Frames")

@@ -3,6 +3,7 @@
 # Uses opencv video capture to capture system's camera
 # Adapts to operating system and allows configuation of codec
 # Urs Utzinger
+# 
 # 2021 Initialize, Remove Frame acces (use only queue)
 # 2019 Initial release, based on Bitbuckets FRC 4183 code
 ###############################################################################
@@ -131,13 +132,13 @@ class cv2Capture(Thread):
 
                     self.capture.put_nowait((self.frame_time, img_proc))
                 else:
-                    if (not self.log.full()): self.log.put_nowait((logging.WARNING, "CV2:Capture Queue is full!"))
+                    if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Capture Queue is full!"))
 
 
             # FPS calculation
             if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_fps = num_frames/5.0
-                if (not self.log.full()): self.log.put_nowait((logging.INFO, "CAM:FPS:{}".format(self.measured_fps)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "CAM:FPS:{}".format(self.measured_fps)))
                 last_time = current_time
                 num_frames = 0
 
