@@ -17,7 +17,7 @@ from threading import Thread, Lock
 from queue import Queue
 
 # System
-import logging, time, os
+import logging, time, os, subprocess
 
 # Open Computer Vision
 import cv2
@@ -413,18 +413,21 @@ class nanoCapture(Thread):
     @property
     def exposure(self):              
         if self.cam_open:
-            return self.capture._exposure  
+            # return os.system("v4l2-ctl -C exposure_absolute -d {}".format(self._camera_num))
+            res = subprocess.run(["v4l2-ctl", "-C exposure_absolute -d {}".format(self._camera_num)], stdout=subprocess.PIPE).stdout.decode('utf-8')
+            return res
         else: return float("NaN")
     @exposure.setter
     def exposure(self, val):
         if val is None:
             return
         val = int(val)
-        self._exposure = val
         if self.cam_open:
             with self.cam_lock:
-                os.system("v4l2-ctl -c exposure_absolute={} -d {}".format(val, self._camera_num))
-            if not self.log.full(): self.log.put_nowait((logging.INFO, "NanoCap:Exposure:{}".format(self._exposure)))
+                res = subprocess.run(["v4l2-ctl -c exposure_absolute={} -d {}".format(val, self._camera_num)], stdout=subprocess.PIPE).stdout.decode('utf-8')
+                # os.system("v4l2-ctl -c exposure_absolute={} -d {}".format(val, self._camera_num))
+                self._exposure = val
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "NanoCap:Exposure:{}".format(val)))
         else:
             if not self.log.full(): self.log.put_nowait((logging.ERROR, "NanoCap:Failed to set exposure to{}!".format(val)))
 
