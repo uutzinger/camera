@@ -361,7 +361,7 @@ class blackflyCapture(Thread):
             val = max(self.cam.Width.GetMin(), min(self.cam.Width.GetMax(), val))
             if self.cam.Width.GetAccessMode() == PySpin.RW:
                 with self.cam_lock: self.cam.Width.SetValue(val)
-                self._camera_res = int(self.cam.Width.GetValue(), self._camera_res[1]) 
+                self._camera_res = (int(self.cam.Width.GetValue()), int(self._camera_res[1])) 
                 if not self.log.full(): self.log.put_nowait((logging.INFO, "PySpin:Camera:Width:{}".format(val)))    
             else:
                 if not self.log.full(): self.log.put_nowait((logging.ERROR, "PySpin:Camera:Failed to set width to {}!".format(val)))
@@ -384,7 +384,7 @@ class blackflyCapture(Thread):
             val = max(self.cam.Height.GetMin(), min(self.cam.Height.GetMax(), val)) 
             if self.cam.Height.GetAccessMode() == PySpin.RW:
                 with self.cam_lock: self.cam.Height.SetValue(val)
-                self._camera_res = int(self._camera_res[0], self.cam.Height.GetValue())
+                self._camera_res = (int(self._camera_res[0]), int(self.cam.Height.GetValue()))
                 if not self.log.full(): self.log.put_nowait((logging.INFO, "PySpin:Camera:Height:{}".format(val)))
             else:
                 if not self.log.full(): self.log.put_nowait((logging.ERROR, "PySpin:Camera:Failed to set height to {}!".format(val)))
@@ -395,7 +395,7 @@ class blackflyCapture(Thread):
     def resolution(self):
         """returns current resolution width x height """
         if self.cam_open:
-            return int(self.cam.Width.GetValue(), self.cam.Height.GetValue())
+            return (int(self.cam.Width.GetValue()), int(self.cam.Height.GetValue()))
         else: 
             return (-1, -1)
     @resolution.setter
@@ -434,7 +434,7 @@ class blackflyCapture(Thread):
                 else:
                     if not self.log.full(): self.log.put_nowait((logging.ERROR, "PySpin:Camera:Failed to set resolution to {},{}!".format(val,val)))
                     return
-            self._camera_res = int(self.cam.Width.GetValue(), self.cam.Height.GetValue())
+            self._camera_res = (int(self.cam.Width.GetValue()), int(self.cam.Height.GetValue()))
         else: # camera not open
             if not self.log.full(): self.log.put_nowait((logging.ERROR, "PySpin:Camera:Failed to set resolution, camera not open!"))
 
