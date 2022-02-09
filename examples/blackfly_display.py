@@ -11,15 +11,38 @@ import cv2
 import logging
 import time
 
+from sqlalchemy import true
+
 # Camera configuration file
-from configs.blackfly_configs  import configs
+configs = {
+    'camera_res'      : (720, 540),     # image width & height, can read ROI
+    'exposure'        : 1750,           # in microseconds, -1 = autoexposure
+    'autoexposure'    : 0,              # 0,1
+    'fps'             : 500,            # 
+    'binning'         : (1,1),          # 1,2 or 4
+    'offset'          : (0,0),          # 
+    'adc'             : 8,              # 8,10,12,14 bit
+    'trigout'         : 2,              # -1 no trigger output, 
+                                        # line 1 has opto isolator but requires pullup to 3V
+                                        # line 2 has not isolation and takes 4-10us for a transition
+    'ttlinv'          : True,           # inverted logic levels are best
+    'trigin'          : -1,             # -1 use software, otherwise hardware
+    'output_res'      : (-1, -1),       # Output resolution, -1 = do not change
+    'flip'            : 0,              # 0=norotation 
+                                        # 1=ccw90deg 
+                                        # 2=rotation180 
+                                        # 3=cw90 
+                                        # 4=horizontal 
+                                        # 5=upright diagonal flip 
+                                        # 6=vertical 
+                                        # 7=uperleft diagonal flip
+    'displayfps'       : 50             # frame rate for display, usually we skip frames for display but record at full camera fps
+}
 
 if configs['displayfps'] >= configs['fps']:
     display_interval = 0
 else:
     display_interval = 1.0/configs['displayfps']
-
-dps_measure_time = 5.0
 
 window_name    = 'Camera'
 font           = cv2.FONT_HERSHEY_SIMPLEX
@@ -42,14 +65,15 @@ print("Getting Images")
 camera.start()
 
 # Initialize Variables
-last_display  = time.time()
-last_time = time.time()
-measured_dps  = 0
+dps_measure_time     = 5.0
+last_display         = time.time()
+last_time            = time.time()
+measured_dps         = 0
 num_frames_received  = 0
 num_frames_displayed = 0
 
 stop = False
-while ( (cv2.getWindowProperty(window_name, 0) >= 0) and (not stop)):
+while (not stop):
     current_time = time.time()
     # start_time   = time.perf_counter()
 
@@ -59,7 +83,7 @@ while ( (cv2.getWindowProperty(window_name, 0) >= 0) and (not stop)):
 
     if current_time - last_time >= dps_measure_time:
         measured_fps = num_frames_received/dps_measure_time
-        logger.log(logging.DEBUG, "Status:Frames displayed per second:{}".format(measured_fps))
+        logger.log(logging.DEBUG, "Status:Frames obtained per second:{}".format(measured_fps))
         num_frames_received = 0
         measured_dps = num_frames_displayed/dps_measure_time
         logger.log(logging.DEBUG, "Status:Frames displayed per second:{}".format(measured_dps))
@@ -72,12 +96,14 @@ while ( (cv2.getWindowProperty(window_name, 0) >= 0) and (not stop)):
         cv2.putText(display_frame,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
         cv2.imshow(window_name, display_frame)
         # quit the program if users enter q or closes the display window
-        if cv2.waitKey(1) & 0xFF == ord('q'): stop = True
+        try:
+            if (cv2.waitKey(1) & 0xFF == ord('q')) or (cv2.getWindowProperty(window_name, 0) < 0): stop = True
+        except: 
+            stop = True  
         last_display = current_time
         num_frames_displayed += 1
 
     # avoid looping unnecessarely, 
-    # this is only relevant for low display frames per second
     # end_time = time.perf_counter()
     # delay_time = loop_interval - (end_time - start_time)
     # if  delay_time >= 0.005:

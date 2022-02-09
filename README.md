@@ -127,7 +127,7 @@ Data transfer between the main program and capture and storage threads.
 * ```capture_display.py``` tests camera capture for all capture platforms except blackfly.  
 * ```blackfly_display.py``` tests the blackfly capture module, displays images and reports framerate.  
 * ```capture_saveavi_display.py``` display and save to avi files
-* ```capture_savemkv_display.py``` display and save to avi files
+* ```capture_savemkv_display.py``` display and save to mkv files
 
 * ```test_display.py``` testing of opencv display framerate, no camera, just refresh rate.
 * ```test_savehd5.py``` testing of the disk throughput with hdf5, no camera
