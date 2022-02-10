@@ -107,7 +107,7 @@ class libcameraCapture(Thread):
             # FPS calculation
             if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_fps = num_frames/5.0
-                if not self.log.full(): self.log.put_nowait((logging.INFO, "NanoCap:FPS:{}".format(self.measured_fps)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "libcameraCap:FPS:{}".format(self.measured_fps)))
                 last_time = current_time
                 num_frames = 0
 
@@ -247,7 +247,7 @@ class libcameraCapture(Thread):
         self.cam_open = self.cam.isOpened()
 
         if not self.cam_open:
-            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "NanoCap:Failed to open camera!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "libcameraCap:Failed to open camera!"))
 
     # Camera Routines
     ##################################################################

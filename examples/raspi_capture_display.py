@@ -31,7 +31,7 @@ configs = {
     # 1920x1080 6.4fps
     # 2592x1944 6.4fps
     ##############################################
-    'camera_res'      : (1280, 720),    # camera width & height
+    'camera_res'      : (640, 480),     # camera width & height
     'exposure'        : 10000,          # microseconds
     'autoexposure'    : 0,              # 
     'fps'             : 60,             # 
@@ -39,7 +39,7 @@ configs = {
     'buffersize'      : 4,              # default is 4 for V4L2, max 10, 
     'output_res'      : (-1, -1),       # Output resolution 
     'flip'            : 0,              # 0=norotation 
-    'displayfps'       : 30              # frame rate for display server
+    'displayfps'       :30              # frame rate for display server
     }
 
 if configs['displayfps'] >= 0.8*configs['fps']:

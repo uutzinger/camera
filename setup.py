@@ -23,10 +23,10 @@ setup(
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # http://packaging.python.org/en/latest/tutorial.html#version
-    version='1.0.11',
+    version='1.1.0',
 
-    description=("Python wrapper for USB, blackfly, Raspi, Jetson Nano cameras"  
-                 "Works on Windows, Raspian, JetsonNano, MacOS"   ),
+    description=("Python wrapper for USB, blackfly, Raspi, Jetson Nano cameras. "  
+                 "Works on Windows, Raspian (inlc Bullseye), JetsonNano, MacOS"   ),
 
     # The project's main homepage.
     url='https://github.com/uutzinger/camera',
