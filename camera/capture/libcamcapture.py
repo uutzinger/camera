@@ -20,6 +20,9 @@ import logging, time, os, subprocess
 # Open Computer Vision
 import cv2
 
+# platform system
+import platform
+
 ###############################################################################
 # Video Capture
 ###############################################################################
@@ -101,26 +104,7 @@ class libcameraCapture(Thread):
                 self.frame_time = int(current_time*1000)
             
                 if (img is not None) and (not self.capture.full()):
-                    if   self._flip_method == 0: # no flipping
-                        img_proc = img
-                    elif self._flip_method == 1: # ccw 90
-                        img_proc = cv2.roate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                    elif self._flip_method == 2: # rot 180, same as flip lr & up
-                        img_proc = cv2.roate(img, cv2.ROTATE_180)
-                    elif self._flip_method == 3: # cw 90
-                        img_proc = cv2.roate(img, cv2.ROTATE_90_CLOCKWISE)
-                    elif self._flip_method == 4: # horizontal
-                        img_proc = cv2.flip(img, 0)
-                    elif self._flip_method == 5: # upright diagonal. ccw & lr
-                        img_proc = cv2.flip(cv2.roate(img, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
-                    elif self._flip_method == 6: # vertical
-                        img_proc = cv2.flip(img, 1)
-                    elif self._flip_method == 7: # upperleft diagonal
-                        img_proc = cv2.transpose(img)
-                    else:
-                        img_proc = img # not a valid flip method
-                    
-                    self.capture.put_nowait((current_time*1000., img_proc))
+                    self.capture.put_nowait((current_time*1000., img))
                 else:
                     if not self.log.full(): self.log.put_nowait((logging.WARNING, "libcameraCap:Capture Queue is full!"))
 
@@ -309,6 +293,10 @@ if __name__ == '__main__':
 
     logger.log(logging.DEBUG, "Starting Capture")
 
+    plat = platform.system() 
+    if plat == 'Linux':
+        platform.machine() == "armv7l":
+    
     camera = libcameraCapture(configs, camera_num=0)
     camera.start()
 
