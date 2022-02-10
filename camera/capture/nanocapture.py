@@ -266,12 +266,10 @@ class nanoCapture(Thread):
             #        'bufapi-version=false '
             ###################################################################################
 
-            if framerate == 120:
-                capture_width = 1280
-                capture_height = 720
-                sensormode = 5
-            else:
-                sensormode = -1
+            # if framerate > 60:
+            #     sensormode = 5
+            # else:
+            #     sensormode = -1
 
             if exposure_time <= 0:
                 # auto exposure
@@ -281,7 +279,7 @@ class nanoCapture(Thread):
                     'sensor-id={:d} '.format(camera_num)            +
                     'name="NanoCam{:d}" '.format(camera_num)        +
                     'do-timestamp=true '                            +
-                    'sensor-mode={:d} '.format(sensormode)          +
+                    # 'sensor-mode={:d} '.format(sensormode)          +
                     'timeout=0 '                                    +
                     'blocksize=-1 '                                 +
                     'num-buffers=-1 '                               +
@@ -310,7 +308,7 @@ class nanoCapture(Thread):
                     'timeout=0 '                                    +
                     'blocksize=-1 '                                 +
                     'num-buffers=-1 '                               +
-                    'sensor-mode={:d} '.format(sensormode)          +
+                    # 'sensor-mode={:d} '.format(sensormode)          +
                     'tnr-strength=-1 '                              +
                     'tnr-mode=1 '                                   +
                     'aeantibanding=1 '                              +

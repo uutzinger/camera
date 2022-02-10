@@ -15,13 +15,10 @@ from threading import Thread, Lock
 from queue import Queue
 
 # System
-import logging, time, os, subprocess
+import logging, time
 
 # Open Computer Vision
 import cv2
-
-# platform system
-import platform
 
 ###############################################################################
 # Video Capture
@@ -98,14 +95,13 @@ class libcameraCapture(Thread):
 
             # Get New Image
             if self.cam is not None:
-                with self.cam_lock:
-                    _, img = self.cam.read()
+                with self.cam_lock: _, img = self.cam.read()
                 num_frames += 1
                 self.frame_time = int(current_time*1000)
             
-                if (img is not None) and (not self.capture.full()):
+                if (img is not None) and (not self.capture.full()):  
                     self.capture.put_nowait((current_time*1000., img))
-                else:
+                else:                       
                     if not self.log.full(): self.log.put_nowait((logging.WARNING, "libcameraCap:Capture Queue is full!"))
 
             # FPS calculation
@@ -129,6 +125,7 @@ class libcameraCapture(Thread):
 
             """
             Create gstreamer pipeline string
+            It is not yet possible to turn off autoexposure or set camera number
             """
             ###################################################################################
             # gstreamer Examples
@@ -155,19 +152,16 @@ class libcameraCapture(Thread):
             # ! jpegenc 
             # ! tcpserversink  host=192.168.178.32 port=5000
 
-            if framerate == 120:
-                capture_width = 1280
-                capture_height = 720
-                sensormode = 5
-            else:
-                sensormode = -1
+            if framerate > 60:
+                capture_width = 640
+                capture_height = 480
 
-            if exposure_time <= 0:
-                pass
+            if exposure_time > 0:
+                pass # interface is not exposed
 
             # deal with auto resizing
             if output_height <= 0: output_height = capture_height
-            if output_width  <=0:  output_width  = capture_width
+            if output_width  <= 0: output_width  = capture_width
 
             ###################################################################################
             # libcamerasrc
@@ -175,9 +169,9 @@ class libcameraCapture(Thread):
             ###################################################################################
 
             libcamerasrc_str = (
-                'libcamerasrc '                                     +
-                'camera-name="Camera {:d}" '.format(camera_num)     + 
-                'name="libcamerasrc{:d}" '.format(camera_num)       +
+                'libcamerasrc ' +
+                #'camera-name="Camera {:d}" '.format(camera_num)     + 
+                'name="libcamerasrc{:d}" '.format(camera_num)
             )
 
             ###################################################################################
@@ -198,26 +192,18 @@ class libcameraCapture(Thread):
             #   automatic (8) – Select flip method based on image-orientation tag
             ###################################################################################
 
-            if   self._flip_method == 0: # no flipping
-                flipstr = '! videoflip method=0 '
-            elif self._flip_method == 1: # ccw 90
-                flipstr = '! videoflip method=3 '
-            elif self._flip_method == 2: # rot 180, same as flip lr & up
-                flipstr = '! videoflip method=2 '
-            elif self._flip_method == 3: # cw 90
-                flipstr = '! videoflip method=1 '
-            elif self._flip_method == 4: # horizontal
-                flipstr = '! videoflip method=4 '
-            elif self._flip_method == 5: # upright diagonal. ccw & lr
-                flipstr = '! videoflip method=7 '
-            elif self._flip_method == 6: # vertical
-                flipstr = '! videoflip method=5 '
-            elif self._flip_method == 7: # upperleft diagonal
-                flipstr = '! videoflip method=6 '
+            if   flip_method == 0: flip = 0 # no flipping
+            elif flip_method == 1: flip = 3 # ccw 90
+            elif flip_method == 2: flip = 2 # rot 180, same as flip lr & up
+            elif flip_method == 3: flip = 1 # cw 90
+            elif flip_method == 4: flip = 4 # horizontal
+            elif flip_method == 5: flip = 7 # upright diagonal. ccw & lr
+            elif flip_method == 6: flip = 5 # vertical
+            elif flip_method == 7: flip = 6 # upperleft diagonal
             
             gstreamer_str = (
                 '! video/x-raw, '                                                                       +
-                'width=(int){:d}, ',format(capture_width)                                               +
+                'width=(int){:d}, '.format(capture_width)                                               +
                 'height=(int){:d}, '.format(capture_height)                                             +
                 'framerate=(fraction){:d}/1, '.format(framerate)                                        +
                 # 'max-framerate=(fraction){:d}/1, '.format(something)                                    +
@@ -226,15 +212,17 @@ class libcameraCapture(Thread):
                 # 'chroma-site="", '                                                                      +
                 # 'colorimetry="", '                                                                      +
                 'pixel-aspect-ratio=1/1, '                                                              +
-                'format={%s} '.format('NV12')                                                           +
+                'format="{:s}" '.format('NV12')                                                         +
                 '! videoconvert '                                                                       +
                 '! videoscale '                                                                         +
                 '! video/x-raw, width=(int){:d}, height=(int){:d} '.format(output_width, output_height) +
-                flipstr +
+                '! videoflip method={:d} '.format(flip)                                                 +
+                '! videoconvert '                                                                       +
+                '! video/x-raw, format=(string)BGR '                                                    +
                 '! appsink')
 
             return ( libcamerasrc_str + gstreamer_str )
-
+            
     #
     # Setup the Camera
     ############################################################################
@@ -277,7 +265,7 @@ if __name__ == '__main__':
         'exposure'        : -1,             # microseconds, internally converted to nano seconds, <= 0 autoexposure
         'fps'             : 60,             # can not get more than 60fps
         'output_res'      : (-1, -1),       # Output resolution 
-        'flip'            : 6,              # 0=norotation 
+        'flip'            : 0,              # 0=norotation 
                                             # 1=ccw90deg 
                                             # 2=rotation180 
                                             # 3=cw90 
@@ -287,15 +275,15 @@ if __name__ == '__main__':
                                             # 7=uperleft diagonal flip
         'displayfps'       : 30
     }
-
+    if configs['displayfps'] >= 0.8*configs['fps']:
+        display_interval = 0
+    else:
+        display_interval = 1.0/configs['displayfps']
+        
     logging.basicConfig(level=logging.DEBUG)
     logger = logging.getLogger("Raspi libcamera Capture")
 
     logger.log(logging.DEBUG, "Starting Capture")
-
-    plat = platform.system() 
-    if plat == 'Linux':
-        platform.machine() == "armv7l":
     
     camera = libcameraCapture(configs, camera_num=0)
     camera.start()
@@ -307,20 +295,21 @@ if __name__ == '__main__':
 
     last_display = time.perf_counter()
     stop = False    
-    while not stop:
-        current_time = time.perf_counter()
 
+    while not stop:
+
+        current_time = time.perf_counter()
         (frame_time, frame) = camera.capture.get(block=True, timeout=None)
 
         if (current_time - last_display) >= display_interval:
             cv2.imshow('Camera', frame)
             last_display = current_time
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):  stop = True
-        
-        try:
-            if cv2.getWindowProperty(window_name, cv2.WND_PROP_AUTOSIZE) < 0: stop = True
-        except: stop = True
+            if cv2.waitKey(1) & 0xFF == ord('q'):  stop = True
+            try: 
+                if cv2.getWindowProperty(window_name, cv2.WND_PROP_AUTOSIZE) < 0: 
+                    stop = True
+            except: 
+                stop = True
          
         while not camera.log.empty():
             (level, msg) = camera.log.get_nowait()
