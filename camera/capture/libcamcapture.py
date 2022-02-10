@@ -302,7 +302,7 @@ if __name__ == '__main__':
         (frame_time, frame) = camera.capture.get(block=True, timeout=None)
 
         if (current_time - last_display) >= display_interval:
-            cv2.imshow('Camera', frame)
+            cv2.imshow(window_name, frame)
             last_display = current_time
             if cv2.waitKey(1) & 0xFF == ord('q'):  stop = True
             try: 

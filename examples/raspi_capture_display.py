@@ -84,7 +84,8 @@ measured_dps   = 0
 num_frames_received    = 0
 num_frames_displayed   = 0
 
-while(cv2.getWindowProperty(window_name, 0) >= 0):
+stop = False
+while(not stop):
 
     current_time = time.perf_counter()
 
@@ -116,8 +117,10 @@ while(cv2.getWindowProperty(window_name, 0) >= 0):
         # quit the program if users enter q or closes the display window
         # the waitKey function limits the display frame rate
         # without waitKey the opencv window is not refreshed
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        if cv2.waitKey(1) & 0xFF == ord('q'): stop = True
+        try:
+            if cv2.getWindowProperty(window_name, 0) < 0: stop = True
+        except: stop =True
         last_display = current_time
         num_frames_displayed += 1
 
