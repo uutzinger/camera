@@ -176,6 +176,7 @@ Interface for picamera module. Depricated since cv2Capture is more efficient for
 
 ## Changes
 ```
+2022 - February added libcamera capture for Raspian Bullseye
 2022 - January added queue as intialization option, updated cv2Capture
 2021 - November moved queue into class
 2021 - November added rtp server and client
