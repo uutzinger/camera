@@ -211,7 +211,7 @@ class libcameraCapture(Thread):
                 # 'interlatce-mode="progressive", '                                                       +
                 # 'chroma-site="", '                                                                      +
                 # 'colorimetry="", '                                                                      +
-                #'pixel-aspect-ratio=1/1, '                                                               +
+                #' pixel-aspect-ratio=1/1, '                                                              +
                 'format="{:s}" '.format('NV12')                                                         +
                 '! videoconvert '                                                                       +
                 '! videoscale '                                                                         +

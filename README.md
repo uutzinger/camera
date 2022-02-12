@@ -197,7 +197,7 @@ python for the lab:
 https://www.pythonforthelab.com/blog/handling-and-sharing-data-between-threads/  
 
 
-## Camera Settings
+## Example Camera Peformance
 ### Sony IMX287 FLIR Blackfly S BFS-U3-04S2M
 * 720x540 524fps
 * auto_exposure off
@@ -224,12 +224,12 @@ https://www.pythonforthelab.com/blog/handling-and-sharing-data-between-threads/
 * 1920x1080 4.4fps
 * 3280x2464 2.8fps
 
-### ELP USB Camera
+### ELP USB Camera RasPi
 * MJPG
 * 320x240 and 640/480, 120fps
-* auto_exposure, ?
-* auto_exposure = -> static exposure
-* exposure is about exposure value /10 in ms 
+* auto_exposure, can not figure out out in MJPG mode
+* auto_exposure = 0 -> static exposure
+* exposure is about (exposure value / 10) in ms 
 * WB_TEMP 6500
 
 ### Dell Internal USB
