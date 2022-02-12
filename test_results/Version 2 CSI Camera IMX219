@@ -1,0 +1,37 @@
+Version 2 CSI Camera IMX219
+http://www.imagequalitylabs.com/PDFs/OmniVision_OV5647.pdf
+
+Res, fsp, actual fps
+
+qvga
+320x240  15 15 640x480-pGAA
+320x240  30 15
+320x240  90 15
+320x240 120 15
+
+vga 120
+640x480 120 15 
+640x480  90 15
+640x480  60 15
+
+720p 120
+1280x720 90 15 (1920x1080-pGAA)
+1280x720 60 15
+1280x720 30 15
+
+1640×922 40fps
+1920x1080-pBAA not working
+
+1080p 30
+1920x1080 30 12 
+1920x1080 15 13 
+1920x1080 10 12 
+
+
+1640×1232 30fps
+1640x1232-pBAA not working
+
+max 15
+3280×2464 5 2 not working
+2592x1944 10 no working
+2592x1944 15 not working

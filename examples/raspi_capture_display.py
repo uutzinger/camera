@@ -31,15 +31,24 @@ configs = {
     # 1920x1080 6.4fps
     # 2592x1944 6.4fps
     ##############################################
+<<<<<<< HEAD
+    'camera_res'      : (320, 240),     # camera width & height
+    'exposure'        : 1000,          # microseconds
+=======
     'camera_res'      : (640, 480),     # camera width & height
     'exposure'        : 10000,          # microseconds
+>>>>>>> 7f2a00fc961c45a97b4e20cd9224d2701097438c
     'autoexposure'    : 0,              # 
-    'fps'             : 60,             # 
+    'fps'             : 120,             # 
     'fourcc'          : 'YU12',         # 
     'buffersize'      : 4,              # default is 4 for V4L2, max 10, 
     'output_res'      : (-1, -1),       # Output resolution 
     'flip'            : 0,              # 0=norotation 
+<<<<<<< HEAD
+    'displayfps'      : 10              # frame rate for display server
+=======
     'displayfps'       :30              # frame rate for display server
+>>>>>>> 7f2a00fc961c45a97b4e20cd9224d2701097438c
     }
 
 if configs['displayfps'] >= 0.8*configs['fps']:
@@ -114,9 +123,9 @@ while(not stop):
         cv2.putText(frame_display,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
         cv2.putText(frame_display,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
         cv2.imshow(window_name, frame_display)
-        # quit the program if users enter q or closes the display window
-        # the waitKey function limits the display frame rate
-        # without waitKey the opencv window is not refreshed
+        ## quit the program if users enter q or closes the display window
+        ## the waitKey function limits the display frame rate
+        ## without waitKey the opencv window is not refreshed
         if cv2.waitKey(1) & 0xFF == ord('q'): stop = True
         try:
             if cv2.getWindowProperty(window_name, 0) < 0: stop = True
