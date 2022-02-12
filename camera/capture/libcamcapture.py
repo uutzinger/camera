@@ -207,18 +207,18 @@ class libcameraCapture(Thread):
                 'height=(int){:d}, '.format(capture_height)                                             +
                 'framerate=(fraction){:d}/1, '.format(framerate)                                        +
                 # 'max-framerate=(fraction){:d}/1, '.format(something)                                    +
-                'views=1, '                                                                             +
-                # 'interlatce-mode="progrfessive", '                                                      +
+                # 'views=1 '                                                                              +
+                # 'interlatce-mode="progressive", '                                                       +
                 # 'chroma-site="", '                                                                      +
                 # 'colorimetry="", '                                                                      +
-                'pixel-aspect-ratio=1/1, '                                                              +
+                #'pixel-aspect-ratio=1/1, '                                                               +
                 'format="{:s}" '.format('NV12')                                                         +
                 '! videoconvert '                                                                       +
                 '! videoscale '                                                                         +
                 '! video/x-raw, width=(int){:d}, height=(int){:d} '.format(output_width, output_height) +
                 '! videoflip method={:d} '.format(flip)                                                 +
-                '! videoconvert '                                                                       +
-                '! video/x-raw, format=(string)BGR '                                                    +
+                # '! videoconvert '                                                                       +
+                # '! video/x-raw, format=(string)BGR '                                                    +
                 '! appsink')
 
             return ( libcamerasrc_str + gstreamer_str )
@@ -261,9 +261,9 @@ class libcameraCapture(Thread):
 if __name__ == '__main__':
 
     configs = {
-        'camera_res'      : (1280, 720),    # width & height
+        'camera_res'      : (3280, 2464),    # width & height
         'exposure'        : -1,             # microseconds, internally converted to nano seconds, <= 0 autoexposure
-        'fps'             : 60,             # can not get more than 60fps
+        'fps'             : 5,             # can not get more than 60fps
         'output_res'      : (-1, -1),       # Output resolution 
         'flip'            : 0,              # 0=norotation 
                                             # 1=ccw90deg 
@@ -305,11 +305,11 @@ if __name__ == '__main__':
             cv2.imshow(window_name, frame)
             last_display = current_time
             if cv2.waitKey(1) & 0xFF == ord('q'):  stop = True
-            try: 
-                if cv2.getWindowProperty(window_name, cv2.WND_PROP_AUTOSIZE) < 0: 
-                    stop = True
-            except: 
-                stop = True
+            #try: 
+            #    if cv2.getWindowProperty(window_name, cv2.WND_PROP_AUTOSIZE) < 0: 
+            #        stop = True
+            #except: 
+            #    stop = True
          
         while not camera.log.empty():
             (level, msg) = camera.log.get_nowait()

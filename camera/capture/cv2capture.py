@@ -165,11 +165,11 @@ class cv2Capture(Thread):
 
         if self.cam_open:
             # Apply settings to camera
-            self.fps           = self._framerate       # desired fps
-            self.width         = self._camera_res[0]   # image resolution
             self.height        = self._camera_res[1]   # image resolution
+            self.width         = self._camera_res[0]   # image resolution
             self.autoexposure  = self._autoexposure    # autoexposure
             self.exposure      = self._exposure        # camera exposure
+            self.fps           = self._framerate       # desired fps
             self.buffersize    = self._buffersize      # camera drive buffer size
             self.fourcc        = self._fourcc          # camera sensor encoding format
             # Update records
@@ -202,8 +202,9 @@ class cv2Capture(Thread):
         if self.cam_open and val > 0:
             with self.cam_lock:
                 if self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, val):
-                    self._camera_res = (int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH)), int(self._camera_res[1]))
-                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Width:{}".format(self.width)))
+                    # self._camera_res = (int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH)), int(self._camera_res[1]))
+                    # HEIGHT and WIDTH only valid if both were set
+                   if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Width:{}".format(val)))
                 else:
                     if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set width to {}".format(val)))
         else:
@@ -224,8 +225,9 @@ class cv2Capture(Thread):
         if self.cam_open and val > 0:
             with self.cam_lock:
                 if self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, int(val)):
-                    self._camera_res = (int(self._camera_res[0]), int(self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Height:{}".format(self.height)))
+                    # self._camera_res = (int(self._camera_res[0]), int(self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+                    # HEIGHT and WIDTH only valid if both were set
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Height:{}".format(val)))
                 else:
                     if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set height to {}".format(val)))
         else:
@@ -248,6 +250,7 @@ class cv2Capture(Thread):
             else: # given only one value for resolution
                 self.width  = int(val)
                 self.height = int(val)
+            self._camera_res = (int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH)), int(self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT)))
         else: # camera not open
             if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set resolution, camera not open!"))
 
@@ -383,11 +386,11 @@ class cv2Capture(Thread):
 if __name__ == '__main__':
 
     configs = {
-        'camera_res'      : (1280, 720 ),   # 
-        'exposure'        : -6,             # 
-        'autoexposure'    : 1,              # 
+        'camera_res'      : (1920,1080),      # 
+        'exposure'        : 1,              # 
+        'autoexposure'    : 0,              # 
         'fps'             : 30,             # 
-        'fourcc'          : -1,             # 
+        'fourcc'          : 'MJPG',         # 
         'buffersize'      : -1,             #  
         'output_res'      : (-1, -1),       #  
         'flip'            : 0,              #  
@@ -402,7 +405,7 @@ if __name__ == '__main__':
    
     logger.log(logging.DEBUG, "Starting Capture")
 
-    camera = cv2Capture(configs,camera_num=0)     
+    camera = cv2Capture(configs,camera_num=1)     
     camera.start()
 
     logger.log(logging.DEBUG, "Getting Frames")
@@ -410,9 +413,14 @@ if __name__ == '__main__':
     window_handle = cv2.namedWindow("Camera", cv2.WINDOW_AUTOSIZE)
     last_display = time.perf_counter()
 
-    while(cv2.getWindowProperty("Camera", cv2.WND_PROP_AUTOSIZE) >= 0):
+    stop = False  
+    while(not stop):
         current_time = time.perf_counter()
-        
+
+        while not camera.log.empty():
+            (level, msg) = camera.log.get_nowait()
+            logger.log(level, "{}".format(msg))
+
         (frame_time, frame) = camera.capture.get(block=True, timeout=None)
         while not camera.log.empty():
             (level, msg) = camera.log.get_nowait()
@@ -421,8 +429,13 @@ if __name__ == '__main__':
         if (current_time - last_display) >= display_interval:
             cv2.imshow('Camera', frame)
             last_display = current_time
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):  break
+            if cv2.waitKey(1) & 0xFF == ord('q'):  stop=True
+            #try: 
+            #    if cv2.getWindowProperty(window_name, cv2.WND_PROP_AUTOSIZE) < 0: 
+            #        stop = True
+            #except: 
+            #    stop = True
+         
 
     camera.stop()
     cv2.destroyAllWindows()

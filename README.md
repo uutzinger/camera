@@ -225,8 +225,10 @@ https://www.pythonforthelab.com/blog/handling-and-sharing-data-between-threads/
 
 ### ELP USB Camera
 * MJPG
-* 320x240, 120fps
-* auto_exposure ?
+* 320x240 and 640/480, 120fps
+* auto_exposure, ?
+* auto_exposure = -> static exposure
+* exposure is about exposure value /10 in ms 
 * WB_TEMP 6500
 
 ### Dell Internal USB

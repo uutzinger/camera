@@ -1,0 +1,37 @@
+Raspberry Pi
+Bulleseye
+Version 1 CSI Camera ov5647
+http://www.imagequalitylabs.com/PDFs/OmniVision_OV5647.pdf
+
+Res, fsp, actual fps
+qvga 120
+320x240  15 15.2
+320x240  30 30.2
+320x240  90 90.4
+320x240 120 not available
+
+vga 90
+640x480 90 90
+640x480 60 60.2
+640x480 30 
+
+1024x768 30 6.2
+
+720p 60
+1280x720 90 48
+1280x720 60 53.4
+1280x720 30 15 2
+
+960p 45
+960x582 15 15
+960x582 45 45 flicker
+
+1080p 30
+1920x1080 30 6.2
+1920x1080 15 6
+1920x1080 10 5
+
+max 15
+2592x1944 5  2.6
+2592x1944 10 3.4
+2592x1944 20 3.6

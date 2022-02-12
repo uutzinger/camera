@@ -1,0 +1,24 @@
+Raspberry Pi
+Bulleseye
+fps is related to exposure time, exposure time is approx (exposure value/ 10) [ms]
+
+Res, fsp, actual fps
+
+qvga
+320x240  15 99
+320x240  30 99
+320x240  90 99
+320x240 120 99
+
+vga
+640x480 120 99
+640x480 60  
+640x480 30  99
+
+720p
+1280x720 120 58.8
+1280x720 60 55
+1280x720 30 50
+
+1080p 30
+1920x1080 30 23
