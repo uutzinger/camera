@@ -5,8 +5,7 @@
 ##########################################################################
 
 # System
-import logging, time, platform
-from os import fsdecode
+import logging, time, platform, os
 import math
 
 # Matrix Algebra
@@ -43,6 +42,7 @@ height = res[1]
 width = res[0]
 camera_index = 0 # default camera starts at 0 by operating system
 
+# Reducing the image resolution by binning (summing up pixels)
 bin_x = 10
 bin_y = 10
 scale = (bin_x*bin_y*255)
@@ -57,6 +57,7 @@ scale = (bin_x*bin_y*255)
 def displaytrans(data_bandpass):
     return np.sqrt(16.*np.abs(data_bandpass))
 
+# Binning 4 pixels of the 8bit images
 @jit(nopython=True, fastmath=True, parallel=True)
 def bin4_sum8(arr_in):
     m,n,o   = np.shape(arr_in)
@@ -68,6 +69,7 @@ def bin4_sum8(arr_in):
         arr_out[:,j,:] = arr_tmp[:,j*4,:] + arr_tmp[:,j*4+1,:] + arr_tmp[:,j*4+2,:] + arr_tmp[:,j*4+3,:]
     return arr_out
 
+# Binning 10 pixels of the 8bit images
 @jit(nopython=True, fastmath=True, parallel=True)
 def bin10_sum8(arr_in):
     m,n,o   = np.shape(arr_in)
@@ -91,25 +93,30 @@ logger = logging.getLogger("Main")
 
 # Construct poor man's lowpass filter y = (1-alpha) * y + alpha * x
 # https://dsp.stackexchange.com/questions/54086/single-pole-iir-low-pass-filter-which-is-the-correct-formula-for-the-decay-coe
-# filter cut off frequency at low side 0.5Hz
+
+# Filter LOW
+# filter cut off frequency: 0.5Hz
 f_s = configs['fps']                   # sampling frenecy [1/s]
 f_c = 0.5/(2.*f_s)                      # normalized cut off frequency
 w_c = (2.*3.141)*f_c                   # normalized cut off frequency in radians
 y = 1 - math.cos(w_c);                 # compute alpha for 3dB attenuation at cut off frequency
 alpha_l = -y + math.sqrt( y*y + 2*y ); # 
 
-# filter cut off frequency at high side 10Hz
+# Filter HIGH
+# filter cut off frequency: 10Hz
 f_s = configs['fps']                   # sampling frenecy [1/s]
 f_c = 10./(2.*f_s)                      # normalized cut off frequency
 w_c = (2.*3.141)*f_c                   # normalized cut off frequency in radians
 y = 1 - math.cos(w_c);                 # compute alpha for 3dB attenuation at cut off frequency
 alpha_h = -y + math.sqrt( y*y + 2*y ); # 
 
+# Processing Threads
+# LOW Processor
 from camera.processor.highpassprocessor import highpassProcessor
 processor_l= highpassProcessor(res=(height//bin_x, width//bin_y, 3), alpha=alpha_l)
 processor_l.start()
 logger.log(logging.INFO, "Started Processor 05")
-
+# HIGH processor
 processor_h = highpassProcessor(res=(height//bin_x, width//bin_y, 3), alpha=alpha_h)
 processor_h.start()
 logger.log(logging.INFO, "Started Processor 10")
@@ -117,50 +124,55 @@ logger.log(logging.INFO, "Started Processor 10")
 # Create camera interface
 # Computer OS and platform dependent
 plat = platform.system()
+
 if plat == 'Linux':
+    sysname, nodename, release, version, machine = os.uname()
+    release == release.split('.')
     if platform.machine() == "aarch64": # this is jetson nano for me
         from camera.capture.nanocapture import nanoCapture
         camera = nanoCapture(configs, camera_index)
     elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # this is raspberry for me
-        from camera.capture.cv2capture import cv2Capture
-        camera = cv2Capture(configs, camera_index)
+        if release[0] == 5:
+            from camera.capture.libcamcapture import libcameraCapture
+            camera = libcameraCapture(configs)            
+        else:
+            from camera.capture.cv2capture import cv2Capture
+            camera = cv2Capture(configs, camera_index)
 else:
     from camera.capture.cv2capture import cv2Capture
     camera = cv2Capture(configs, camera_index)
+        
 camera.start()
 logger.log(logging.INFO, "Started Capture")
 
 # Display
-main_window_name        = 'Capture'
+main_window_name         = 'Capture'
 processed_window_name_1b = 'Band Pass B'
 processed_window_name_1g = 'Band Pass G'
 processed_window_name_1r = 'High Pass R'
-processed_window_name_2 = 'Band Pass'
-processed_window_name_3 = 'Low Pass High'
-processed_window_name_4 = 'Low Pass Low'
-font                    = cv2.FONT_HERSHEY_SIMPLEX
-textLocation0           = (10,height-40)
-textLocation1           = (10,height-20)
-fontScale               = 1
-fontColor               = (255,255,255)
-lineType                = 2
+processed_window_name_2  = 'Band Pass'
+processed_window_name_3  = 'Low Pass High'
+processed_window_name_4  = 'Low Pass Low'
+font                     = cv2.FONT_HERSHEY_SIMPLEX
+textLocation0            = (10,height-40)
+textLocation1            = (10,height-20)
+fontScale                = 1
+fontColor                = (255,255,255)
+lineType                 = 2
 
 cv2.namedWindow(main_window_name,         cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 cv2.namedWindow(processed_window_name_1b, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 cv2.namedWindow(processed_window_name_1g, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 cv2.namedWindow(processed_window_name_1r, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 cv2.namedWindow(processed_window_name_2,  cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
-cv2.namedWindow(processed_window_name_3, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
-cv2.namedWindow(processed_window_name_4, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
+cv2.namedWindow(processed_window_name_3,  cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
+cv2.namedWindow(processed_window_name_4,  cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 
 # Initialize Variables
-last_display           = time.perf_counter() # keeo track of time to display images
-last_time              = time.perf_counter() # keeo track of time to display images
-counter                = 0
-bin_time  = 0
+last_display = last_time = time.perf_counter() # keep track of time to display images
+counter      = bin_time  = 0 
+stop                     = False 
 
-# Main Loop
-stop =  False
 while(not stop):
     current_time = time.perf_counter()
 
