@@ -99,8 +99,8 @@ class highpassProcessor(Thread):
             if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
                 self.measured_cps = num_cubes/5.0
                 self.measured_time = total_time/num_cubes
-                if not self.log.full(): self.log.put_nowait((logging.INFO, "Proc:CPS:{}".format(self.measured_cps)))
-                if not self.log.full(): self.log.put_nowait((logging.INFO, "Proc:Time:{}".format(self.measured_time)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "HighPass:CPS:{}".format(self.measured_cps)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "HighPass:Time:{}".format(self.measured_time)))
                 num_cubes = 0
                 total_time = 0
                 last_time = current_time

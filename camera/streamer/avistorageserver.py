@@ -125,8 +125,14 @@ if __name__ == '__main__':
 
     last_display = time.time()
     num_frame = 0
-    while(cv2.getWindowProperty("AVI", 0) >= 0):
+    
+    stop = False
+    while(not stop):
         current_time = time.time()
+
+        while not avi.log.empty():
+            (level, msg) = avi.log.get_nowait()
+            logger.log(level, "AVI:{}".format(msg))
 
         if (current_time - last_display) > display_interval:
             frame = img.copy()
@@ -135,17 +141,10 @@ if __name__ == '__main__':
             num_frame += 1
             last_display = current_time
             key = cv2.waitKey(1) 
-            if (key == 27) or (key & 0xFF == ord('q')): break
+            if (key == 27) or (key & 0xFF == ord('q')): stop = True
+            if cv2.getWindowProperty("AVI", 0) < 0: stop = True
 
-        try:
-            avi.queue.put_nowait(frame)
-        except: pass
-
-        try: 
-            (level, msg)=avi.log.get_nowait()
-            logger.log(level, "AVI:{}".format(msg))
-        except: pass
-
+            if not avi.queue.full(): avi.queue.put_nowait((current_time, frame))
 
     avi.stop()
     cv2.destroyAllWindows()

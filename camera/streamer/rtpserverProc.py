@@ -27,7 +27,7 @@ import cv2
 # RTP point to point Server
 ###############################################################################
 
-class rtpServer(Process):
+class rtpServerProc(Process):
     """
     RTP h264 video network stream
     """

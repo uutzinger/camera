@@ -123,8 +123,13 @@ if __name__ == '__main__':
 
     last_display = time.time()
     num_frames = 0
-    while(cv2.getWindowProperty("TIFF", 0) >= 0):
+    stop = False`
+    while(not stop):
         current_time = time.time()
+
+        while not tiff.log.empty():
+            (level, msg)=tiff.log.get_nowait()
+            logger.log(level, "TIFF:{}".format(msg))
 
         if (current_time - last_display) > display_interval:
             last_display = current_time
@@ -133,14 +138,11 @@ if __name__ == '__main__':
             cv2.imshow('TIFF', frame)
             num_frames += 1
             key = cv2.waitKey(1) 
-            if (key == 27) or (key & 0xFF == ord('q')): break
+            if (key == 27) or (key & 0xFF == ord('q')): stop = False
+            if cv2.getWindowProperty("TIFF", 0) < 0: stop = False
 
-            try: tiff.queue.put_nowait((current_time, image))
-            except: pass
+            if not tiff.queue.full(): queue.put_nowait((current_time, image))
 
-        while not tiff.log.empty():
-            (level, msg)=tiff.log.get_nowait()
-            logger.log(level, "TIFF:{}".format(msg))
 
     tiff.stop()
     cv2.destroyAllWindows()

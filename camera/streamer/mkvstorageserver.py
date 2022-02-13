@@ -125,8 +125,13 @@ if __name__ == '__main__':
 
     last_display = time.time()
     num_frames = 0
-    while(cv2.getWindowProperty("MKV", 0) >= 0):
+    stop = False
+    while(not stop):
         current_time = time.time()
+
+        while not mkv.log.empty():
+            (level, msg)=mkv.log.get_nowait()
+            logger.log(level, "MKV:{}".format(msg))
 
         if (current_time - last_display) > display_interval:
             frame = img.copy()
@@ -135,14 +140,10 @@ if __name__ == '__main__':
             num_frames += 1
             last_display = current_time
             key = cv2.waitKey(1) 
-            if (key == 27) or (key & 0xFF == ord('q')): break
+            if (key == 27) or (key & 0xFF == ord('q')): stop = False
+            if cv2.getWindowProperty("MKV", 0) >= 0: stop = False
 
-            try: mkv.queue.put_nowait((current_time, frame))
-            except: pass
-
-        while not mkv.log.empty():
-            (level, msg)=mkv.log.get_nowait()
-            logger.log(level, "MKV:{}".format(msg))
+            if not mkv.queue.full(): mkv.queue.put_nowait((current_time, frame))
 
     mkv.stop()
     cv2.destroyAllWindows()

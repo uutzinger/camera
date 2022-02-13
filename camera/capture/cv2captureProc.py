@@ -24,7 +24,7 @@ import cv2
 # Video Capture
 ###############################################################################
 
-class cv2Capture(Process):
+class cv2CaptureProc(Process):
     """
     This process continually captures frames from camera
     """

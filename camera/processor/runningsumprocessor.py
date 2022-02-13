@@ -43,8 +43,8 @@ def runsum(data, data_delayed, data_previous):
     return np.add(np.subtract(data, data_delayed), data_previous)
 
 @vectorize(['uint8(uint8, uint8)'], nopython=True, fastmath=True)
-def highpass(data_filtered, data):
-    return np.subtract(data_filtered, data)
+def highpass(data, data_filtered):
+    return np.subtract(data, data_filtered)
 
 class highpassProcessor(Thread):
     """Highpass filter"""
@@ -107,7 +107,7 @@ class highpassProcessor(Thread):
             self.circular_buffer.append(data)             # put new data into delay line
             yn1 = self.data_lowpass                       # y(n-1)
             self.data_lowpass = runsum(xn, xnd, yn1)      # y(n) = x(n) - x(n-D) + y(n-1)
-            self.data_hihgpass = highpass(self.data_lowpass, data)
+            self.data_hihgpass = highpass(data, self.data_lowpass)
             total_time += time.perf_counter() - start_time
 
             # put results into output queue
@@ -124,8 +124,8 @@ class highpassProcessor(Thread):
             if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
                 self.measured_cps = num_cubes/5.0
                 self.measured_time = total_time/num_cubes
-                if not self.log.full(): self.log.put_nowait((logging.INFO, "Proc:CPS:{}".format(self.measured_cps)))
-                if not self.log.full(): self.log.put_nowait((logging.INFO, "Proc:Time:{}".format(self.measured_time)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "RunSum:CPS:{}".format(self.measured_cps)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "RunSum:Time:{}".format(self.measured_time)))
                 num_cubes = 0
                 total_time = 0
                 last_time = current_time

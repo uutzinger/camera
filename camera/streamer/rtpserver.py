@@ -155,6 +155,7 @@ if __name__ == '__main__':
 
     last_display = time.time()
     num_frame = 0
+    
     while True:
         current_time = time.time()
 
@@ -162,14 +163,10 @@ if __name__ == '__main__':
             num_frame += 1
             last_display = current_time
 
-            try:
-                rtp.queue.put_nowait(cube)
-            except: pass
+            if not rtp.queue.full: rtp.queue.put_nowait(cube)
 
-            try: 
-                (level, msg)=rtp.log.get_nowait()
-                logger.log(level, "RTP:{}".format(msg))
-            except: pass
+        while not rtp.log.empty():
+            (level, msg)=rtp.log.get_nowait()
+            logger.log(level, "RTP:{}".format(msg))
 
-    hdf5.stop()
-    cv2.destroyAllWindows()
+    rtp.stop()
