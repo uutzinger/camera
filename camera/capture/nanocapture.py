@@ -451,6 +451,9 @@ if __name__ == '__main__':
         'displayfps'       : 30
     }
 
+    if configs['displayfps'] >= configs['fps']:  display_interval = 0
+    else:                                        display_interval = 1.0/configs['displayfps']
+    
     logging.basicConfig(level=logging.DEBUG)
     logger = logging.getLogger("Nano Capture")
 
@@ -463,18 +466,27 @@ if __name__ == '__main__':
 
     window_handle = cv2.namedWindow("Nano CSI Camera", cv2.WINDOW_AUTOSIZE)
 
-    while cv2.getWindowProperty("Nano CSI Camera", cv2.WND_PROP_AUTOSIZE) >= 0:
-        try:
-            (frame_time, frame) = camera.capture.get()
-            cv2.imshow('Nano CSI Camera', frame)
-        except: pass
+    last_display = time.perf_counter()
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):  break
+    stop = False  
+    while(not stop):
+        current_time = time.perf_counter()
 
-        try: 
-            (level, msg)=camera.log.get_nowait()
+        while not camera.log.empty():
+            (level, msg) = camera.log.get_nowait()
             logger.log(level, "NanoCap:{}".format(msg))
-        except: pass
+
+        (frame_time, frame) = camera.capture.get(block=True, timeout=None)
+
+        if (current_time - last_display) >= display_interval:
+            cv2.imshow('Nano CSI Camera', frame)
+            last_display = current_time
+            if cv2.waitKey(1) & 0xFF == ord('q'):  stop=True
+            #try: 
+            #    if cv2.getWindowProperty(window_name, cv2.WND_PROP_AUTOSIZE) < 0: 
+            #        stop = True
+            #except: 
+            #    stop = True
 
     camera.stop()
     cv2.destroyAllWindows()

@@ -422,9 +422,6 @@ if __name__ == '__main__':
             logger.log(level, "{}".format(msg))
 
         (frame_time, frame) = camera.capture.get(block=True, timeout=None)
-        while not camera.log.empty():
-            (level, msg) = camera.log.get_nowait()
-            logger.log(level, "{}".format(msg))
 
         if (current_time - last_display) >= display_interval:
             cv2.imshow('Camera', frame)
