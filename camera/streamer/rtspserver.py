@@ -9,7 +9,11 @@
 # https://github.com/tamaggo/gstreamer-examples/blob/master/test_gst_rtsp_server.py
 # https://github.com/BreeeZe/rpos/blob/master/python/gst-rtsp-launch.py
 # https://jonic.cn/?qa=560930/
-#
+# https://www.semicolonworld.com/question/62502/how-to-convert-a-video-on-disk-to-a-rtsp-stream
+
+# Developer solution in C
+# https://github.com/GStreamer/gst-rtsp-server/blob/master/examples/test-appsrc.c
+
 # Implement the response to this question
 # https://stackoverflow.com/questions/47396372/write-opencv-frames-into-gstreamer-rtsp-server-pipeline
 
@@ -88,7 +92,7 @@ class rtspFactory(GstRtspServer.RTSPMediaFactory):
             buf.offset = timestamp
             self._number_frames += 1
             retval = src.emit('push-buffer', buf)
-            if retval != Gst.FlowReturn.OK:0
+            if retval != Gst.FlowReturn.OK:
                 if not self.log.full(): self.log.put_nowait(( logging.DEBUG, "pushed buffer error {}".format(retval) ))
             if not self.log.full(): self.log.put_nowait((logging.DEBUG, "pushed buffer,frame{},duration{}ns,durations{}s".format(self.number_frames,self.duration,self.duration / Gst.SECOND)))
 
@@ -128,7 +132,7 @@ class rtspServer(GstRtspServer.RTSPServer):
         # self.server     = GstRtspServer.RTSPServer()
         self.factory    = rtspFactory()
         self.factory.set_shared(True)
-        self.mountpoints = self.server.get_mount_points()
+        self.mountpoints = self.get_mount_points()
         self.mountpoints.add_factory(self._uri, self.factory)
         self.attach(None)
         # self.server.attach(None)

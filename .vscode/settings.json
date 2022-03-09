@@ -1,5 +1,6 @@
 {
     "python.pythonPath": "C:\\Python38\\python.exe",
     "restructuredtext.confPath": "",
-    "cmake.configureOnOpen": false
+    "cmake.configureOnOpen": false,
+    "esbonio.server.enabled": true
 }
