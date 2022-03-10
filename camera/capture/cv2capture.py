@@ -153,7 +153,7 @@ class cv2Capture(Thread):
 
         # Open the camera with platform optimal settings
         if sys.platform.startswith('win'):
-            self.cam = cv2.VideoCapture(self._camera_num, apiPreference=cv2.CAP_MSMF)
+            self.cam = cv2.VideoCapture(self._camera_num, apiPreference=cv2.CAP_DSHOW) # CAP_VFW or CAP_DSHOW or CAP_MSMF or CAP_ANY
         elif sys.platform.startswith('darwin'):
             self.cam = cv2.VideoCapture(self._camera_num, apiPreference=cv2.CAP_AVFOUNDATION)
         elif sys.platform.startswith('linux'):
@@ -167,8 +167,8 @@ class cv2Capture(Thread):
             # Apply settings to camera
             self.height        = self._camera_res[1]   # image resolution
             self.width         = self._camera_res[0]   # image resolution
-            self.autoexposure  = self._autoexposure    # autoexposure
             self.exposure      = self._exposure        # camera exposure
+            self.autoexposure  = self._autoexposure    # autoexposure
             self.fps           = self._framerate       # desired fps
             self.buffersize    = self._buffersize      # camera drive buffer size
             self.fourcc        = self._fourcc          # camera sensor encoding format
@@ -264,7 +264,7 @@ class cv2Capture(Thread):
     def exposure(self, val):
         """ # sets current exposure """
         if (val is None):
-            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Can not set exposure to {}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skipping set exposure to {}".format(val)))
             return
         if self.cam_open:
             with self.cam_lock:
@@ -286,7 +286,7 @@ class cv2Capture(Thread):
     def autoexposure(self, val):
         """ sets autoexposure """
         if (val is None):
-            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Can not set Autoexposure to:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skippingt set Autoexposure to:{}".format(val)))
             return
         if self.cam_open:
             with self.cam_lock:
@@ -308,7 +308,7 @@ class cv2Capture(Thread):
     def fps(self, val):
         """ set frames per second in camera """
         if (val is None) or (val == -1):
-            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Can not set framerate to:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skipping set framerate to:{}".format(val)))
             return
         if self.cam_open:
             with self.cam_lock:
@@ -335,7 +335,7 @@ class cv2Capture(Thread):
     def fourcc(self, val):
         """ set video encoding format in camera """
         if (val is None) or (val == -1):
-            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Can not set FOURCC to:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skipping set FOURCC to:{}".format(val)))
             return
         if self.cam_open:        
             if isinstance(val, str): # fourcc is a string
@@ -367,7 +367,7 @@ class cv2Capture(Thread):
     def buffersize(self, val):
         """ set opencv camera buffersize """
         if val is None or val < 0:
-            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Can not set buffer size to:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skipping set buffer size to:{}".format(val)))
             return
         if self.cam_open:
             with self.cam_lock:
@@ -386,15 +386,22 @@ class cv2Capture(Thread):
 if __name__ == '__main__':
 
     configs = {
-        'camera_res'      : (1920,1080),      # 
-        'exposure'        : 1,              # 
-        'autoexposure'    : 0,              # 
-        'fps'             : 30,             # 
-        'fourcc'          : 'MJPG',         # 
-        'buffersize'      : -1,             #  
-        'output_res'      : (-1, -1),       #  
-        'flip'            : 0,              #  
-        'displayfps'       : 10             # 
+        'camera_res'      : (1280, 720 ),   # width & height
+        'exposure'        : -2,             # -1,0 = auto, 1...max=frame interval, 
+        'autoexposure'    : 1,              # depends on camera: 0.25 or 0.75(auto) or 1(auto), -1, 0
+        'fps'             : 30,             # 15, 30, 40, 90, 120, 180
+        'fourcc'          : -1,             # n.a.
+        'buffersize'      : -1,             # n.a.
+        'output_res'      : (-1, -1),       # Output resolution, -1,-1 no change
+        'flip'            : 0,              # 0=norotation 
+                                            # 1=ccw90deg 
+                                            # 2=rotation180 
+                                            # 3=cw90 
+                                            # 4=horizontal 
+                                            # 5=upright diagonal flip 
+                                            # 6=vertical 
+                                            # 7=uperleft diagonal flip
+        'displayfps'       : 30             # frame rate for display server
     }
 
     if configs['displayfps'] >= configs['fps']:  display_interval = 0
@@ -405,7 +412,7 @@ if __name__ == '__main__':
    
     logger.log(logging.DEBUG, "Starting Capture")
 
-    camera = cv2Capture(configs,camera_num=1)     
+    camera = cv2Capture(configs,camera_num=0)     
     camera.start()
 
     logger.log(logging.DEBUG, "Getting Frames")

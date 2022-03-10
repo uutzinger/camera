@@ -5,10 +5,16 @@
 # 2% CPU usage
 ##########################################################################
 
-import cv2
+
 import logging
 import time
 import platform
+import os
+import sys
+
+if sys.platform.startswith('win'):
+    os.environ["OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS"] = "0"
+import cv2
 
 from camera.utils import probeCameras
 
@@ -62,8 +68,8 @@ for i in range(len(camprops)):
 
 configs = {
     'camera_res'      : (1280, 720 ),   # width & height
-    'exposure'        : -6,             # -1,0 = auto, 1...max=frame interval, 
-    'autoexposure'    : 1.0,            # depends on camera: 0.25 or 0.75(auto) or 1(auto), -1,0
+    'exposure'        : -2,             # -1,0 = auto, 1...max=frame interval, 
+    'autoexposure'    : 1,              # depends on camera: 0.25 or 0.75(auto) or 1(auto), -1, 0
     'fps'             : 30,             # 15, 30, 40, 90, 120, 180
     'fourcc'          : -1,             # n.a.
     'buffersize'      : -1,             # n.a.

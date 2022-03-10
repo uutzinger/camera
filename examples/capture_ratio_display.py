@@ -12,6 +12,11 @@ import math
 import numpy as     np
 from   numba import vectorize, jit, prange
 
+import os
+import sys
+if sys.platform.startswith('win'):
+    os.environ["OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS"] = "0"
+
 # OpenCV
 import cv2
 
@@ -21,8 +26,8 @@ logger = logging.getLogger("Main")
 
 configs = {
     'camera_res'      : (1280, 720),    # width & height
-    'exposure'        : -6,             # -1,0 = auto, 1...max=frame interval, 
-    'autoexposure'    : 1.0,            # depends on camera: 0.25 or 0.75(auto), -1,0,1
+    'exposure'        : 0,              # -1,0 = auto, 1...max=frame interval, 
+    'autoexposure'    : 1,              # depends on camera: 0.25 or 0.75(auto), -1,0,1
     'fps'             : 30,             # 15, 30, 40, 90, 120, 180
     'fourcc'          : -1,             # n.a.
     'buffersize'      : -1,             # n.a.
@@ -53,11 +58,13 @@ bin_y=20
 scale = (bin_x*bin_y*255)
 
 # General purpose binning, this is 3 times slower compared to the routines below
-def rebin(arr, bin_x=10, bin_y=10, dtype=np.uint16):
-    # this only works if array shape is multiple of bin_x and bin_y
-    shape = (arr.shape[0] // bin_x, bin_x, arr.shape[1] // bin_y, bin_y)    
+@jit(nopython=True, fastmath=True)
+def rebin(arr, bin_x, bin_y, dtype=np.uint16):
+    # https://stackoverflow.com/questions/36063658/how-to-bin-a-2d-array-in-numpy
+    m,n,o = np.shape(arr)
+    shape = (m//bin_x, bin_x, n//bin_y, bin_y, o)
     arr_ = arr.astype(dtype)
-    return arr_.reshape(shape).sum(-1).sum(1) # sum over last axis and first axis
+    return arr_.reshape(shape).sum(3).sum(1)
 
 # Binning 2 pixels of the 8bit images
 @jit(nopython=True, fastmath=True, parallel=True)
@@ -225,7 +232,7 @@ logger.log(logging.INFO, "Started Capture")
 # Display
 main_window_name         = 'Captured'
 binned_window_name       = 'Binned'
-# processed_window_name    = 'Band-Passed'
+processed_window_name    = 'Band-Passed'
 ratioed_window_name      = 'Ratioed'
 
 font                     = cv2.FONT_HERSHEY_SIMPLEX
@@ -237,10 +244,12 @@ lineType                 = 2
 
 cv2.namedWindow(main_window_name,      cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 cv2.namedWindow(binned_window_name,    cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
-# cv2.namedWindow(processed_window_name, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
+cv2.namedWindow(processed_window_name, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 cv2.namedWindow(ratioed_window_name, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 
 # Initialize Variables
+min_fr = 0.0
+max_fr = 1.0
 last_display = last_time = time.perf_counter() # keep track of time to display images
 counter      = bin_time  = 0 
 stop                     = False 
@@ -260,28 +269,29 @@ while(not stop):
     #################################
     start_time  = time.perf_counter()
     frame_bin   = bin20(frame)
+    # frame_bin   = rebin(frame, bin_x=20, bin_y=20, dtype=np.uint32)
     bin_time   += (time.perf_counter() - start_time)
 
     # Compute Ratio Image 0 = blue, 1 = green, 2 = red
     #################################
     # make the result uint16 because lowpass filter needs uint16 input
-    # green/1 over red/2 
+    # green/1 over red/2 *  255
     frame_ratio = (frame_bin[:,:,1].astype(np.float32)/frame_bin[:,:,2].astype(np.float32)*255.0).astype(np.uint16)
-        
-    # # Band Pass the Image
-    # # Does not work yet
-    # #################################
-    # # send new frame to 0.5Hz filter
+    
+    # Band Pass the Image
+    # Does not work yet
+    #################################
+    # send new frame to 0.5Hz filter
     # if not processor_l.input.full():   processor_l.input.put_nowait((frame_time, frame_ratio))
     # else:                              logger.log(logging.WARNING, "Proc L:Input Queue is full!")
-    # # obtain filtered image
+    # obtain filtered image
     # if not processor_l.output.empty(): (data_time, data_highpass_l, data_lowpass_l) = processor_l.output.get()
-    # # send new frame to 10Hz filter
+    # send new frame to 10Hz filter
     # if not processor_h.input.full():   processor_h.input.put_nowait((frame_time, frame_ratio))
     # else:                              logger.log(logging.WARNING, "Proc H:Input Queue is full!")
-    # # obtain filtered image
+    # obtain filtered image
     # if not processor_h.output.empty(): (data_time, data_highpass_h, data_lowpass_h) = processor_h.output.get()
-    # # handle processor log messages
+    # handle processor log messages
     # while not processor_l.log.empty():  
     #     (level, msg) = processor_l.log.get_nowait()
     #     logger.log(level, msg)
@@ -298,14 +308,18 @@ while(not stop):
         cv2.imshow(main_window_name, frame)
 
         # Display Binned Image, make it same size as original image
-        frame_bin = frame_bin/scale # make image 0..1
-        frame_tmp = cv2.resize(frame_bin, (width,height), fx=0, fy=0, interpolation = cv2.INTER_NEAREST)
+        frame_bin_01 = frame_bin/scale # make image 0..1
+        frame_tmp = cv2.resize(frame_bin_01, (width,height), fx=0, fy=0, interpolation = cv2.INTER_NEAREST)
         cv2.putText(frame_tmp,"Frame:{}".format(counter), textLocation0, font, fontScale, fontColor, lineType)
         cv2.imshow(binned_window_name, frame_tmp)
 
         # Display Ratio Image, make it same size as original image
-        frame_ratio = frame_ratio/255 # might need to scale differently
-        frame_tmp = cv2.resize(frame_ratio, (width,height),fx=0, fy=0, interpolation = cv2.INTER_NEAREST)
+        frame_ratio_01 = (frame_ratio/255).astype(np.float32)
+        frame_ratio_01 = np.sqrt(frame_ratio_01)
+        min_fr = 0.95*min_fr + 0.05*frame_ratio_01.min()
+        max_fr = 0.95*max_fr + 0.05*frame_ratio_01.max()        
+        frame_ratio_01 = (frame_ratio_01 -min_fr)/(max_fr-min_fr)
+        frame_tmp = cv2.resize(frame_ratio_01, (width,height),fx=0, fy=0, interpolation = cv2.INTER_NEAREST)
         cv2.putText(frame_tmp,"Frame:{}".format(counter), textLocation0, font, fontScale, fontColor, lineType)
         cv2.imshow(ratioed_window_name, frame_tmp)
 
