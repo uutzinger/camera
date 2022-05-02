@@ -10,15 +10,19 @@ configs = {
                                         # 320x240 30fps
                                         # 176x144 30fps
                                         # CAP_PROP_FRAME_WIDTH, CAP_PROP_FRAME_HEIGHT
-    'exposure'        : -6,             # any camera: -1,0 = auto, 1...max=frame interval
+    'exposure'        : -2,             # any camera: -1,0 = auto, 1...max=frame interval
                                         # picamera microseconds
                                         # opencv CAP_PROP_EXPOSURE
-    'autoexposure'    : 1.0,            # cv2 camera only, depends on camera: 0.25 or 0.75(auto), -1,0,1
+    'autoexposure'    : 0.0,            # cv2 camera only, depends on camera: 0.25 or 0.75(auto), -1,0,1
     'fps'             : 30,             # any camera: 1/10, 15, 30, 40, 90, 120, 180
     'fourcc'          : -1,             # cv2 camera reports 22
                                         # Laptop Windows -1
     'buffersize'      : -1,             # default is 4 for V4L2, max 10, 
                                         # Laptop: -1
+    'gain'            : 4,              # Sensor readout gain
+    'autowb'          : -1,             # enable auto white balancing
+    'wb_temp'         : -1,             # white balance temperature
+    'settings'        : 0,              # open camera settings window
     ##############################################
     # Target Recognition
     ##############################################
@@ -35,5 +39,9 @@ configs = {
                                         # 5=upright diagonal flip 
                                         # 6=vertical 
                                         # 7=uperleft diagonal flip
-    'displayfps'       : 10             # frame rate for display server
+    'displayfps'       : 30             # frame rate for display server
     }
+
+# BACKLIGHT 2.0, 1.0, 0.0
+# BACKEND 700, cannot change
+# SETTINGS 0.0 anyvalyue opens settings window

@@ -2,5 +2,6 @@
     "python.pythonPath": "C:\\Python38\\python.exe",
     "restructuredtext.confPath": "",
     "cmake.configureOnOpen": false,
-    "esbonio.server.enabled": true
+    "esbonio.server.enabled": true,
+    "esbonio.sphinx.confDir": ""
 }

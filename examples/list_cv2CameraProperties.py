@@ -68,7 +68,7 @@ def cv2SettingsDebug(capture,logger):
 # check for up to 10 cameras
 index = 0
 arr = []
-i = 2
+i = 5
 while i > 0:
     cap = cv2.VideoCapture(index)
     if cap.read()[0]:

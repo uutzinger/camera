@@ -4,7 +4,10 @@
 # Adapts to operating system and allows configuation of codec
 # Urs Utzinger
 # 
-# 2021 Initialize, Remove Frame acces (use only queue)
+# 2022 Added access to more opencv camera properties
+#      Auto populates missing configs
+#      Access to opencv camera configs window
+# 2021 Initialize, Remove direct Frame acces (use only queue)
 # 2019 Initial release, based on Bitbuckets FRC 4183 code
 ###############################################################################
 
@@ -45,20 +48,37 @@ class cv2Capture(Thread):
         if exposure is not None:
             self._exposure    = exposure  
         else: 
-            self._exposure   = configs['exposure']
+            if 'exposure' in configs: self._exposure       = configs['exposure']
+            else:                     self._exposure       = -1.0
         if res is not None:
             self._camera_res = res
         else: 
-            self._camera_res = configs['camera_res']
-        self._output_res     = configs['output_res']
+            if 'camera_res' in configs: self._camera_res   = configs['camera_res']
+            else:                       self._camera_res   = (640, 480)
+        if 'output_res' in configs:     self._output_res   = configs['output_res']
+        else:                           self._output_res   = (-1,-1)
+        if 'fps' in configs:            self._framerate    = configs['fps']
+        else:                           self._framerate    = -1.0
+        if 'flip' in configs:           self._flip_method  = configs['flip']
+        else:                           self._flip_method  = 0
+        if 'buffersize' in configs:     self._buffersize   = configs['buffersize']         # camera drive buffer size
+        else:                           self._buffersize   = -1
+        if 'fourcc' in configs:         self._fourcc       = configs['fourcc']             # camera sensor encoding format
+        else:                           self._fourcc       = -1
+        if 'autoexposure' in configs:   self._autoexposure = configs['autoexposure']       # autoexposure depends on camera
+        else:                           self._autoexposure = -1
+        if 'gain' in configs:           self._gain         = configs['gain']
+        else:                           self._gain         = -1.0
+        if 'wb_temp' in configs:        self._wbtemp       = configs['wb_temp']
+        else:                           self._wbtemp       = -1
+        if 'autowb' in configs:         self._autowb       = configs['autowb']
+        else:                           self._autowb       = -1
+        if 'settings' in configs:       self._settings     = configs['settings']
+        else:                           self._settings     = -1
+
         self._output_width   = self._output_res[0]
         self._output_height  = self._output_res[1]
-        self._framerate      = configs['fps']
-        self._flip_method    = configs['flip']
-        self._buffersize     = configs['buffersize']         # camera drive buffer size
-        self._fourcc         = configs['fourcc']             # camera sensor encoding format
-        self._autoexposure   = configs['autoexposure']       # autoexposure depends on camera
-
+        
         self.capture         = Queue(maxsize=queue_size)
         self.log             = Queue(maxsize=32)
         self.stopped         = True
@@ -165,23 +185,42 @@ class cv2Capture(Thread):
 
         if self.cam_open:
             # Apply settings to camera
-            self.height        = self._camera_res[1]   # image resolution
-            self.width         = self._camera_res[0]   # image resolution
+            #self.height        = self._camera_res[1]   # image resolution
+            #self.width         = self._camera_res[0]   # image resolution
+            self.resolution    = self._camera_res      #
             self.exposure      = self._exposure        # camera exposure
             self.autoexposure  = self._autoexposure    # autoexposure
             self.fps           = self._framerate       # desired fps
             self.buffersize    = self._buffersize      # camera drive buffer size
             self.fourcc        = self._fourcc          # camera sensor encoding format
+            self.gain          = self._gain            # camera gain
+            self.wbtemperature = self._wbtemp          # camera white balance temperature
+            self.autowb        = self._autowb          # camera enable auto white balance
+
+            if self._settings > -1: self.cam.set(cv2.CAP_PROP_SETTINGS, 0.0) # open camera settings window
+            
             # Update records
-            self._camera_res   = self.resolution
-            self._exposure     = self.exposure
-            self._buffersize   = self.buffersize
-            self._framerate    = self.fps
-            self._autoexposure = self.autoexposure
-            self._fourcc       = self.fourcc
-            self._fourcc_str   = self.decode_fourcc(self._fourcc)
+            self._camera_res    = self.resolution
+            self._exposure      = self.exposure
+            self._buffersize    = self.buffersize
+            self._framerate     = self.fps
+            self._autoexposure  = self.autoexposure
+            self._fourcc        = self.fourcc
+            self._fourcc_str    = self.decode_fourcc(self._fourcc)
+            self._gain          = self.gain
+            self._wbtemperature = self.wbtemperature
+            self._autowb        = self.autowb
         else:
             if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to open camera!"))
+
+    # Open Settings Window
+    ############################################################################
+    def opensettings(self):
+        """
+        Open up the camera settings window
+        """
+        if self.cam_open:
+            self.cam.set(cv2.CAP_PROP_SETTINGS, 0.0)
 
     # Camera routines #################################################
     # Reading and setting camera options
@@ -206,9 +245,9 @@ class cv2Capture(Thread):
                     # HEIGHT and WIDTH only valid if both were set
                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Width:{}".format(val)))
                 else:
-                    if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set width to {}".format(val)))
+                    if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set Width to {}".format(val)))
         else:
-            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set width, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set Width, camera not open!"))
 
     @property
     def height(self):
@@ -229,9 +268,9 @@ class cv2Capture(Thread):
                     # HEIGHT and WIDTH only valid if both were set
                     if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Height:{}".format(val)))
                 else:
-                    if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set height to {}".format(val)))
+                    if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set Height to {}".format(val)))
         else:
-            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set height, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set Height, camera not open!"))
 
     @property
     def resolution(self):
@@ -251,8 +290,9 @@ class cv2Capture(Thread):
                 self.width  = int(val)
                 self.height = int(val)
             self._camera_res = (int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH)), int(self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+            if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Resolution:{}x{}".format(self._camera_res[0],self._camera_res[1])))
         else: # camera not open
-            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set resolution, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set Resolution, camera not open!"))
 
     @property
     def exposure(self):
@@ -264,17 +304,18 @@ class cv2Capture(Thread):
     def exposure(self, val):
         """ # sets current exposure """
         if (val is None):
-            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skipping set exposure to {}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skipping set Exposure to {}".format(val)))
             return
         if self.cam_open:
             with self.cam_lock:
                 if self.cam.set(cv2.CAP_PROP_EXPOSURE, val):
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Exposure set:{}".format(val)))
                     self._exposure = self.cam.get(cv2.CAP_PROP_EXPOSURE)
-                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Exposure:{}".format(self.exposure)))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Exposure is:{}".format(self._exposure)))
                 else:
-                    if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set expsosure to:{}".format(val)))
+                    if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set Expsosure to:{}".format(val)))
         else:
-            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set exposure, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set Exposure, camera not open!"))
 
     @property
     def autoexposure(self):
@@ -291,12 +332,13 @@ class cv2Capture(Thread):
         if self.cam_open:
             with self.cam_lock:
                 if self.cam.set(cv2.CAP_PROP_AUTO_EXPOSURE, val):
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Autoexposure set:{}".format(val)))
                     self._autoexposure = self.cam.get(cv2.CAP_PROP_AUTO_EXPOSURE)
-                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Autoexposure:{}".format(self.autoexposure)))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Autoexposure is:{}".format(self._autoexposure)))
                 else:
                     if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set Autoexposure to:{}".format(val)))
         else:
-            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set auto exposure, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set Autoexposure, camera not open!"))
 
     @property
     def fps(self):
@@ -308,17 +350,18 @@ class cv2Capture(Thread):
     def fps(self, val):
         """ set frames per second in camera """
         if (val is None) or (val == -1):
-            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skipping set framerate to:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skipping set FPS to:{}".format(val)))
             return
         if self.cam_open:
             with self.cam_lock:
                 if self.cam.set(cv2.CAP_PROP_FPS, val):
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:FPS set:{}".format(val)))
                     self._framerate = self.cam.get(cv2.CAP_PROP_FPS)
-                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:FPS:{}".format(self.fps)))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:FPS is:{}".format(self._framerate)))
                 else:
                     if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set FPS to:{}".format(val)))
         else:
-            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set framerate, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set FPS, camera not open!"))
 
     @staticmethod
     def decode_fourcc(val):
@@ -343,7 +386,7 @@ class cv2Capture(Thread):
                     if self.cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(val[0],val[1],val[2],val[3])):
                         self._fourcc     = self.cam.get(cv2.CAP_PROP_FOURCC)
                         self._fourcc_str = self.decode_fourcc(self._fourcc)
-                        if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:FOURCC:{}".format(self._fourcc_str)))
+                        if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:FOURCC is:{}".format(self._fourcc_str)))
                     else:
                         if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set FOURCC to:{}".format(val)))
             else: # fourcc is integer/long
@@ -351,7 +394,7 @@ class cv2Capture(Thread):
                     if self.cam.set(cv2.CAP_PROP_FOURCC, val):
                         self._fourcc     = int(self.cam.get(cv2.CAP_PROP_FOURCC))
                         self._fourcc_str = self.decode_fourcc(self._fourcc)
-                        if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:FOURCC:{}".format(self._fourcc_str)))
+                        if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:FOURCC is:{}".format(self._fourcc_str)))
                     else:
                         if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set FOURCC to:{}".format(val)))
         else:
@@ -367,17 +410,87 @@ class cv2Capture(Thread):
     def buffersize(self, val):
         """ set opencv camera buffersize """
         if val is None or val < 0:
-            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skipping set buffer size to:{}".format(val)))
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skipping set Buffersize to:{}".format(val)))
             return
         if self.cam_open:
             with self.cam_lock:
                 if self.cam.set(cv2.CAP_PROP_BUFFERSIZE, val):
-                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Buffersize:{}".format(val)))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Buffersize set:{}".format(val)))
                     self._buffersize = int(self.cam.get(cv2.CAP_PROP_BUFFERSIZE))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Buffersize is:{}".format(self._buffersize)))
                 else:
-                    if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set buffer size to:{}".format(val)))
+                    if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set Buffersize to:{}".format(val)))
         else:
-            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set buffersize, camera not open!"))
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set Buffersize, camera not open!"))
+
+    @property
+    def gain(self):
+        """ return opencv camera gain """
+        if self.cam_open:
+            return int(self.cam.get(cv2.CAP_PROP_GAIN))
+        else: return float("NaN")
+    @gain.setter
+    def gain(self, val):
+        """ set opencv camera gain """
+        if val is None or val < 0:
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skipping set Gain to:{}".format(val)))
+            return
+        if self.cam_open:
+            with self.cam_lock:
+                if self.cam.set(cv2.CAP_PROP_GAIN, val):
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Gain set:{}".format(val)))
+                    self._gain = int(self.cam.get(cv2.CAP_PROP_GAIN))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:Gain is:{}".format(self._gain)))
+                else:
+                    if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set Gain to:{}".format(val)))
+        else:
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set Gain, camera not open!"))
+
+    @property
+    def wbtemperature(self):
+        """ return opencv camera white balance temperature """
+        if self.cam_open:
+            return int(self.cam.get(cv2.CAP_PROP_WB_TEMPERATURE))
+        else: return float("NaN")
+    @wbtemperature.setter
+    def wbtemperature(self, val):
+        """ set opencv camera white balance temperature """
+        if val is None or val < 0:
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skipping set WB_TEMPERATURE to:{}".format(val)))
+            return
+        if self.cam_open:
+            with self.cam_lock:
+                if self.cam.set(cv2.CAP_PROP_WB_TEMPERATURE, val):
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:WB_TEMPERATURE set:{}".format(val)))
+                    self._wbtemp = int(self.cam.get(cv2.CAP_PROP_WB_TEMPERATURE))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:WB_TEMPERATURE is:{}".format(self._wbtemp)))
+                else:
+                    if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set whitebalance temperature to:{}".format(val)))
+        else:
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set whitebalance temperature, camera not open!"))
+
+    @property
+    def autowb(self):
+        """ return opencv camera auto white balance """
+        if self.cam_open:
+            return int(self.cam.get(cv2.CAP_PROP_AUTO_WB))
+        else: return float("NaN")
+    @autowb.setter
+    def autowb(self, val):
+        """ set opencv camera auto white balance """
+        if val is None or val < 0:
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Skipping set AUTO_WB to:{}".format(val)))
+            return
+        if self.cam_open:
+            with self.cam_lock:
+                if self.cam.set(cv2.CAP_PROP_AUTO_WB, val):
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:AUTO_WB:{}".format(val)))
+                    self._autowb = int(self.cam.get(cv2.CAP_PROP_AUTO_WB))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "CV2:AUTO_WB is:{}".format(self._autowb)))
+                else:
+                    if not self.log.full(): self.log.put_nowait((logging.ERROR, "CV2:Failed to set auto whitebalance to:{}".format(val)))
+        else:
+            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "CV2:Failed to set auto whitebalance, camera not open!"))
 
 ###############################################################################
 # Testing
@@ -392,6 +505,9 @@ if __name__ == '__main__':
         'fps'             : 30,             # 15, 30, 40, 90, 120, 180
         'fourcc'          : -1,             # n.a.
         'buffersize'      : -1,             # n.a.
+        'gain'            : 4,              #
+        'wb_temp'         : 4600,           #
+        'autowb'          : 1,              #
         'output_res'      : (-1, -1),       # Output resolution, -1,-1 no change
         'flip'            : 0,              # 0=norotation 
                                             # 1=ccw90deg 
@@ -431,15 +547,12 @@ if __name__ == '__main__':
         (frame_time, frame) = camera.capture.get(block=True, timeout=None)
 
         if (current_time - last_display) >= display_interval:
-            cv2.imshow('Camera', frame)
+            cv2.imshow(window_handle, frame)
             last_display = current_time
-            if cv2.waitKey(1) & 0xFF == ord('q'):  stop=True
-            #try: 
-            #    if cv2.getWindowProperty(window_name, cv2.WND_PROP_AUTOSIZE) < 0: 
-            #        stop = True
-            #except: 
-            #    stop = True
+            try:
+                if (cv2.waitKey(1) & 0xFF == ord('q')) or (cv2.getWindowProperty(window_handle, 0) < 0): stop = True
+            except: 
+                stop = True  
          
-
     camera.stop()
     cv2.destroyAllWindows()

@@ -49,9 +49,9 @@ for i in range(len(camprops)):
         camera_index = i
 
 # Can import or define camera configuration below
-#
+# Make sure you have configs folder in the folder of your main program
 # -Eluktronics Max-15 internal camera
-# from examples.configs.eluk_configs import configs as configs
+from configs.eluk_configs import configs as configs
 # -Dell Inspiron 15 internal camer
 # from configs.dell_internal_configs  import configs as configs
 # -Generic webcam
@@ -65,25 +65,6 @@ for i in range(len(camprops)):
 # from configs.ELP1080p_configs  import configs as configs
 # -FLIR Lepton 3.5
 # from configs.FLIRlepton35 import confgis as configs
-
-configs = {
-    'camera_res'      : (1280, 720 ),   # width & height
-    'exposure'        : -2,             # -1,0 = auto, 1...max=frame interval, 
-    'autoexposure'    : 1,              # depends on camera: 0.25 or 0.75(auto) or 1(auto), -1, 0
-    'fps'             : 30,             # 15, 30, 40, 90, 120, 180
-    'fourcc'          : -1,             # n.a.
-    'buffersize'      : -1,             # n.a.
-    'output_res'      : (-1, -1),       # Output resolution, -1,-1 no change
-    'flip'            : 0,              # 0=norotation 
-                                        # 1=ccw90deg 
-                                        # 2=rotation180 
-                                        # 3=cw90 
-                                        # 4=horizontal 
-                                        # 5=upright diagonal flip 
-                                        # 6=vertical 
-                                        # 7=uperleft diagonal flip
-    'displayfps'       : 30             # frame rate for display server
-}
 
 if configs['displayfps'] >= 0.8*configs['fps']:
     display_interval = 0
@@ -118,6 +99,8 @@ else:
 logger.log(logging.INFO, "Getting Images")
 camera.start()
 
+# Opens camera settings window
+# camera.opensettings()
 
 # Initialize Variables
 last_display   = time.perf_counter()
