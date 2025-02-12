@@ -1,5 +1,8 @@
 ###############################################################################
 # OpenCV video capture
+# 
+# Attempting implementation with multiprocessing
+#
 # Uses opencv video capture to capture system's camera
 # Adapts to operating system and allows configuation of codec
 # Urs Utzinger

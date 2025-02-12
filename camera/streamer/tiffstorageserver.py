@@ -1,4 +1,10 @@
 ###############################################################################
+# TIFF storage array data streamer
+# 
+# create Streamer with tiff = tiffServer(filename)
+# Start Streamer with tiff.start()
+# Place frames with tiff.queue.put((frame_time, frame))
+#
 # Storage array data streamer
 # Urs Utzinger 2020
 ###############################################################################
@@ -80,7 +86,7 @@ class tiffServer(Thread):
             num_cubes += 1
 
 
-            # Storage througput calculation
+            # Storage throughput calculation
             current_time = time.time()
             if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
                 self.measured_cps = num_cubes/5.0

@@ -1,7 +1,9 @@
 ###############################################################################
 # FLIR balckfly video capture
+#
 # Uses PySpin to capture images
-# Uses OpenCV to resize and roate images
+# Uses OpenCV to resize and rotate images
+#
 # Urs Utzinger
 # 2022 Updated binning and frame format control
 # 2021 Trigger update, initialize, use only queue to access frames

@@ -1,5 +1,8 @@
 ###############################################################################
-# CSI video capture on Jetson Nano using gstreamer
+# Libcamera capture, uses gstreamer to capture video
+# 
+# This is usually used for CSI video capture
+#
 # Latency can be 100-200ms
 # Urs Utzinger, 
 #

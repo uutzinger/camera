@@ -1,7 +1,8 @@
 ###############################################################################
 # OpenCV video capture
+#
 # Uses opencv video capture to capture system's camera
-# Adapts to operating system and allows configuation of codec
+# Adapts to operating system and allows configuration of codec
 # Urs Utzinger
 # 
 # 2022 Added access to more opencv camera properties
@@ -554,5 +555,6 @@ if __name__ == '__main__':
             except: 
                 stop = True  
          
+
     camera.stop()
     cv2.destroyAllWindows()

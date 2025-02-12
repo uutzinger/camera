@@ -1,5 +1,6 @@
 ###############################################################################
 # RTP point to point video capture
+#
 # Uses opencv video capture to capture rtp stream
 # Adapts to operating system and allows configuation of codec
 # Urs Utzinger

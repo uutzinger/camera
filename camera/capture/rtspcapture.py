@@ -1,6 +1,7 @@
  
 ###############################################################################
 # RTSP video capture
+#
 # Uses opencv video capture to capture rtsp stream
 # Adapts to operating system and allows configuation of codec
 # Urs Utzinger

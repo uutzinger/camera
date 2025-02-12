@@ -1,6 +1,19 @@
- 
 ###############################################################################
 # RTP point to point server
+# 
+# Create Stream with 
+#    rtp = rtpServer(
+#        resolution =(width,height),
+#        fps        = fps, 
+#        host       = '127.0.0.1', 
+#        port       = 554,
+#        bitrate    = 2048, 
+#        gpu        = False)
+#
+#    rtp.start()
+#    cube = np.random.randint(0, 255, (height, width, depth), 'uint8')
+#    rtp.queue.put_nowait(cube)
+#
 # 2021 Initial Release
 # Urs Utzinger 
 ###############################################################################

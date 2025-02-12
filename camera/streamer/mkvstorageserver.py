@@ -1,5 +1,10 @@
 ###############################################################################
 # MKV storage array data streamer
+# 
+# create Streamer with mkv = mkvServer(filename, fps, size)
+# Start Streamer with mkv.start()
+# Place frames with mkv.queue.put((frame_time, frame))
+#
 # 2021 Initial Release
 # Urs Utzinger 
 ###############################################################################

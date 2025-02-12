@@ -1,5 +1,10 @@
 ###############################################################################
 # AVI storage array data streamer
+#
+# Create Streamer with avi = aviServer(filename, fps, size)
+# Start Streamer with avi.start()
+# Place frames into avi with avi.queue.put((frame_time, frame))
+#
 # Urs Utzinger 
 # 2021 Initial release
 ###############################################################################

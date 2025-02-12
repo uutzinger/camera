@@ -1,6 +1,7 @@
 ###############################################################################
 # Highpass Filter
 # Urs Utzinger 2022
+#
 # https://dsp.stackexchange.com/questions/12757/a-better-high-order-low-pass-filter
 # https://www.dsprelated.com/freebooks/sasp/Running_Sum_Lowpass_Filter.html
 # https://www.dsprelated.com/showarticle/1337.php
@@ -36,6 +37,8 @@ from numba import vectorize
 # Basic Image Processor
 ###############################################################################
 # Numpy Vectorized Image Processor
+
+# Filter implementation
 # y(n) = ( x(n) - x(n-D) ) + y(n-1)
 @vectorize(['uint8(uint8, uint8, uint8)'], nopython=True, fastmath=True)
 def runsum(data, data_delayed, data_previous):

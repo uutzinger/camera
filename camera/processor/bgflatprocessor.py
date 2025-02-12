@@ -30,7 +30,10 @@ class bgflatProcessor(Thread):
     """Background removal, flat field correction, white balance """
 
     # Initialize the Processor Thread
-    def __init__(self, flatfield, res: (int, int, int) = (14, 540, 720), bg_delta: (int, int) = (64, 64) ):
+    def __init__(self, 
+        flatfield, 
+        res: tuple = (14, 540, 720),
+        bg_delta: tuple = (64, 64)):
         # initialize logger 
         self.logger = logging.getLogger("bgflatProcessor")
 

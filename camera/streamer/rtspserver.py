@@ -1,5 +1,17 @@
 ###############################################################################
-# RTSP server
+# RTSP server (UNIX only)
+# 
+# Create Stream with 
+# rtsp = rtspServer(
+#     resolution =(width,height),
+#     fps        = fps,
+#     bitrate    = 2048,
+#     stream_uri = '/test')
+#
+# rtsp.start()
+# cube = np.random.randint(0, 255, (height, width, depth), 'uint8')
+# rtp.queue.put_nowait(cube)
+#
 # 2022 Initial Release
 # Urs Utzinger 
 ###############################################################################

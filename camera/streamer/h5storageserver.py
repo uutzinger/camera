@@ -1,4 +1,10 @@
 ###############################################################################
+# HD5F storage array data streamer
+# 
+# create Streamer with h5 = h5Server(filename)
+# Start Streamer with h5.start()
+# Place frames into h5 with h5.queue.put((frame_time, frame))
+#
 # Storage array data streamer
 # Urs Utzinger 2020
 ###############################################################################

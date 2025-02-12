@@ -1,4 +1,11 @@
-# Probe the cameras, return indeces, fourcc, default resolution
+###############################################################################
+# Camera utility functions for opencv
+#
+# Probe the cameras, return indices, fourcc, default resolution etc.
+#
+# Urs Utzinger 
+# 2021 Initial release
+###############################################################################
 import cv2 
 import platform
 

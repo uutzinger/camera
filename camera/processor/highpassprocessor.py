@@ -27,6 +27,7 @@ from numba import vectorize
 def movingavg(data, average, alpha):
     return np.add(np.multiply(average, 1.-alpha), np.multiply(data, alpha))
 
+# Highpass Filter
 @vectorize(['float32(uint16, float32)'], nopython=True, fastmath=True)
 def highpass(data, average):
     return np.subtract(data, average)
