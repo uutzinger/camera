@@ -299,9 +299,12 @@ GStreamer appsink-based capture. Useful when you need a custom GStreamer pipelin
 ## Pip upload
 
 ```bash
-python3 setup.py check
-python3 setup.py sdist
-python3 setup.py bdist_wheel
-pip3 install dist/thenewpackage.whl
-twine upload dist/*
+python3 -m pip install --upgrade pip build twine
+rm -rf dist build *.egg-info
+python3 -m build
+python3 -m twine check dist/*
+python3 -m pip install dist/*.whl
+export TWINE_USERNAME=__token__
+export TWINE_PASSWORD=<your-pypi-token>
+python -m twine upload dist/*
 ```
