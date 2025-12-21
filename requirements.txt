@@ -1,5 +1,16 @@
-opencv-python>=3.0.0
-tifffile>=2012.7.25
-h5py>=3.0.0
-numpy>=1.0.0
-imagecodecs>=2019.1.1
+opencv-python>=4.8.1.78
+
+# Numerical + JIT (used by processors)
+numpy>=1.23.5; python_version < "3.12"
+numpy>=1.26.4; python_version >= "3.12"
+numba>=0.58.1; python_version < "3.12"
+numba>=0.59.1; python_version >= "3.12"
+
+# Storage formats
+h5py>=3.8.0; python_version < "3.12"
+h5py>=3.10.0; python_version >= "3.12"
+tifffile>=2023.7.10
+
+# Optional but recommended: enables additional TIFF compression codecs
+imagecodecs>=2023.3.16; python_version < "3.12"
+imagecodecs>=2024.1.1; python_version >= "3.12"

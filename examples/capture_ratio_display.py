@@ -1,7 +1,23 @@
 ##########################################################################
-# Testing of display and highpass processor
-##########################################################################
-# Results
+# Capture + ratio display example
+#
+# What this script does
+# - Captures color frames from a camera.
+# - Spatially bins the image by summing blocks of pixels (default 20x20).
+#   This reduces noise and resolution while preserving intensity.
+# - Computes a simple channel ratio image on the binned frame:
+#     ratio = (green / red) * 255
+#   and displays a normalized, contrast-stretched view of that ratio.
+# - Shows 3 live windows:
+#   - "Captured": original camera frame
+#   - "Binned": binned (summed) frame, normalized to 0..1 for display
+#   - "Ratioed": sqrt-normalized and auto-scaled ratio image
+#
+# Notes
+# - The band-pass/high-pass section below is experimental and currently
+#   commented out (kept as a placeholder for future work).
+# - For binning to work cleanly, the camera resolution should be divisible
+#   by bin_x and bin_y; otherwise the last partial pixels are dropped.
 ##########################################################################
 
 # System
@@ -12,7 +28,6 @@ import math
 import numpy as     np
 from   numba import vectorize, jit, prange
 
-import os
 import sys
 if sys.platform.startswith('win'):
     os.environ["OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS"] = "0"
@@ -156,7 +171,7 @@ def bin20(arr_in):
 
 
 # Transform band passed data to display image
-# Goal is to enhace small changes and to convert data to 0..1 range
+# Goal is to enhance small changes and to convert data to 0..1 range
 # A few example options:
 # data = np.sqrt(np.multiply(data,abs(data_bandpass)))
 # data = np.sqrt(255.*np.absolute(data_highpass)).astype('uint8')
@@ -204,24 +219,26 @@ alpha_h = -y + math.sqrt( y*y + 2*y ); #
 # processor_h.start()
 # logger.log(logging.INFO, "Started Processor Upper Bound")
 
-
 # Create camera interface
 # Computer OS and platform dependent
 plat = platform.system()
+machine = platform.machine()
 
 if plat == 'Linux':
-    sysname, nodename, release, version, machine = os.uname()
-    release == release.split('.')
-    if platform.machine() == "aarch64": # this is jetson nano for me
+    # Prefer platform-specific backends when available
+    if machine == 'aarch64':  # Jetson Nano, etc.
         from camera.capture.nanocapture import nanoCapture
         camera = nanoCapture(configs, camera_index)
-    elif platform.machine() == "armv6l" or platform.machine() == 'armv7l': # this is raspberry for me
-        if release[0] == 5:
-            from camera.capture.libcamcapture import libcameraCapture
-            camera = libcameraCapture(configs)            
-        else:
+    elif machine in ('armv6l', 'armv7l'):  # Raspberry Pi
+        try:
+            from camera.capture.picamera2capture import piCamera2Capture
+            camera = piCamera2Capture(configs, camera_index)
+        except Exception:
             from camera.capture.cv2capture import cv2Capture
             camera = cv2Capture(configs, camera_index)
+    else:
+        from camera.capture.cv2capture import cv2Capture
+        camera = cv2Capture(configs, camera_index)
 else:
     from camera.capture.cv2capture import cv2Capture
     camera = cv2Capture(configs, camera_index)
@@ -276,7 +293,9 @@ while(not stop):
     #################################
     # make the result uint16 because lowpass filter needs uint16 input
     # green/1 over red/2 *  255
-    frame_ratio = (frame_bin[:,:,1].astype(np.float32)/frame_bin[:,:,2].astype(np.float32)*255.0).astype(np.uint16)
+    denom = frame_bin[:, :, 2].astype(np.float32)
+    denom = np.maximum(denom, 1.0)  # avoid divide-by-zero
+    frame_ratio = (frame_bin[:, :, 1].astype(np.float32) / denom * 255.0).astype(np.uint16)
     
     # Band Pass the Image
     # Does not work yet
@@ -318,7 +337,10 @@ while(not stop):
         frame_ratio_01 = np.sqrt(frame_ratio_01)
         min_fr = 0.95*min_fr + 0.05*frame_ratio_01.min()
         max_fr = 0.95*max_fr + 0.05*frame_ratio_01.max()        
-        frame_ratio_01 = (frame_ratio_01 -min_fr)/(max_fr-min_fr)
+        denom = (max_fr - min_fr)
+        if denom <= 0:
+            denom = 1.0
+        frame_ratio_01 = (frame_ratio_01 - min_fr) / denom
         frame_tmp = cv2.resize(frame_ratio_01, (width,height),fx=0, fy=0, interpolation = cv2.INTER_NEAREST)
         cv2.putText(frame_tmp,"Frame:{}".format(counter), textLocation0, font, fontScale, fontColor, lineType)
         cv2.imshow(ratioed_window_name, frame_tmp)
@@ -332,7 +354,15 @@ while(not stop):
         # # Display bandpassed image
         # cv2.imshow(processed_window_name, data_bandpass_tmp)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'): stop = True
+        key = cv2.waitKey(1)
+        if (key & 0xFF) == ord('q'):
+            stop = True
+        for name in (main_window_name, binned_window_name, ratioed_window_name, processed_window_name):
+            try:
+                if cv2.getWindowProperty(name, 0) < 0:
+                    stop = True
+            except Exception:
+                stop = True
 
         last_display = current_time
         counter += 1

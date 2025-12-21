@@ -14,8 +14,11 @@
 #    cube = np.random.randint(0, 255, (height, width, depth), 'uint8')
 #    rtp.queue.put_nowait(cube)
 #
-# 2021 Initial Release
 # Urs Utzinger 
+#
+# Changes:
+# 2025 Codereview and cleanup
+# 2021 Initial Release
 ###############################################################################
 
 ###############################################################################

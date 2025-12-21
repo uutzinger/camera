@@ -1,8 +1,9 @@
 ###############################################################################
 # CSI video capture on Jetson Nano using gstreamer
-# Latency can be 100-200ms
+# Uses direct GStreamer (PyGObject) appsink; no OpenCV VideoCapture required
 # Urs Utzinger, 
 #
+# 2025, Refactor to GI/appsink + low-latency pipeline
 # 2021, Initialize
 # 2020, Update Queue
 # 2019, First release
@@ -17,10 +18,22 @@ from threading import Thread, Lock
 from queue import Queue
 
 # System
-import logging, time, os, subprocess
+import logging, time
 
-# Open Computer Vision
-import cv2
+# Array
+import numpy as np
+
+# GStreamer (direct)
+try:
+    import gi
+    gi.require_version('Gst', '1.0')
+    gi.require_version('GstApp', '1.0')
+    gi.require_version('GstVideo', '1.0')
+    from gi.repository import Gst, GstApp, GstVideo
+except Exception:  # pragma: no cover
+    Gst = None
+    GstApp = None
+    GstVideo = None
 
 ###############################################################################
 # Video Capture
@@ -28,7 +41,8 @@ import cv2
 
 class nanoCapture(Thread):
     """
-    This thread continually captures frames from a CSI camera on Jetson Nano
+    This thread continually captures frames from a CSI camera on Jetson using
+    GStreamer (nvarguscamerasrc by default).
     """
 
     # Initialize the Camera Thread
@@ -39,24 +53,33 @@ class nanoCapture(Thread):
         exposure: float = None,
         queue_size: int = 32):
 
+        # Proper Thread initialization (so .start()/.join() work as expected)
+        super().__init__(daemon=True)
+
+        self._configs = configs or {}
+        # Prefer nvargus on Jetson, allow override like gCapture
+        self._gst_source = self._configs.get('gst_source', self._configs.get('source', 'nvargus'))
+        self._gst_source_str = self._configs.get('gst_source_str', self._configs.get('gst_source_pipeline', None))
+        self._gst_source_props_str = self._configs.get('gst_source_props_str', None)
+
         # populate desired settings from configuration file or function call
         ####################################################################
         self._camera_num = camera_num
         if exposure is not None:
             self._exposure   = exposure  
         else: 
-            self._exposure   = configs['exposure']
+            self._exposure   = self._configs.get('exposure', -1)
         if res is not None:
             self._camera_res = res
         else: 
-            self._camera_res = configs['camera_res']
+            self._camera_res = self._configs.get('camera_res', (1280, 720))
         self._capture_width  = self._camera_res[0] 
         self._capture_height = self._camera_res[1]
-        self._output_res     = configs['output_res']
+        self._output_res     = self._configs.get('output_res', (-1, -1))
         self._output_width   = self._output_res[0]
         self._output_height  = self._output_res[1]
-        self._framerate      = configs['fps']
-        self._flip_method    = configs['flip']
+        self._framerate      = self._configs.get('fps', 30)
+        self._flip_method    = self._configs.get('flip', 0)
 
         # Threading Queue
         self.capture         = Queue(maxsize=queue_size)
@@ -65,13 +88,11 @@ class nanoCapture(Thread):
         self.cam_lock        = Lock()
 
         # open up the camera
-        self._open_cam()
+        self.open_cam()
 
         # Init vars
         self.frame_time   = 0.0
         self.measured_fps = 0.0
-
-        Thread.__init__(self)
 
     # Thread routines 
     # Start Stop and Update Thread
@@ -81,11 +102,14 @@ class nanoCapture(Thread):
         self.stopped = True
 
     def start(self, capture_queue = None):
-        """set the thread start conditions"""
+        """start the capture thread"""
         self.stopped = False
-        T = Thread(target=self.update)
-        T.daemon = True # run in background
-        T.start()
+        super().start()
+
+    # Thread entrypoint
+    def run(self):
+        """thread entrypoint"""
+        self.update()
 
     # After Stating of the Thread, this runs continously
     def update(self):
@@ -96,17 +120,29 @@ class nanoCapture(Thread):
             current_time = time.time()
 
             # Get New Image
-            if self.cam is not None:
-                with self.cam_lock:
-                    _, img = self.cam.read()
-                num_frames += 1
-                self.frame_time = int(current_time*1000)
-            
-                if (img is not None) and (not self.capture.full()):
-                    #flip and resize is done in gstreamer
-                    self.capture.put_nowait((current_time*1000., img))
+            if getattr(self, "appsink", None) is not None:
+                # GI bindings vary: prefer try_pull_sample, fall back to signal emit
+                try_pull = getattr(self.appsink, "try_pull_sample", None)
+                if callable(try_pull):
+                    sample = try_pull(int(250 * 1e6))  # 250ms
                 else:
-                    if not self.log.full(): self.log.put_nowait((logging.WARNING, "NanoCap:Capture Queue is full!"))
+                    sample = self.appsink.emit("try-pull-sample", int(250 * 1e6))
+
+                if sample is not None:
+                    img = self._sample_to_bgr(sample)
+                    if img is not None:
+                        num_frames += 1
+                        self.frame_time = int(current_time * 1000)
+                        if not self.capture.full():
+                            self.capture.put_nowait((current_time * 1000.0, img))
+                        else:
+                            if not self.log.full():
+                                self.log.put_nowait((logging.WARNING, "NanoCap:Capture Queue is full!"))
+                else:
+                    # no sample available within timeout
+                    pass
+            else:
+                time.sleep(0.01)
 
             # FPS calculation
             if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
@@ -115,7 +151,7 @@ class nanoCapture(Thread):
                 last_time = current_time
                 num_frames = 0
 
-        self.cam.release()
+        self.close_cam()
 
     def gstreamer_pipeline(self,
             camera_num:     int   = 0,
@@ -128,7 +164,7 @@ class nanoCapture(Thread):
             flip_method:    int   = 0):
 
             """
-            Create gstreamer pipeline string
+            Create gstreamer pipeline string.
             """
             ###################################################################################
             # gstreamer Options 
@@ -144,11 +180,11 @@ class nanoCapture(Thread):
             # parent              : The parent of the object
             #                     flags: readable, writable
             #                     Object of type "GstObject"
-            # *blocksize           : Size in bytes to read per buffer (-1 = default)
+            # *blocksize          : Size in bytes to read per buffer (-1 = default)
             #                     flags: readable, writable
             #                     Unsigned Integer. Range: 0 - 4294967295 Default: 4096 
             #        'blocksize=-1 ' 
-            # *num-buffers         : Number of buffers to output before sending EOS (-1 = unlimited)
+            # *num-buffers        : Number of buffers to output before sending EOS (-1 = unlimited)
             #                     flags: readable, writable
             #                     Integer. Range: -1 - 2147483647 Default: -1 
             #        'num-buffers=-1 '
@@ -161,11 +197,11 @@ class nanoCapture(Thread):
             # *silent              : Produce verbose output ?
             #                     flags: readable, writable
             #                     Boolean. Default: true
-            # *timeout             : timeout to capture in seconds (Either specify timeout or num-buffers, not both)
+            # *timeout            : timeout to capture in seconds (Either specify timeout or num-buffers, not both)
             #                     flags: readable, writable
             #                     Unsigned Integer. Range: 0 - 2147483647 Default: 0 
             #        'timeout=0 ' 
-            # *wbmode              : White balance affects the color temperature of the photo
+            # *wbmode             : White balance affects the color temperature of the photo
             #                     flags: readable, writable
             #                     Enum "GstNvArgusCamWBMode" Default: 1, "auto"
             #                         (0): off              - GST_NVCAM_WB_MODE_OFF
@@ -178,7 +214,7 @@ class nanoCapture(Thread):
             #                         (7): twilight         - GST_NVCAM_WB_MODE_TWILIGHT
             #                         (8): shade            - GST_NVCAM_WB_MODE_SHADE
             #                         (9): manual           - GST_NVCAM_WB_MODE_MANUAL
-            # *saturation          : Property to adjust saturation value
+            # *saturation         : Property to adjust saturation value
             #                     flags: readable, writable
             #                     Float. Range:               0 -               2 Default:               1 
             #        'saturation=1 ' 
@@ -266,106 +302,191 @@ class nanoCapture(Thread):
             #        'bufapi-version=false '
             ###################################################################################
 
-            # if framerate > 60:
-            #     sensormode = 5
-            # else:
-            #     sensormode = -1
-
-            if exposure_time <= 0:
-                # auto exposure
-                ################
-                nvarguscamerasrc_str = (
-                    'nvarguscamerasrc '                             +
-                    'sensor-id={:d} '.format(camera_num)            +
-                    'name="NanoCam{:d}" '.format(camera_num)        +
-                    'do-timestamp=true '                            +
-                    # 'sensor-mode={:d} '.format(sensormode)          +
-                    'timeout=0 '                                    +
-                    'blocksize=-1 '                                 +
-                    'num-buffers=-1 '                               +
-                    'tnr-strength=-1 '                              +
-                    'tnr-mode=1 '                                   +
-                    'aeantibanding=1 '                              +
-                    'bufapi-version=false '                         +
-                    'silent=true '                                  +
-                    'saturation=1 '                                 +
-                    'wbmode=1 '                                     +
-                    'awblock=false '                                +
-                    'aelock=false '                                 +
-                    'ee-mode=0 '                                    +
-                    'ee-strength=-1 '                               +
-                    'exposurecompensation=0 '                       +
-                    'exposuretimerange="34000 358733000" '
-                )
-            else:
-                # static exposure
-                #################
-                nvarguscamerasrc_str = (  
-                    'nvarguscamerasrc '                             +
-                    'sensor-id={:d} '.format(camera_num)            +
-                    'name="NanoCam{:d}" '.format(camera_num)        +
-                    'do-timestamp=true '                            +
-                    'timeout=0 '                                    +
-                    'blocksize=-1 '                                 +
-                    'num-buffers=-1 '                               +
-                    # 'sensor-mode={:d} '.format(sensormode)          +
-                    'tnr-strength=-1 '                              +
-                    'tnr-mode=1 '                                   +
-                    'aeantibanding=1 '                              +
-                    'bufapi-version=false '                         +
-                    'silent=true '                                  +
-                    'saturation=1 '                                 +
-                    'wbmode=1 '                                     +
-                    'awblock=false '                                +
-                    'aelock=true '                                  +
-                    'ee-mode=0 '                                    +
-                    'ee-strength=-1 '                               +
-                    'exposurecompensation=0 '                       +
-                    'exposuretimerange="{:d} {:d}" '.format(exposure_time*1000,exposure_time*1000) 
-                )
-
-            # flip-method         : video flip methods
-            #                         flags: readable, writable, controllable
-            #                         Enum "GstNvVideoFlipMethod" Default: 0, "none"
-            #                         (0): none             - Identity (no rotation)
-            #                         (1): counterclockwise - Rotate counter-clockwise 90 degrees
-            #                         (2): rotate-180       - Rotate 180 degrees
-            #                         (3): clockwise        - Rotate clockwise 90 degrees
-            #                         (4): horizontal-flip  - Flip horizontally
-            #                         (5): upper-right-diagonal - Flip across upper right/lower left diagonal
-            #                         (6): vertical-flip    - Flip vertically
-            #                         (7): upper-left-diagonal - Flip across upper left/lower right 
+            # NOTE: We keep the actual pipeline minimal and feature-detect optional
+            # properties to avoid pipeline parse failures across JetPack versions.
+            #
+            # If you want to pass additional nvarguscamerasrc properties (tnr-mode,
+            # wbmode, etc.), provide them via configs['gst_source_props_str'].
 
             # deal with auto resizing
             if output_height <= 0:
                 output_height = capture_height
-            if output_width <=0:
+            if output_width <= 0:
                 output_width = capture_width
 
-            gstreamer_str = (
-                '! video/x-raw(memory:NVMM), '                       +
-                'width=(int){:d}, '.format(capture_width)            +
-                'height=(int){:d}, '.format(capture_height)          +
-                'format=(string)NV12, '                              +
-                'framerate=(fraction){:d}/1 '.format(framerate)      +
-                '! nvvidconv flip-method={:d} '.format(flip_method)  +
-                '! video/x-raw, width=(int){:d}, height=(int){:d}, format=(string)BGRx '.format(output_width,output_height) +
-                '! videoconvert '                                    +
-                '! video/x-raw, format=(string)BGR '                 +
-                '! appsink')
+            gsrc_str = self._gstreamer_source(
+                camera_num=camera_num,
+                capture_width=capture_width,
+                capture_height=capture_height,
+                framerate=framerate,
+                exposure_time=exposure_time,
+            )
+
+            # Map repo-wide flip enum (cv2Capture) to videoflip method
+            if   flip_method == 0: flip = 0
+            elif flip_method == 1: flip = 3  # ccw 90
+            elif flip_method == 2: flip = 2  # 180
+            elif flip_method == 3: flip = 1  # cw 90
+            elif flip_method == 4: flip = 4  # horizontal
+            elif flip_method == 5: flip = 7  # upright diagonal
+            elif flip_method == 6: flip = 5  # vertical
+            elif flip_method == 7: flip = 6  # upperleft diagonal
+            else:                  flip = 0
+
+            # Downstream pipeline (optimized like gCapture)
+            parts = []
+
+            if (output_width != capture_width) or (output_height != capture_height):
+                parts.append('! videoscale ')
+                parts.append('! video/x-raw, width=(int){:d}, height=(int){:d} '.format(int(output_width), int(output_height)))
+
+            if flip != 0:
+                parts.append('! videoflip method={:d} '.format(int(flip)))
+
+            parts.append('! videoconvert ')
+            parts.append('! video/x-raw, format=(string)BGR ')
+
+            parts.append('! queue leaky=downstream max-size-buffers=1 ')
+            parts.append('! appsink name=appsink emit-signals=false sync=false max-buffers=1 drop=true enable-last-sample=false qos=false ')
+
+            return gsrc_str + ''.join(parts)
+
+            # Legacy pipeline example (kept for reference/documentation):
+            # The original implementation set many nvarguscamerasrc tuning properties.
+            # Prefer passing these via configs['gst_source_props_str'] so we only include
+            # properties actually supported by the installed element.
+            #
+            # Example auto exposure range (ns): exposuretimerange="34000 358733000"
+            # Example manual exposure range (ns): exposuretimerange="<x> <x>" + aelock=true
+
+    def _gst_has_element(self, element_name: str) -> bool:
+        if Gst is None:
+            return False
+        if not hasattr(self.__class__, "_gst_inited"):
+            Gst.init(None)
+            self.__class__._gst_inited = True
+        try:
+            return Gst.ElementFactory.find(element_name) is not None
+        except Exception:
+            return False
+
+    def _gst_element_has_property(self, element_name: str, prop_name: str) -> bool:
+        if Gst is None:
+            return False
+        if not hasattr(self.__class__, "_gst_inited"):
+            Gst.init(None)
+            self.__class__._gst_inited = True
+        try:
+            factory = Gst.ElementFactory.find(element_name)
+            if factory is None:
+                return False
+            element = factory.create(None)
+            if element is None:
+                return False
+            return element.find_property(prop_name) is not None
+        except Exception:
+            return False
+
+    def _gstreamer_source(self,
+        camera_num: int,
+        capture_width: int,
+        capture_height: int,
+        framerate: float,
+        exposure_time: float,
+    ) -> str:
+        """Build source portion similar to gCapture, defaulting to nvargus."""
+
+        custom = getattr(self, "_gst_source_str", None)
+        if isinstance(custom, str) and custom.strip():
+            return custom.strip() + ' '
+
+        extra_props = getattr(self, "_gst_source_props_str", None)
+        extra_props_str = (extra_props.strip() + ' ') if isinstance(extra_props, str) and extra_props.strip() else ''
+
+        source = getattr(self, "_gst_source", None)
+        source = (source or 'nvargus').strip().lower()
+
+        if source == 'auto':
+            if self._gst_has_element('nvarguscamerasrc'):
+                source = 'nvargus'
+            elif self._gst_has_element('libcamerasrc'):
+                source = 'libcamera'
+            else:
+                source = 'v4l2'
+
+        if source in ('nvargus', 'nvarguscamerasrc'):
+            # Best-effort properties: add only if supported by the element.
+            # Keep these minimal to reduce JetPack version sensitivity.
+            base_props = ''
+            if self._gst_element_has_property('nvarguscamerasrc', 'do-timestamp'):
+                base_props += 'do-timestamp=true '
+            if self._gst_element_has_property('nvarguscamerasrc', 'timeout'):
+                base_props += 'timeout=0 '
+            if self._gst_element_has_property('nvarguscamerasrc', 'num-buffers'):
+                base_props += 'num-buffers=-1 '
+            if self._gst_element_has_property('nvarguscamerasrc', 'blocksize'):
+                base_props += 'blocksize=-1 '
+
+            exposure_props = ''
+            # exposure_time is microseconds in this repo.
+            if exposure_time is not None and exposure_time > 0:
+                # Manual exposure: lock AE (if supported) and clamp exposuretimerange to a single value.
+                exposure_ns = int(exposure_time * 1000)
+                if self._gst_element_has_property('nvarguscamerasrc', 'exposuretimerange'):
+                    exposure_props += 'exposuretimerange="{0} {0}" '.format(exposure_ns)
+                if self._gst_element_has_property('nvarguscamerasrc', 'aelock'):
+                    exposure_props += 'aelock=true '
+            else:
+                # Auto exposure: allow AE and provide a broad default exposure range if supported.
+                if self._gst_element_has_property('nvarguscamerasrc', 'aelock'):
+                    exposure_props += 'aelock=false '
+                if self._gst_element_has_property('nvarguscamerasrc', 'exposuretimerange'):
+                    # Legacy default range used in this repo (nanoseconds): 34us..358.733ms
+                    exposure_props += 'exposuretimerange="34000 358733000" '
 
             return (
-                nvarguscamerasrc_str + gstreamer_str
+                'nvarguscamerasrc name=src sensor-id={:d} '.format(int(camera_num))
+                + base_props
+                + exposure_props
+                + extra_props_str
+                + '! video/x-raw(memory:NVMM), '
+                + 'width=(int){:d}, height=(int){:d}, '.format(int(capture_width), int(capture_height))
+                + 'framerate=(fraction){:d}/1, format=NV12 '.format(int(framerate))
+                + '! nvvidconv '
+                + '! video/x-raw, format=NV12 '
             )
+
+        if source in ('libcamera', 'libcamerasrc'):
+            return (
+                'libcamerasrc name=src '.format(int(camera_num))
+                + extra_props_str
+                + '! video/x-raw, '
+                + 'width=(int){:d}, height=(int){:d}, '.format(int(capture_width), int(capture_height))
+                + 'framerate=(fraction){:d}/1, '.format(int(framerate))
+                + 'format=NV12 '
+            )
+
+        if source in ('v4l2', 'v4l2src'):
+            device = self._configs.get('device') or self._configs.get('v4l2_device')
+            if not device:
+                device = f'/dev/video{camera_num}'
+            return (
+                'v4l2src name=src device={:s} io-mode=2 '.format(device)
+                + extra_props_str
+                + '! video/x-raw, '
+                + 'width=(int){:d}, height=(int){:d}, '.format(int(capture_width), int(capture_height))
+                + 'framerate=(fraction){:d}/1 '.format(int(framerate))
+            )
+
+        return source + ' '
 
     #
     # Setup the Camera
     ############################################################################
-    def _open_cam(self):
-        """
-        Open up the camera so we can begin capturing frames
-        """
-        self.gst=self.gstreamer_pipeline(
+    def open_cam(self):
+        """Open up the camera so we can begin capturing frames."""
+
+        self.gst = self.gstreamer_pipeline(
             camera_num     = self._camera_num,
             capture_width  = self._capture_width,
             capture_height = self._capture_height,
@@ -373,67 +494,147 @@ class nanoCapture(Thread):
             output_height  = self._output_height,
             framerate      = self._framerate,
             exposure_time  = self._exposure,
-            flip_method    = self._flip_method)
+            flip_method    = self._flip_method,
+        )
 
-        if not self.log.full(): self.log.put_nowait((logging.INFO, self.gst))
+        if not self.log.full():
+            self.log.put_nowait((logging.INFO, self.gst))
 
-        self.cam = cv2.VideoCapture(self.gst, cv2.CAP_GSTREAMER)
+        if Gst is None:
+            if not self.log.full():
+                self.log.put_nowait((logging.CRITICAL, "NanoCap:GStreamer python bindings (PyGObject) not available"))
+            self.pipeline = None
+            self.appsink = None
+            self.source = None
+            self.cam_open = False
+            return
 
-        self.cam_open = self.cam.isOpened()
+        if not hasattr(self.__class__, "_gst_inited"):
+            Gst.init(None)
+            self.__class__._gst_inited = True
 
-        if not self.cam_open:
-            if not self.log.full(): self.log.put_nowait((logging.CRITICAL, "NanoCap:Failed to open camera!"))
+        try:
+            self.pipeline = Gst.parse_launch(self.gst)
+            self.appsink = self.pipeline.get_by_name("appsink")
+            if self.appsink is None:
+                raise RuntimeError("appsink element not found in pipeline")
+
+            # Optional: grab source for dynamic properties
+            try:
+                self.source = self.pipeline.get_by_name("src")
+            except Exception:
+                self.source = None
+
+            # Ensure low-latency behavior even if the pipeline string is edited
+            try:
+                self.appsink.set_property("sync", False)
+                self.appsink.set_property("drop", True)
+                self.appsink.set_property("max-buffers", 1)
+                if self.appsink.find_property("enable-last-sample") is not None:
+                    self.appsink.set_property("enable-last-sample", False)
+                if self.appsink.find_property("qos") is not None:
+                    self.appsink.set_property("qos", False)
+            except Exception:
+                pass
+
+            ret = self.pipeline.set_state(Gst.State.PLAYING)
+            self.cam_open = ret != Gst.StateChangeReturn.FAILURE
+
+            if not self.cam_open and not self.log.full():
+                self.log.put_nowait((logging.CRITICAL, "NanoCap:Failed to set pipeline to PLAYING"))
+        except Exception as exc:
+            self.pipeline = None
+            self.appsink = None
+            self.source = None
+            self.cam_open = False
+            if not self.log.full():
+                self.log.put_nowait((logging.CRITICAL, f"NanoCap:Failed to open GStreamer pipeline: {exc}"))
+
+    def close_cam(self):
+        if getattr(self, "pipeline", None) is not None and Gst is not None:
+            try:
+                self.pipeline.set_state(Gst.State.NULL)
+            except Exception:
+                pass
+        self.pipeline = None
+        self.appsink = None
+        self.source = None
+
+    def _sample_to_bgr(self, sample):
+        """Convert a Gst.Sample (video/x-raw,format=BGR) into a NumPy array."""
+        if sample is None or GstVideo is None:
+            return None
+
+        caps = sample.get_caps()
+        if caps is None:
+            return None
+
+        info = GstVideo.VideoInfo()
+        ok = info.from_caps(caps)
+        if not ok:
+            return None
+
+        buf = sample.get_buffer()
+        if buf is None:
+            return None
+
+        success, map_info = buf.map(Gst.MapFlags.READ)
+        if not success:
+            return None
+
+        try:
+            height = int(info.height)
+            width = int(info.width)
+            stride = int(info.stride[0]) if info.stride and info.stride[0] else width * 3
+
+            data = np.frombuffer(map_info.data, dtype=np.uint8)
+            if data.size < height * stride:
+                return None
+
+            frame_2d = data[: height * stride].reshape((height, stride))
+            frame = frame_2d[:, : width * 3].reshape((height, width, 3))
+            return frame.copy()
+        finally:
+            buf.unmap(map_info)
 
     # Camera Routines
     ##################################################################
 
-    # OpenCV interface
-    # Works for Sony IX219
-    #cap.get(cv2.CAP_PROP_BRIGHTNESS)
-    #cap.get(cv2.CAP_PROP_CONTRAST)
-    #cap.get(cv2.CAP_PROP_SATURATION)
-    #cap.get(cv2.CAP_PROP_HUE)
-    #cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-    #cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    #cap.get(cv2.CAP_PROP_FPS)
-
-    #V4L2 interface
-    #Works for Sonty IX219
-    #v4l2-ctl --set-ctrl exposure= 13..683709
-    #v4l2-ctl --set-ctrl gain= 16..170
-    #v4l2-ctl --set-ctrl frame_rate= 2000000..120000000
-    #v4l2-ctl --set-ctrl low_latency_mode=True
-    #v4l2-ctl --set-ctrl bypass_mode=Ture
-    #os.system("v4l2-ctl -c exposure_absolute={} -d {}".format(val,self._camera_num))
-
-    # Read properties
-
     @property
-    def exposure(self):              
-        if self.cam_open:
-            # return os.system("v4l2-ctl -C exposure_absolute -d {}".format(self._camera_num))
-            res = subprocess.run(["v4l2-ctl", "-C exposure_absolute -d {}".format(self._camera_num)], stdout=subprocess.PIPE).stdout.decode('utf-8')
-            return res
-        else: return float("NaN")
+    def exposure(self):
+        return self._exposure
+
     @exposure.setter
     def exposure(self, val):
-        if val is None:
+        if val is None or val == -1:
             return
-        val = int(val)
-        if self.cam_open:
+        self._exposure = float(val)
+
+        # Best-effort live update on nvarguscamerasrc
+        src = getattr(self, "source", None)
+        if src is None:
+            return
+
+        try:
+            exposure_ns = int(float(val) * 1000)
             with self.cam_lock:
-                res = subprocess.run(["v4l2-ctl -c exposure_absolute={} -d {}".format(val, self._camera_num)], stdout=subprocess.PIPE).stdout.decode('utf-8')
-                # os.system("v4l2-ctl -c exposure_absolute={} -d {}".format(val, self._camera_num))
-                self._exposure = val
-            if not self.log.full(): self.log.put_nowait((logging.INFO, "NanoCap:Exposure:{}".format(val)))
-        else:
-            if not self.log.full(): self.log.put_nowait((logging.ERROR, "NanoCap:Failed to set exposure to{}!".format(val)))
+                if src.find_property("exposuretimerange") is not None:
+                    src.set_property("exposuretimerange", f"{exposure_ns} {exposure_ns}")
+                if src.find_property("aelock") is not None:
+                    src.set_property("aelock", True)
+            if not self.log.full():
+                self.log.put_nowait((logging.INFO, f"NanoCap:Exposure set:{val}"))
+        except Exception as exc:
+            if not self.log.full():
+                self.log.put_nowait((logging.WARNING, f"NanoCap:Failed to set exposure:{val}: {exc}"))
 
 ###############################################################################
 # Testing
 ###############################################################################
 
 if __name__ == '__main__':
+
+    import cv2
 
     configs = {
         'camera_res'      : (1280, 720),    # width & height
@@ -468,25 +669,35 @@ if __name__ == '__main__':
 
     last_display = time.perf_counter()
 
-    stop = False  
-    while(not stop):
-        current_time = time.perf_counter()
+    stop = False
+    try:
+        while not stop:
+            current_time = time.perf_counter()
 
-        while not camera.log.empty():
-            (level, msg) = camera.log.get_nowait()
-            logger.log(level, "NanoCap:{}".format(msg))
+            while not camera.log.empty():
+                (level, msg) = camera.log.get_nowait()
+                logger.log(level, "NanoCap:{}".format(msg))
 
-        (frame_time, frame) = camera.capture.get(block=True, timeout=None)
+            try:
+                (frame_time, frame) = camera.capture.get(timeout=0.25)
+            except Exception:
+                continue
 
-        if (current_time - last_display) >= display_interval:
-            cv2.imshow('Nano CSI Camera', frame)
-            last_display = current_time
-            if cv2.waitKey(1) & 0xFF == ord('q'):  stop=True
-            #try: 
-            #    if cv2.getWindowProperty(window_name, cv2.WND_PROP_AUTOSIZE) < 0: 
-            #        stop = True
-            #except: 
-            #    stop = True
-
-    camera.stop()
-    cv2.destroyAllWindows()
+            if (current_time - last_display) >= display_interval:
+                cv2.imshow('Nano CSI Camera', frame)
+                last_display = current_time
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    stop = True
+    except KeyboardInterrupt:
+        pass
+    finally:
+        camera.stop()
+        try:
+            camera.join(timeout=2.0)
+        except Exception:
+            pass
+        try:
+            camera.close_cam()
+        except Exception:
+            pass
+        cv2.destroyAllWindows()

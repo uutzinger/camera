@@ -1,10 +1,12 @@
 ##########################################################################
-# Testing of display and capture 
-# Optional scan for camera
+# OpenCV (cv2Capture) display + capture example
+#
+# Notes:
+# - On Jetson Nano (aarch64) this will use nanoCapture (nvargus) for CSI.
+# - On other platforms it uses cv2Capture.
+#
+# You need to set the proper config import below.
 ##########################################################################
-# 2% CPU usage
-##########################################################################
-
 
 import logging
 import time
@@ -22,7 +24,7 @@ loop_interval = 1.0/200.0
 
 # Camera Signature
 # In case we have multiple camera, we can search for default driver settings
-# and compare to camera signature, opencv unfortunately does not return the 
+# and compare to camera signature, opencv unfortunately does not return the
 # serial number of the camera
 # Example: Generic Webcam: 640, 480, YUYV
 # Example: FLIRLepton: 160, 120, BGR3
@@ -37,13 +39,19 @@ camprops = probeCameras(5)
 # Try to find the one that matches our signature
 score = 0
 for i in range(len(camprops)):
-    try: found_fourcc = 1 if camprops[i]['fourcc'] == fourccSig else 0            
-    except: found_fourcc = 0
-    try: found_width = 1  if camprops[i]['width']  == widthSig  else 0
-    except: found_width =  0
-    try: found_height = 1 if camprops[i]['height'] == heightSig else 0   
-    except: found_height = 0
-    tmp = found_fourcc+found_width+found_height
+    try:
+        found_fourcc = 1 if camprops[i]['fourcc'] == fourccSig else 0
+    except Exception:
+        found_fourcc = 0
+    try:
+        found_width = 1 if camprops[i]['width'] == widthSig else 0
+    except Exception:
+        found_width = 0
+    try:
+        found_height = 1 if camprops[i]['height'] == heightSig else 0
+    except Exception:
+        found_height = 0
+    tmp = found_fourcc + found_width + found_height
     if tmp > score:
         score = tmp
         camera_index = i
@@ -66,51 +74,48 @@ from configs.eluk_configs import configs as configs
 # -FLIR Lepton 3.5
 # from configs.FLIRlepton35 import confgis as configs
 
-if configs['displayfps'] >= 0.8*configs['fps']:
+if configs['displayfps'] >= 0.8 * configs['fps']:
     display_interval = 0
 else:
-    display_interval = 1.0/configs['displayfps']
+    display_interval = 1.0 / configs['displayfps']
 
-dps_measure_time = 5.0 # assess performance every 5 secs
+dps_measure_time = 5.0  # assess performance every 5 secs
 
-window_name      = 'Camera'
-font             = cv2.FONT_HERSHEY_SIMPLEX
-textLocation0    = (10,20)
-textLocation1    = (10,60)
-fontScale        = 1
-fontColor        = (255,255,255)
-lineType         = 2
-cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
+window_name = 'Camera'
+font = cv2.FONT_HERSHEY_SIMPLEX
+textLocation0 = (10, 20)
+textLocation1 = (10, 60)
+fontScale = 1
+fontColor = (255, 255, 255)
+lineType = 2
+cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)  # or WINDOW_NORMAL
 
 # Setting up logging
-logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARNING
-logger = logging.getLogger("CV2Capture")
+logging.basicConfig(level=logging.DEBUG)  # options are: DEBUG, INFO, ERROR, WARNING
+logger = logging.getLogger("cv2_capture_display")
 
 # Create camera interface based on computer OS you are running
-# plat can be Windows, Linux, MaxOS
 plat = platform.system()
-if plat == 'Linux' and platform.machine() == "aarch64": # this is jetson nano for me
+if plat == 'Linux' and platform.machine() == "aarch64":  # Jetson Nano
     from camera.capture.nanocapture import nanoCapture
+
     camera = nanoCapture(configs, camera_index)
 else:
     from camera.capture.cv2capture import cv2Capture
+
     camera = cv2Capture(configs, camera_index)
 
 logger.log(logging.INFO, "Getting Images")
 camera.start()
 
-# Opens camera settings window
-# camera.opensettings()
-
 # Initialize Variables
-last_display   = time.perf_counter()
-last_fps_time  = time.perf_counter()
-measured_dps   = 0
-num_frames_received    = 0
-num_frames_displayed   = 0
+last_display = time.perf_counter()
+last_fps_time = time.perf_counter()
+measured_dps = 0
+num_frames_received = 0
+num_frames_displayed = 0
 
-while(cv2.getWindowProperty(window_name, 0) >= 0):
-
+while cv2.getWindowProperty(window_name, 0) >= 0:
     current_time = time.perf_counter()
 
     # wait for new image
@@ -121,18 +126,18 @@ while(cv2.getWindowProperty(window_name, 0) >= 0):
         logger.log(level, "{}".format(msg))
 
     if (current_time - last_fps_time) >= dps_measure_time:
-        measured_fps = num_frames_received/dps_measure_time
+        measured_fps = num_frames_received / dps_measure_time
         logger.log(logging.INFO, "MAIN:Frames received per second:{}".format(measured_fps))
         num_frames_received = 0
-        measured_dps = num_frames_displayed/dps_measure_time
+        measured_dps = num_frames_displayed / dps_measure_time
         logger.log(logging.INFO, "MAIN:Frames displayed per second:{}".format(measured_dps))
         num_frames_displayed = 0
         last_fps_time = current_time
 
     if (current_time - last_display) >= display_interval:
-        frame_display = frame.copy()        
-        cv2.putText(frame_display,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
-        cv2.putText(frame_display,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
+        frame_display = frame.copy()
+        cv2.putText(frame_display, "Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
+        cv2.putText(frame_display, "Display FPS:{} [Hz]".format(measured_dps), textLocation1, font, fontScale, fontColor, lineType)
         cv2.imshow(window_name, frame_display)
         # quit the program if users enter q or closes the display window
         # the waitKey function limits the display frame rate
@@ -142,11 +147,11 @@ while(cv2.getWindowProperty(window_name, 0) >= 0):
         last_display = current_time
         num_frames_displayed += 1
 
-    # avoid looping unnecessarely, this is only relevant for low fps and non blocking capture
-    #end_time = time.perf_counter()
-    #delay_time = loop_interval - (end_time - current_time)
-    #if  delay_time >= 0.005:
-    #    time.sleep(delay_time)  # this creates at least 3ms delay, regardless of delay_time
+    # avoid looping unnecessarily (relevant for low fps and non-blocking capture)
+    # end_time = time.perf_counter()
+    # delay_time = loop_interval - (end_time - current_time)
+    # if delay_time >= 0.005:
+    #     time.sleep(delay_time)  # this creates at least 3ms delay, regardless of delay_time
 
 # Clean up
 camera.stop()

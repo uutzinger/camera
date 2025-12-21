@@ -6,7 +6,11 @@
 # Place frames with tiff.queue.put((frame_time, frame))
 #
 # Storage array data streamer
-# Urs Utzinger 2020
+# Urs Utzinger 
+# 
+# Chagnges:
+# 2025 Codereview and cleanup
+# 2020 Initial release
 ###############################################################################
 
 ###############################################################################
@@ -16,6 +20,7 @@
 # Multi Threading
 from threading import Thread
 from queue import Queue
+from queue import Empty
 
 # System
 import logging, time
@@ -33,29 +38,42 @@ class tiffServer(Thread):
     Tiff saver
     """
 
+    _STOP_ITEM = (None, None)
+
     # Initialize the storage Thread
     # Opens Capture Device
-    def __init__(self, filename = None):
+    def __init__(self, filename=None, queue_size: int = 32):
+
+        # Proper Thread initialization (so .start()/.join() work as expected)
+        super().__init__(daemon=True)
 
         # Threading Queue, Locks, Events
-        self.queue           = Queue(maxsize=32)
+        self.queue           = Queue(maxsize=queue_size)
         self.log             = Queue(maxsize=32)
         self.stopped         = True
 
+        self.tiff = None
+        self.tiff_open = False
+
         # Initialize TIFF
-        if filename is not None:
-            try:
-                self.tiff = tifffile.TiffWriter(filename, bigtiff=True)
-            except:
-                if not self.log.full(): self.log.put_nowait((logging.ERROR, "TIFF:Could not create TIFF!"))
-                return False
-        else:
-            if not self.log.full(): self.log.put_nowait((logging.ERROR, "TIFF:Need to provide filename to store data!"))
-            return False
+        if filename is None:
+            if not self.log.full():
+                self.log.put_nowait((logging.ERROR, "TIFF:Need to provide filename to store data!"))
+            return
+
+        try:
+            self.tiff = tifffile.TiffWriter(filename, bigtiff=True)
+            self.tiff_open = True
+        except Exception as exc:
+            self.tiff = None
+            self.tiff_open = False
+            if not self.log.full():
+                self.log.put_nowait((logging.ERROR, f"TIFF:Could not create TIFF: {exc}"))
+            return
 
         self.measured_cps = 0.0
 
-        Thread.__init__(self)
+        self.measured_cps = 0.0
 
     #
     # Thread routines #################################################
@@ -64,13 +82,39 @@ class tiffServer(Thread):
     def stop(self):
         """stop the thread"""
         self.stopped = True
+        # Unblock writer thread if it's waiting on queue.get()
+        try:
+            if not self.queue.full():
+                self.queue.put_nowait(self._STOP_ITEM)
+        except Exception:
+            pass
+
+    def close(self):
+        """Close the underlying TiffWriter (idempotent)."""
+        try:
+            tiff = getattr(self, 'tiff', None)
+            if tiff is not None:
+                tiff.close()
+        except Exception:
+            pass
+        self.tiff = None
+        self.tiff_open = False
 
     def start(self):
         """ set the thread start conditions """
         self.stopped = False
-        T = Thread(target=self.update)
-        T.daemon = True # run in background
-        T.start()
+
+        if not getattr(self, 'tiff_open', False):
+            self.stopped = True
+            if not self.log.full():
+                self.log.put_nowait((logging.CRITICAL, "TIFF:Not started because file is not open"))
+            return
+
+        super().start()
+
+    # Thread entrypoint
+    def run(self):
+        self.update()
 
     # After Stating of the Thread, this runs continously
     def update(self):
@@ -78,23 +122,44 @@ class tiffServer(Thread):
         last_time = time.time()
         num_cubes = 0
 
-        while not self.stopped:
-            (cube_time, data_cube) = self.queue.get(block=True, timeout=None)
-            self.tiff.write(data_cube, compression='PACKBITS', photometric='MINISBLACK', contiguous=False, metadata ={'time': cube_time, 'author': 'camera'} )
-            # compression = 'LZW', 'LZMA', 'ZSTD', 'JPEG', 'PACKBITS', 'NONE', 'LERC'
-            # compression ='jpeg', 'png', 'zlib'
-            num_cubes += 1
+        try:
+            while not self.stopped:
+                try:
+                    (cube_time, data_cube) = self.queue.get(timeout=0.25)
+                except Empty:
+                    continue
 
+                if (cube_time, data_cube) == self._STOP_ITEM:
+                    break
 
-            # Storage throughput calculation
-            current_time = time.time()
-            if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
-                self.measured_cps = num_cubes/5.0
-                if not self.log.full(): self.log.put_nowait((logging.INFO, "TIFF:CPS:{}".format(self.measured_cps)))
-                num_cubes = 0
-                last_time = current_time
+                if cube_time is None or data_cube is None:
+                    continue
 
-        self.tiff.close()
+                try:
+                    # compression = 'LZW', 'LZMA', 'ZSTD', 'JPEG', 'PACKBITS', 'NONE', 'LERC'
+                    # compression = 'jpeg', 'png', 'zlib'
+                    self.tiff.write(
+                        data_cube,
+                        compression='PACKBITS',
+                        photometric='MINISBLACK',
+                        contiguous=False,
+                        metadata={'time': cube_time, 'author': 'camera'},
+                    )
+                    num_cubes += 1
+                except Exception as exc:
+                    if not self.log.full():
+                        self.log.put_nowait((logging.ERROR, f"TIFF:Write failed: {exc}"))
+
+                # Storage throughput calculation
+                current_time = time.time()
+                if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
+                    self.measured_cps = num_cubes/5.0
+                    if not self.log.full():
+                        self.log.put_nowait((logging.INFO, "TIFF:CPS:{}".format(self.measured_cps)))
+                    num_cubes = 0
+                    last_time = current_time
+        finally:
+            self.close()
 
 if __name__ == '__main__':
 
@@ -112,7 +177,7 @@ if __name__ == '__main__':
    
     # Setting up Storage
     now = datetime.now()
-    filename = now.strftime("%Y%m%d%H%M%S") + ".hdf5"
+    filename = now.strftime("%Y%m%d%H%M%S") + ".tiff"
     tiff = tiffServer("C:\\temp\\" + filename)
     logger.log(logging.DEBUG, "Starting TIFF Server")
     tiff.start()
@@ -129,7 +194,7 @@ if __name__ == '__main__':
 
     last_display = time.time()
     num_frames = 0
-    stop = False`
+    stop = False
     while(not stop):
         current_time = time.time()
 
@@ -144,10 +209,10 @@ if __name__ == '__main__':
             cv2.imshow('TIFF', frame)
             num_frames += 1
             key = cv2.waitKey(1) 
-            if (key == 27) or (key & 0xFF == ord('q')): stop = False
-            if cv2.getWindowProperty("TIFF", 0) < 0: stop = False
+            if (key == 27) or (key & 0xFF == ord('q')): stop = True
+            if cv2.getWindowProperty("TIFF", 0) < 0: stop = True
 
-            if not tiff.queue.full(): queue.put_nowait((current_time, image))
+            if not tiff.queue.full(): tiff.queue.put_nowait((current_time, image))
 
 
     tiff.stop()

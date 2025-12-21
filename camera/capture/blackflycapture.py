@@ -5,6 +5,8 @@
 # Uses OpenCV to resize and rotate images
 #
 # Urs Utzinger
+#
+# 2025
 # 2022 Updated binning and frame format control
 # 2021 Trigger update, initialize, use only queue to access frames
 # 2020 Initial release
@@ -46,30 +48,35 @@ class blackflyCapture(Thread):
         exposure: float = None,
         queue_size: int = 32):
 
+        # Proper Thread initialization (so .start()/.join() work as expected)
+        super().__init__(daemon=True)
+
+        # Keep a copy of configs for consistency across capture modules
+        self._configs = configs or {}
+
         # populate desired settings from configuration file or function arguments
         ########################################################################
         self._camera_num     = camera_num
         if exposure is not None:
             self._exposure   = exposure  
         else: 
-            self._exposure   = configs['exposure']
+            self._exposure   = self._configs.get('exposure', -1)
         if res is not None:
             self._camera_res = res
         else: 
-            self._camera_res = configs['camera_res']
-        self._output_res     = configs['output_res']
+            self._camera_res = self._configs.get('camera_res', (720, 540))
+        self._output_res     = self._configs.get('output_res', (-1, -1))
         self._output_width   = self._output_res[0]
         self._output_height  = self._output_res[1]
-        self._flip_method    = configs['flip']
-        self._framerate      = configs['fps']
-        self._autoexposure   = configs['autoexposure']       # autoexposure depends on camera
-        self._binning        = configs['binning']
-        self._framerate      = configs['fps']
-        self._offset         = configs['offset']
-        self._adc            = configs['adc']
-        self._trigout        = configs['trigout']            # -1 no trigout, 1 = line 1 ..
-        self._ttlinv         = configs['ttlinv']             # False = normal, True=inverted
-        self._trigin         = configs['trigin']             # -1 no trigin,  1 = line 1 ..
+        self._flip_method    = self._configs.get('flip', 0)
+        self._framerate      = self._configs.get('fps', 30)
+        self._autoexposure   = self._configs.get('autoexposure', 0)       # autoexposure depends on camera
+        self._binning        = self._configs.get('binning', (1, 1))
+        self._offset         = self._configs.get('offset', (0, 0))
+        self._adc            = self._configs.get('adc', 8)
+        self._trigout        = self._configs.get('trigout', -1)            # -1 no trigout, 1 = line 1 ..
+        self._ttlinv         = self._configs.get('ttlinv', False)             # False = normal, True=inverted
+        self._trigin         = self._configs.get('trigin', -1)             # -1 no trigin,  1 = line 1 ..
 
         # Threading Queue
         self.capture         = Queue(maxsize=queue_size)
@@ -78,13 +85,11 @@ class blackflyCapture(Thread):
         self.cam_lock        = Lock()
 
         # Open up the Camera
-        self._open_cam()
+        self.open_cam()
 
         # Init vars
         self.frame_time   = 0.0
         self.measured_fps = 0.0
-
-        Thread.__init__(self)
 
     # Thread routines
     # Start Stop and Update Thread
@@ -94,12 +99,53 @@ class blackflyCapture(Thread):
         """stop the thread"""
         self.stopped = True
 
+    def close_cam(self):
+        """Stop acquisition and release PySpin resources (idempotent)."""
+        try:
+            cam = getattr(self, 'cam', None)
+            if cam is not None:
+                try:
+                    cam.EndAcquisition()
+                except Exception:
+                    pass
+                try:
+                    cam.DeInit()
+                except Exception:
+                    pass
+                try:
+                    del self.cam
+                except Exception:
+                    pass
+            self.cam = None
+            self.cam_open = False
+
+            cam_list = getattr(self, 'cam_list', None)
+            if cam_list is not None:
+                try:
+                    cam_list.Clear()
+                except Exception:
+                    pass
+            self.cam_list = None
+
+            system = getattr(self, 'system', None)
+            if system is not None:
+                try:
+                    system.ReleaseInstance()
+                except Exception:
+                    pass
+            self.system = None
+        except Exception:
+            pass
+
     def start(self):
-        """set the thread start conditions"""
+        """start the capture thread"""
         self.stopped = False
-        T = Thread(target=self.update)
-        T.daemon = True # run in background
-        T.start()
+        super().start()
+
+    # Thread entrypoint
+    def run(self):
+        """thread entrypoint"""
+        self.update()
 
     # After Stating of the Thread, this runs continously
     def update(self):
@@ -109,47 +155,72 @@ class blackflyCapture(Thread):
         while not self.stopped:
             current_time = time.time()
 
-            # Get New Image
-            if self.cam is not None:
-                with self.cam_lock:
-                    image_result = self.cam.GetNextImage(1000) # timeout in ms, function blocks until timeout
-                if not image_result.IsIncomplete(): # should always be complete
-                    # self.frame_time = self.cam.EventExposureEndTimestamp.GetValue()
-                    img = image_result.GetNDArray() # get inmage as NumPy array
-                    try: image_result.Release() # make next frame available, can create error during debug
-                    except:
-                        if not self.log.full(): self.log.put_nowait((logging.WARNING, "PySpin:Can not release image!"))
-                    num_frames += 1
+            if self.cam is None:
+                time.sleep(0.01)
+                continue
 
-                    if (self._output_height > 0) or (self._flip_method > 0):
-                        # adjust output height
-                        img_resized = cv2.resize(img, self._output_res)
-                        # flip resized image
-                        if   self._flip_method == 0: # no flipping
-                            img_proc = img_resized
-                        elif self._flip_method == 1: # ccw 90
-                            img_proc = cv2.roate(img_resized, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                        elif self._flip_method == 2: # rot 180, same as flip lr & up
-                            img_proc = cv2.roate(img_resized, cv2.ROTATE_180)
-                        elif self._flip_method == 3: # cw 90
-                            img_proc = cv2.roate(img_resized, cv2.ROTATE_90_CLOCKWISE)
-                        elif self._flip_method == 4: # horizontal
-                            img_proc = cv2.flip(img_resized, 0)
-                        elif self._flip_method == 5: # upright diagonal. ccw & lr
-                            img_proc = cv2.flip(cv2.roate(img_resized, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
-                        elif self._flip_method == 6: # vertical
-                            img_proc = cv2.flip(img_resized, 1)
-                        elif self._flip_method == 7: # upperleft diagonal
-                            img_proc = cv2.transpose(img_resized)
-                        else:
-                            img_proc = img_resized # not a valid flip method
-                    else:
-                        img_proc = img
+            # Get New Image
+            image_result = None
+            try:
+                with self.cam_lock:
+                    image_result = self.cam.GetNextImage(1000)  # timeout in ms, blocks until timeout
+
+                if image_result is None:
+                    continue
+
+                if image_result.IsIncomplete():
+                    if not self.log.full():
+                        self.log.put_nowait((logging.WARNING, f"PySpin:Incomplete image: {image_result.GetImageStatus()}"))
+                    continue
+
+                # Convert to NumPy array
+                img = image_result.GetNDArray()
+                if img is None:
+                    continue
+
+                num_frames += 1
+                self.frame_time = int(current_time * 1000)
+
+                img_proc = img
+
+                # Resize only if an explicit output size was provided
+                if (self._output_width > 0) and (self._output_height > 0):
+                    img_proc = cv2.resize(img_proc, self._output_res)
+
+                # Apply flip/rotation if requested (same enum as cv2Capture)
+                if self._flip_method != 0:
+                    if self._flip_method == 1: # ccw 90
+                        img_proc = cv2.rotate(img_proc, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                    elif self._flip_method == 2: # rot 180
+                        img_proc = cv2.rotate(img_proc, cv2.ROTATE_180)
+                    elif self._flip_method == 3: # cw 90
+                        img_proc = cv2.rotate(img_proc, cv2.ROTATE_90_CLOCKWISE)
+                    elif self._flip_method == 4: # horizontal (left-right)
+                        img_proc = cv2.flip(img_proc, 1)
+                    elif self._flip_method == 5: # upright diagonal. ccw & lr
+                        img_proc = cv2.flip(cv2.rotate(img_proc, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
+                    elif self._flip_method == 6: # vertical (up-down)
+                        img_proc = cv2.flip(img_proc, 0)
+                    elif self._flip_method == 7: # upperleft diagonal
+                        img_proc = cv2.transpose(img_proc)
 
                 if not self.capture.full():
-                    self.capture.put_nowait((current_time*1000., img_proc))
+                    self.capture.put_nowait((self.frame_time, img_proc))
                 else:
-                    if not self.log.full(): self.log.put_nowait((logging.WARNING, "PySpin:Capture Queue is full!"))
+                    if not self.log.full():
+                        self.log.put_nowait((logging.WARNING, "PySpin:Capture Queue is full!"))
+            except Exception as exc:
+                if not self.log.full():
+                    self.log.put_nowait((logging.ERROR, f"PySpin:GetNextImage failed: {exc}"))
+                time.sleep(0.005)
+            finally:
+                if image_result is not None:
+                    try:
+                        image_result.Release()
+                    except Exception:
+                        if not self.log.full():
+                            self.log.put_nowait((logging.WARNING, "PySpin:Can not release image!"))
+
             # FPS calculation
             if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_fps = num_frames/5.0
@@ -157,19 +228,12 @@ class blackflyCapture(Thread):
                 last_time = current_time
                 num_frames = 0
 
-        try: 
-            self.cam.EndAcquisition()
-            self.cam.DeInit()
-            # self.cam.Release()
-            del self.cam
-            self.cam_list.Clear()          # clear camera list before releasing system
-            self.system.ReleaseInstance()  # release system instance
-        except: pass
+        self.close_cam()
 
     #
     # Setup the Camera
     ############################################################################
-    def _open_cam(self):
+    def open_cam(self):
         """
         Open up the camera so we can begin capturing frames
         """
@@ -331,13 +395,14 @@ class blackflyCapture(Thread):
         # Start Image Acquistion
         ########################  
         self.cam.BeginAcquisition() # Start Aquision
-        # if trigger source is Software: execute, otherwise nothing goes
-        self.cam.TriggerSource.SetValue(PySpin.TriggerSource_Software)
-        if self.cam.TriggerSource.GetValue() == PySpin.TriggerSource_Software:
-            self.cam.TriggerSoftware()
-            if not self.log.full(): self.log.put_nowait((logging.INFO, "PySpin:Camera:TriggerSource: executed"))
-        else:
-            if not self.log.full(): self.log.put_nowait((logging.WARNING, "PySpin:Camera:TriggerSource: no access"))
+        # Best-effort software trigger kick (only if available/allowed)
+        try:
+            self.cam.TriggerSource.SetValue(PySpin.TriggerSource_Software)
+            if self.cam.TriggerSource.GetValue() == PySpin.TriggerSource_Software:
+                self.cam.TriggerSoftware()
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "PySpin:Camera:TriggerSource: executed"))
+        except Exception as exc:
+            if not self.log.full(): self.log.put_nowait((logging.WARNING, f"PySpin:Camera:TriggerSoftware failed: {exc}"))
             
         if not self.log.full(): self.log.put_nowait((logging.INFO, "PySpin:Acquiring images."))
 

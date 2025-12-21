@@ -6,6 +6,9 @@
 # Place frames into avi with avi.queue.put((frame_time, frame))
 #
 # Urs Utzinger 
+#
+# Changes:
+# 2025 Codereview and cleanup
 # 2021 Initial release
 ###############################################################################
 
@@ -16,6 +19,7 @@
 # Multi Threading
 from threading import Thread
 from queue import Queue
+from queue import Empty
 
 # System
 import logging, time
@@ -32,11 +36,16 @@ class aviServer(Thread):
     Save b/w and color images into avi-mjpg file
     """
 
+    _STOP_ITEM = (None, None)
+
     # Initialize the storage thread
-    def __init__(self, filename, fps, size):
+    def __init__(self, filename, fps, size, queue_size: int = 32):
+
+        # Proper Thread initialization (so .start()/.join() work as expected)
+        super().__init__(daemon=True)
 
         # Threading Queue, Locks, Events
-        self.queue           = Queue(maxsize=32)
+        self.queue           = Queue(maxsize=queue_size)
         self.log             = Queue(maxsize=32)
         self.stopped         = True
 
@@ -44,17 +53,25 @@ class aviServer(Thread):
         self.measured_cps = 0.0
 
         # Initialize AVI
-        if filename is not None:
-            try:
-                self.avi = cv2.VideoWriter(filename, cv2.VideoWriter_fourcc(*'MJPG'), fps, size)
-            except:
-                if not self.log.full(): self.log.put_nowait((logging.ERROR, "AVI:Could not create AVI!"))
-                return False
-        else:
-            if not self.log.full(): self.log.put_nowait((logging.ERROR, "AVI:Need to provide filename to store avi!"))
-            return False
+        self.avi = None
+        self.avi_open = False
 
-        Thread.__init__(self)
+        if filename is None:
+            if not self.log.full():
+                self.log.put_nowait((logging.ERROR, "AVI:Need to provide filename to store avi!"))
+            return
+
+        try:
+            self.avi = cv2.VideoWriter(filename, cv2.VideoWriter_fourcc(*'MJPG'), fps, size)
+            self.avi_open = bool(self.avi) and self.avi.isOpened()
+            if not self.avi_open:
+                if not self.log.full():
+                    self.log.put_nowait((logging.ERROR, f"AVI:VideoWriter failed to open: {filename}"))
+        except Exception as exc:
+            self.avi = None
+            self.avi_open = False
+            if not self.log.full():
+                self.log.put_nowait((logging.ERROR, f"AVI:Could not create AVI: {exc}"))
 
     # Thread routines #################################################
     # Start Stop and Update Thread
@@ -63,13 +80,40 @@ class aviServer(Thread):
     def stop(self):
         """stop the thread"""
         self.stopped = True
+        # Unblock writer thread if it's waiting on queue.get()
+        try:
+            if not self.queue.full():
+                self.queue.put_nowait(self._STOP_ITEM)
+        except Exception:
+            pass
+
+    def close(self):
+        """Release underlying VideoWriter (idempotent)."""
+        try:
+            avi = getattr(self, 'avi', None)
+            if avi is not None:
+                avi.release()
+        except Exception:
+            pass
+        self.avi = None
+        self.avi_open = False
 
     def start(self):
         """set the thread start conditions"""
         self.stopped = False
-        T = Thread(target=self.update)
-        T.daemon = True # run in background
-        T.start()
+
+        # If VideoWriter could not be opened, don't start a busy thread.
+        if not getattr(self, 'avi_open', False):
+            self.stopped = True
+            if not self.log.full():
+                self.log.put_nowait((logging.CRITICAL, "AVI:Not started because VideoWriter is not open"))
+            return
+
+        super().start()
+
+    # Thread entrypoint
+    def run(self):
+        self.update()
 
     # After Stating of the Thread, this runs continously
     def update(self):
@@ -77,20 +121,36 @@ class aviServer(Thread):
         last_time = time.time()
         num_frames = 0
 
-        while not self.stopped:
-            (frame_time, frame) = self.queue.get(block=True, timeout=None)
-            self.avi.write(frame)
-            num_frames += 1
+        try:
+            while not self.stopped:
+                try:
+                    (frame_time, frame) = self.queue.get(timeout=0.25)
+                except Empty:
+                    continue
 
-            # Storage througput calculation
-            current_time = time.time()
-            if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
-                self.measured_cps = num_frames/5.0
-                if not self.log.full(): self.log.put_nowait((logging.INFO, "AVI:FPS:{}".format(self.measured_cps)))
-                last_time = current_time
-                num_frames = 0
+                if (frame_time, frame) == self._STOP_ITEM:
+                    break
 
-        self.avi.release()
+                if frame is None:
+                    continue
+
+                try:
+                    self.avi.write(frame)
+                    num_frames += 1
+                except Exception as exc:
+                    if not self.log.full():
+                        self.log.put_nowait((logging.ERROR, f"AVI:Write failed: {exc}"))
+
+                # Storage throughput calculation
+                current_time = time.time()
+                if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
+                    self.measured_cps = num_frames/5.0
+                    if not self.log.full():
+                        self.log.put_nowait((logging.INFO, "AVI:FPS:{}".format(self.measured_cps)))
+                    last_time = current_time
+                    num_frames = 0
+        finally:
+            self.close()
 
 ###############################################################################
 # Testing

@@ -8,10 +8,8 @@
 import cv2
 import logging
 import time
-import platform
-import os
 
-from camera.utils import probeCameras
+from queue import Empty
 
 loop_interval = 1.0/200.0
 
@@ -31,24 +29,15 @@ configs = {
     # 1920x1080 6.4fps
     # 2592x1944 6.4fps
     ##############################################
-<<<<<<< HEAD
     'camera_res'      : (320, 240),     # camera width & height
     'exposure'        : 1000,          # microseconds
-=======
-    'camera_res'      : (640, 480),     # camera width & height
-    'exposure'        : 10000,          # microseconds
->>>>>>> 7f2a00fc961c45a97b4e20cd9224d2701097438c
     'autoexposure'    : 0,              # 
     'fps'             : 120,             # 
     'fourcc'          : 'YU12',         # 
     'buffersize'      : 4,              # default is 4 for V4L2, max 10, 
     'output_res'      : (-1, -1),       # Output resolution 
     'flip'            : 0,              # 0=norotation 
-<<<<<<< HEAD
     'displayfps'      : 10              # frame rate for display server
-=======
-    'displayfps'       :30              # frame rate for display server
->>>>>>> 7f2a00fc961c45a97b4e20cd9224d2701097438c
     }
 
 if configs['displayfps'] >= 0.8*configs['fps']:
@@ -72,16 +61,21 @@ logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARN
 logger = logging.getLogger("Raspi Capture")
 
 # Create camera interface based on computer OS you are running
-# plat can be Windows, Linux, MaxOS
-sysname, nodename, release, version, machine = os.uname()
-if sysname == 'Linux':
-    release == release.split('.')
-    if release[0] == '5':
-        from camera.capture.libcamcapture import libcameraCapture
-        camera = libcameraCapture(configs)
-    else:
-        from camera.capture.cv2capture import cv2Capture
-        camera = cv2Capture(configs, camera_index)
+# Prefer Raspberry Pi Picamera2/libcamera when available, otherwise fall back to OpenCV.
+camera = None
+try:
+    from camera.capture.picamera2capture import piCamera2Capture
+
+    camera = piCamera2Capture(configs, camera_num=camera_index)
+    if not getattr(camera, 'cam_open', False):
+        camera = None
+except Exception:
+    camera = None
+
+if camera is None:
+    from camera.capture.cv2capture import cv2Capture
+
+    camera = cv2Capture(configs, camera_index)
 
 logger.log(logging.INFO, "Getting Images")
 camera.start()
@@ -98,9 +92,12 @@ while(not stop):
 
     current_time = time.perf_counter()
 
-    # wait for new image
-    (frame_time, frame) = camera.capture.get(block=True, timeout=None)
-    num_frames_received += 1
+    # wait for new image (timeout keeps UI responsive even if capture stalls)
+    try:
+        (frame_time, frame) = camera.capture.get(timeout=0.25)
+        num_frames_received += 1
+    except Empty:
+        frame = None
 
     #display log
     while not camera.log.empty():
@@ -118,7 +115,7 @@ while(not stop):
         last_fps_time = current_time
 
     # display
-    if (current_time - last_display) >= display_interval:
+    if (frame is not None) and ((current_time - last_display) >= display_interval):
         frame_display = frame.copy()        
         cv2.putText(frame_display,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
         cv2.putText(frame_display,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
@@ -141,4 +138,12 @@ while(not stop):
 
 # Clean up
 camera.stop()
+try:
+    camera.join(timeout=2.0)
+except Exception:
+    pass
+try:
+    camera.close_cam()
+except Exception:
+    pass
 cv2.destroyAllWindows()

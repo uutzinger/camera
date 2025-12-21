@@ -40,6 +40,9 @@ class cv2CaptureProc(Process):
 
         Process.__init__(self)
 
+        # Keep a copy of configs for consistency across capture modules
+        self._configs = configs or {}
+
         # Process Locks, Events, Queue, Log
         self.stopper  = Event()
         self.log      = Queue(maxsize=queue_size)
@@ -51,19 +54,19 @@ class cv2CaptureProc(Process):
         if exposure is not None:
             self._exposure    = exposure  
         else: 
-            self._exposure   = configs['exposure']
+            self._exposure   = self._configs.get('exposure', -1)
         if res is not None:
             self._camera_res = res
         else: 
-            self._camera_res = configs['camera_res']
-        self._output_res      = configs['output_res']
+            self._camera_res = self._configs.get('camera_res', (640, 480))
+        self._output_res      = self._configs.get('output_res', (-1, -1))
         self._output_width    = self._output_res[0]
         self._output_height   = self._output_res[1]
-        self._framerate       = configs['fps']
-        self._flip_method     = configs['flip']
-        self._buffersize      = configs['buffersize']         # camera drive buffer size
-        self._fourcc          = configs['fourcc']             # camera sensor encoding format
-        self._autoexposure    = configs['autoexposure']       # autoexposure depends on camera
+        self._framerate       = self._configs.get('fps', -1)
+        self._flip_method     = self._configs.get('flip', 0)
+        self._buffersize      = self._configs.get('buffersize', 1)         # camera drive buffer size
+        self._fourcc          = self._configs.get('fourcc', -1)             # camera sensor encoding format
+        self._autoexposure    = self._configs.get('autoexposure', -1)       # autoexposure depends on camera
 
     #
     # Thread routines #################################################
@@ -76,6 +79,17 @@ class cv2CaptureProc(Process):
         self.process.close()
         self.log.close()
         self.capture.close()
+
+    def close_cam(self):
+        """Release the underlying VideoCapture (idempotent, best-effort)."""
+        try:
+            cam = getattr(self, 'cam', None)
+            if cam is not None:
+                cam.release()
+            self.cam = None
+            self.cam_open = False
+        except Exception:
+            pass
 
     def start(self, capture_queue = None):
         """Setup process and start it"""
@@ -103,30 +117,28 @@ class cv2CaptureProc(Process):
             num_frames += 1
             
             if (img is not None) and (not self.capture.full()):
-                if (self._output_height > 0) or (self._flip_method > 0):
-                    # adjust output height
-                    img_resized = cv2.resize(img, self._output_res)
-                    # flip resized image
-                    if   self._flip_method == 0: # no flipping
-                        img_proc = img_resized
-                    elif self._flip_method == 1: # ccw 90
-                        img_proc = cv2.roate(img_resized, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                    elif self._flip_method == 2: # rot 180, same as flip lr & up
-                        img_proc = cv2.roate(img_resized, cv2.ROTATE_180)
+                img_proc = img
+
+                # Resize only if an explicit output size was provided
+                if (self._output_width > 0) and (self._output_height > 0):
+                    img_proc = cv2.resize(img_proc, self._output_res)
+
+                # Apply flip/rotation if requested (same enum as cv2Capture)
+                if self._flip_method != 0:
+                    if self._flip_method == 1: # ccw 90
+                        img_proc = cv2.rotate(img_proc, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                    elif self._flip_method == 2: # rot 180
+                        img_proc = cv2.rotate(img_proc, cv2.ROTATE_180)
                     elif self._flip_method == 3: # cw 90
-                        img_proc = cv2.roate(img_resized, cv2.ROTATE_90_CLOCKWISE)
-                    elif self._flip_method == 4: # horizontal
-                        img_proc = cv2.flip(img_resized, 0)
+                        img_proc = cv2.rotate(img_proc, cv2.ROTATE_90_CLOCKWISE)
+                    elif self._flip_method == 4: # horizontal (left-right)
+                        img_proc = cv2.flip(img_proc, 1)
                     elif self._flip_method == 5: # upright diagonal. ccw & lr
-                        img_proc = cv2.flip(cv2.roate(img_resized, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
-                    elif self._flip_method == 6: # vertical
-                        img_proc = cv2.flip(img_resized, 1)
+                        img_proc = cv2.flip(cv2.rotate(img_proc, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
+                    elif self._flip_method == 6: # vertical (up-down)
+                        img_proc = cv2.flip(img_proc, 0)
                     elif self._flip_method == 7: # upperleft diagonal
-                        img_proc = cv2.transpose(img_resized)
-                    else:
-                        img_proc = img_resized # not a valid flip method
-                else:
-                    img_proc = img
+                        img_proc = cv2.transpose(img_proc)
 
                 self.capture.put_nowait((current_time*1000., img_proc))
             else:
@@ -138,7 +150,7 @@ class cv2CaptureProc(Process):
                 num_frames = 0
                 last_time = current_time
 
-        self.cam.release()      
+        self.close_cam()
 
     def _open_capture(self):
         """
@@ -382,7 +394,18 @@ if __name__ == '__main__':
 
     logger.log(logging.DEBUG, "Starting Capture")
 
-    camera = cv2Capture(camera_num=0, res=(640,480), exposure=-1)     
+    configs = {
+        'exposure': -1,
+        'camera_res': (640, 480),
+        'output_res': (-1, -1),
+        'fps': -1,
+        'flip': 0,
+        'buffersize': 1,
+        'fourcc': -1,
+        'autoexposure': -1,
+    }
+
+    camera = cv2CaptureProc(configs, camera_num=0, res=(640, 480), exposure=-1)
     camera.start()
 
     logger.log(logging.INFO, "Getting Frames")

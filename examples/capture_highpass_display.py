@@ -47,7 +47,7 @@ bin_x = 10
 bin_y = 10
 scale = (bin_x*bin_y*255)
 
-# transform highpassed data to display image
+# transform high passed data to display image
 #
 # data = np.sqrt(np.multiply(data,abs(data_bandpass)))
 # data = np.sqrt(255.*np.absolute(data_highpass)).astype('uint8')
@@ -95,17 +95,17 @@ logger = logging.getLogger("Main")
 # https://dsp.stackexchange.com/questions/54086/single-pole-iir-low-pass-filter-which-is-the-correct-formula-for-the-decay-coe
 
 # Filter LOW
-# filter cut off frequency: 0.5Hz
-f_s = configs['fps']                   # sampling frenecy [1/s]
-f_c = 0.5/(2.*f_s)                      # normalized cut off frequency
+# filter cut on frequency: 0.5Hz
+f_s = configs['fps']                   # sampling frequency [1/s]
+f_c = 0.5/(2.*f_s)                     # normalized cut off frequency
 w_c = (2.*3.141)*f_c                   # normalized cut off frequency in radians
 y = 1 - math.cos(w_c);                 # compute alpha for 3dB attenuation at cut off frequency
 alpha_l = -y + math.sqrt( y*y + 2*y ); # 
 
 # Filter HIGH
 # filter cut off frequency: 10Hz
-f_s = configs['fps']                   # sampling frenecy [1/s]
-f_c = 10./(2.*f_s)                      # normalized cut off frequency
+f_s = configs['fps']                   # sampling frequency [1/s]
+f_c = 10./(2.*f_s)                     # normalized cut off frequency
 w_c = (2.*3.141)*f_c                   # normalized cut off frequency in radians
 y = 1 - math.cos(w_c);                 # compute alpha for 3dB attenuation at cut off frequency
 alpha_h = -y + math.sqrt( y*y + 2*y ); # 

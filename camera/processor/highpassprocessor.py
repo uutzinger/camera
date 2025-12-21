@@ -9,7 +9,8 @@
 
 # Multi Threading
 from threading import Thread
-from queue import Queue
+from queue import Empty, Queue
+from typing import Optional
 
 #
 import logging
@@ -36,7 +37,7 @@ class highpassProcessor(Thread):
     """Highpass filter"""
 
     # Initialize the Processor Thread
-    def __init__(self, res: (int, int, int), alpha: float = 0.95 ):
+    def __init__(self, res: tuple[int, int, int], alpha: float = 0.95 ):
 
         # Threading Locks, Events
         self.stopped = True
@@ -52,6 +53,10 @@ class highpassProcessor(Thread):
         self.log     = Queue(maxsize=32)
         self.stopped = True
 
+        self.measured_cps = 0.0
+        self.measured_time = 0.0
+        self._thread: Optional[Thread] = None
+
         Thread.__init__(self)
 
     # Thread routines #################################################
@@ -61,30 +66,40 @@ class highpassProcessor(Thread):
         """stop the thread"""
         self.stopped = True
 
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=1.0)
+
     def start(self):
         """set the thread start conditions"""
+        if not self.stopped:
+            return
+
         self.stopped = False
-        T = Thread(target=self.update)
-        T.daemon = True # run in background
-        T.start()
+        self._thread = Thread(target=self.update)
+        self._thread.daemon = True # run in background
+        self._thread.start()
 
     # After Starting the Thread, this runs continously
     def update(self):
         """run the thread"""
         last_time = time.time()
         num_cubes = 0
-        total_time = 0
+        total_time = 0.0
         while not self.stopped:
 
             ############################################################################
             # Image Processing
             ############################################################################
             # obtain new data
-            (data_time, data) = self.input.get(block=True, timeout=None)
+            try:
+                (data_time, data) = self.input.get(block=True, timeout=0.25)
+            except Empty:
+                continue
             # process
             start_time = time.perf_counter()
-            self.averageData  = movingavg(data, self.averageData, self.alpha)
-            self.filteredData = highpass(data, self.averageData)
+            movingavg(data, self.averageData, self.alpha, out=self.averageData)
+            highpass(data, self.averageData, out=self.filteredData)
             total_time += time.perf_counter() - start_time
             # put results into output queue
             if not self.output.full():
@@ -99,7 +114,7 @@ class highpassProcessor(Thread):
             current_time = time.time()
             if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
                 self.measured_cps = num_cubes/5.0
-                self.measured_time = total_time/num_cubes
+                self.measured_time = (total_time/num_cubes) if num_cubes else 0.0
                 if not self.log.full(): self.log.put_nowait((logging.INFO, "HighPass:CPS:{}".format(self.measured_cps)))
                 if not self.log.full(): self.log.put_nowait((logging.INFO, "HighPass:Time:{}".format(self.measured_time)))
                 num_cubes = 0

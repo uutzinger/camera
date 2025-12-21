@@ -30,7 +30,7 @@ logger = logging.getLogger("Main")
 now = datetime.now()
 filename = now.strftime("%Y%m%d%H%M%S") + ".tiff"
 from camera.streamer.tiffstorageserver import tiffServer
-logger.log(logging.INFO, "Settingup Storage Server")
+logger.log(logging.INFO, "Setting up Storage Server")
 tiff = tiffServer("C:\\temp\\" + filename)
 logger.log(logging.INFO, "Starting Storage Server")
 tiff.start()
@@ -47,7 +47,7 @@ while True:
 
     if (current_time - last_time) >= 5.0:
         measured_cps = num_cubes/5.0
-        logger.log(logging.INFO, "Status:Cubes sent to storeage per second:{}".format(measured_cps))
+        logger.log(logging.INFO, "Status:Cubes sent to storage per second:{}".format(measured_cps))
         last_time = current_time
         num_cubes = 0
 

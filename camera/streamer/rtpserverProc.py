@@ -2,14 +2,18 @@
 ###############################################################################
 # RTP point to point server
 # Attempt to run it with multiprocessing
-# 2021 Initial Release
+#
+# Public API:
+#   rtp = rtpServerProc(...)
+#   rtp.start()
+#   rtp.queue.put_nowait(frame) OR rtp.queue.put_nowait((t, frame))
+#   rtp.stop()
 # Urs Utzinger
+#
+# Changes:
+# 2025 Codereview and cleanup
+# 2021 Initial Release
 ###############################################################################
-
-#https://stackoverflow.com/questions/29009790/python-how-to-do-multiprocessing-inside-of-a-class
-#https://pymotw.com/2/multiprocessing/communication.html#process-pools
-#https://www.py4u.net/discuss/205125
-#https://www.cloudcity.io/blog/2019/02/27/things-i-wish-they-told-me-about-multiprocessing-in-python/
 
 ###############################################################################
 # Imports
@@ -17,6 +21,7 @@
 
 # Multi Processing
 from multiprocessing import Process, Event, Queue
+from queue import Empty
 
 # System
 import platform, time, logging
@@ -41,14 +46,17 @@ class rtpServerProc(Process):
         port: int = 554,  
         bitrate: int = 2048, 
         color: bool = True,
-        gpu: bool = False):
+        gpu: bool = False,
+        queue_size: int = 32):
 
-        Process.__init__(self)
+        super().__init__(daemon=True)
+
+        self._STOP_ITEM = (None, None)
 
         # Process Locks, Events, Queue, Log
         self.stopper  = Event()
         self.log      = Queue(maxsize=32)
-        self.queue    = Queue(maxsize=32)
+        self.queue    = Queue(maxsize=queue_size)
 
         # populate desired settings from the function call
         self._port     = port
@@ -91,45 +99,98 @@ class rtpServerProc(Process):
     ###############################################################################
 
     def stop(self):
-        """Stop the process"""
+        """Stop the process (idempotent)."""
         self.stopper.set()
-        self.process.join()
-        self.process.close()
+        try:
+            if not self.queue.full():
+                self.queue.put_nowait(self._STOP_ITEM)
+        except Exception:
+            pass
+
+        try:
+            if self.is_alive():
+                self.join(timeout=2.0)
+        except Exception:
+            pass
+
+        # Release OS resources associated with the process object (Python 3.7+)
+        try:
+            super().close()
+        except Exception:
+            pass
 
     def start(self):
-        """ Setup process and start it"""
-        self.stopper.clear()
-        self.process=Process(target=self.loop)
-        self.process.daemon = True
-        self.process.start()
+        """Start the process (non-blocking)."""
+        if self.is_alive():
+            return
 
-    # Loop until stop
-    def loop(self):
-        """Run the process"""
+        self.stopper.clear()
+        super().start()
+
+    def close(self):
+        """Alias for stop() to match other streamers."""
+        self.stop()
+
+    def run(self):
+        """Child process body."""
 
         # Create rtp writer
-        rtp = cv2.VideoWriter(self.gst, apiPreference=cv2.CAP_GSTREAMER, fourcc=self._fourcc, fps=self._fps, frameSize=self._res, isColor=self._isColor)
-        if not rtp.isOpened():
-            if not self.log.full(): self.log.put_nowait((logging.ERROR, "RTP:Failed to create rtp stream!"))
+        rtp = None
+        try:
+            rtp = cv2.VideoWriter(
+                self.gst,
+                apiPreference=cv2.CAP_GSTREAMER,
+                fourcc=self._fourcc,
+                fps=self._fps,
+                frameSize=self._res,
+                isColor=self._isColor,
+            )
+            if not rtp.isOpened():
+                if not self.log.full():
+                    self.log.put_nowait((logging.ERROR, "RTP:Failed to create rtp stream!"))
+                return
 
-        # Init
-        last_time = time.time()
-        num_frames = 0
-        
-        while not self.stopper.is_set():
-            # Obtain frame from queue and send to rtp stream
-            if rtp is not None:
-                frame = self.queue.get(block=True, timeout=0.1)
-                rtp.write(frame)
-                num_frames += 1
+            # Init
+            last_time = time.time()
+            num_frames = 0
 
-            # RTP throughput calculation
-            current_time = time.time()
-            if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
-                fps = num_frames/(current_time-last_time)
-                if not self.log.full(): self.log.put_nowait((logging.INFO, "RTP:FPS:{}".format(fps)))
-                last_time = current_time
-                num_frames = 0
+            while not self.stopper.is_set():
+                try:
+                    item = self.queue.get(timeout=0.25)
+                except Empty:
+                    continue
 
-        rtp.release()   
+                if item == self._STOP_ITEM:
+                    break
+
+                frame = None
+                if isinstance(item, tuple) and len(item) == 2:
+                    _, frame = item
+                else:
+                    frame = item
+
+                if frame is None:
+                    continue
+
+                try:
+                    rtp.write(frame)
+                    num_frames += 1
+                except Exception as exc:
+                    if not self.log.full():
+                        self.log.put_nowait((logging.ERROR, f"RTP:Write failed: {exc}"))
+
+                # RTP throughput calculation
+                current_time = time.time()
+                if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
+                    fps = num_frames/(current_time-last_time)
+                    if not self.log.full():
+                        self.log.put_nowait((logging.INFO, "RTP:FPS:{}".format(fps)))
+                    last_time = current_time
+                    num_frames = 0
+        finally:
+            try:
+                if rtp is not None:
+                    rtp.release()
+            except Exception:
+                pass
 

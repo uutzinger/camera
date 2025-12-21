@@ -23,8 +23,9 @@
 
 # Multi Threading
 from threading import Thread
-from queue import Queue
+from queue import Empty, Queue
 import collections
+from typing import Optional
 
 #
 import logging
@@ -40,27 +41,36 @@ from numba import vectorize
 
 # Filter implementation
 # y(n) = ( x(n) - x(n-D) ) + y(n-1)
-@vectorize(['uint8(uint8, uint8, uint8)'], nopython=True, fastmath=True)
-def runsum(data, data_delayed, data_previous):
-    # x(n), x(n-D) y(n-1)
-    return np.add(np.subtract(data, data_delayed), data_previous)
+@vectorize(['float32(float32, float32, float32)'], nopython=True, fastmath=True)
+def runsum(data: np.float32, data_delayed: np.float32, data_previous: np.float32) -> np.float32:
+    # x(n), x(n-D), y(n-1)
+    return (data - data_delayed) + data_previous
 
-@vectorize(['uint8(uint8, uint8)'], nopython=True, fastmath=True)
-def highpass(data, data_filtered):
-    return np.subtract(data, data_filtered)
 
-class highpassProcessor(Thread):
-    """Highpass filter"""
+@vectorize(['float32(float32, float32, float32)'], nopython=True, fastmath=True)
+def highpass(data: np.float32, data_running_sum: np.float32, inv_delay: np.float32) -> np.float32:
+    # highpass = x(n) - lowpass_average
+    return data - (data_running_sum * inv_delay)
+
+
+class runningsumProcessor(Thread):
+    """Running-sum lowpass (CIC moving average) + derived highpass."""
 
     # Initialize the Processor Thread
-    def __init__(self, res: (int, int, int), delay: int = 1 ):
+    def __init__(self, res: tuple[int, int, int], delay: int = 1 ):
 
         # Threading Locks, Events
         self.stopped = True
 
         # Initialize Processor
-        self.data_lowpass  = np.zeros(res, 'float32')
-        self.data_highpass = np.zeros(res, 'float32')
+        if delay < 1:
+            raise ValueError("delay must be >= 1")
+        self.delay = int(delay)
+        self.inv_delay = np.float32(1.0 / float(self.delay))
+
+        self.data_lowpass = np.zeros(res, dtype=np.float32)   # running sum
+        self.data_highpass = np.zeros(res, dtype=np.float32)  # x - (sum / D)
+        self._x = np.zeros(res, dtype=np.float32)
 
         # Init Frame and Thread
         self.input    = Queue(maxsize=32)
@@ -68,10 +78,14 @@ class highpassProcessor(Thread):
         self.log      = Queue(maxsize=32)
         self.stopped  = True
 
-        self.circular_buffer = collections.deque(maxlen=delay)
-        # initialize buffer with zeros
-        for i in range(delay):
-            self.circular_buffer.append(self.data_lowpass)
+        self.measured_cps = 0.0
+        self.measured_time = 0.0
+        self._thread: Optional[Thread] = None
+
+        # Delay line holding past x(n) samples as float32 buffers.
+        self.circular_buffer = collections.deque(maxlen=self.delay)
+        for _ in range(self.delay):
+            self.circular_buffer.append(np.zeros(res, dtype=np.float32))
 
         Thread.__init__(self)
 
@@ -82,35 +96,50 @@ class highpassProcessor(Thread):
         """stop the thread"""
         self.stopped = True
 
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=1.0)
+
     def start(self):
         """set the thread start conditions"""
+        if not self.stopped:
+            return
+
         self.stopped = False
-        T = Thread(target=self.update)
-        T.daemon = True # run in background
-        T.start()
+        self._thread = Thread(target=self.update)
+        self._thread.daemon = True # run in background
+        self._thread.start()
 
     # After Starting the Thread, this runs continously
     def update(self):
         """run the thread"""
         last_time = time.time()
         num_cubes = 0
-        total_time = 0
+        total_time = 0.0
         while not self.stopped:
 
             ############################################################################
             # Image Processing
             ############################################################################
             # obtain new data
-            (data_time, data) = self.input.get(block=True, timeout=None)
+            try:
+                (data_time, data) = self.input.get(block=True, timeout=0.25)
+            except Empty:
+                continue
 
             # process
             start_time = time.perf_counter()
-            xn = data                                     # x(n)
-            xnd = self.circular_buffer.popleft()          # x(N-D)
-            self.circular_buffer.append(data)             # put new data into delay line
-            yn1 = self.data_lowpass                       # y(n-1)
-            self.data_lowpass = runsum(xn, xnd, yn1)      # y(n) = x(n) - x(n-D) + y(n-1)
-            self.data_hihgpass = highpass(data, self.data_lowpass)
+            # Convert input to float32 in preallocated buffer.
+            np.copyto(self._x, data, casting='unsafe')
+
+            xnd = self.circular_buffer.popleft()  # x(n-D) buffer
+            # y(n) = x(n) - x(n-D) + y(n-1)  (running sum)
+            runsum(self._x, xnd, self.data_lowpass, out=self.data_lowpass)
+            # highpass = x(n) - (y(n)/D)
+            highpass(self._x, self.data_lowpass, self.inv_delay, out=self.data_highpass)
+            # Reuse popped buffer to store current x(n) and push into delay line.
+            np.copyto(xnd, self._x)
+            self.circular_buffer.append(xnd)
             total_time += time.perf_counter() - start_time
 
             # put results into output queue
@@ -126,9 +155,13 @@ class highpassProcessor(Thread):
             current_time = time.time()
             if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
                 self.measured_cps = num_cubes/5.0
-                self.measured_time = total_time/num_cubes
+                self.measured_time = (total_time/num_cubes) if num_cubes else 0.0
                 if not self.log.full(): self.log.put_nowait((logging.INFO, "RunSum:CPS:{}".format(self.measured_cps)))
                 if not self.log.full(): self.log.put_nowait((logging.INFO, "RunSum:Time:{}".format(self.measured_time)))
                 num_cubes = 0
                 total_time = 0
                 last_time = current_time
+
+
+# Backwards compatibility: older code may import `highpassProcessor` from this module.
+highpassProcessor = runningsumProcessor

@@ -29,7 +29,7 @@ logger = logging.getLogger("Storage")
 now = datetime.now()
 filename = now.strftime("%Y%m%d%H%M%S") + ".avi"
 from camera.streamer.avistorageserver import aviServer
-logger.log(logging.INFO, "Settingup Storage Server")
+logger.log(logging.INFO, "Setting up Storage Server")
 avi = aviServer("C:\\temp\\" + filename, fps, size)
 logger.log(logging.INFO, "Starting Storage Server")
 avi.start()
@@ -50,7 +50,7 @@ while True:
 
     if current_time - last_time >= 5.0:
         measured_fps = num_images/5.0
-        logger.log(logging.INFO, "Status:Cubes sent to storeage per second:{}".format(measured_fps))
+        logger.log(logging.INFO, "Status:Cubes sent to storage per second:{}".format(measured_fps))
         last_time = current_time
         num_images = 0
 

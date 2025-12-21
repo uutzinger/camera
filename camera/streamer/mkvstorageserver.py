@@ -5,8 +5,11 @@
 # Start Streamer with mkv.start()
 # Place frames with mkv.queue.put((frame_time, frame))
 #
-# 2021 Initial Release
 # Urs Utzinger 
+#
+# Changes:
+# 2025 Codereview and cleanup
+# 2021 Initial Release
 ###############################################################################
 
 ###############################################################################
@@ -16,6 +19,7 @@
 # Multi Threading
 from threading import Thread
 from queue import Queue
+from queue import Empty
 
 # System
 import logging, time
@@ -32,12 +36,17 @@ class mkvServer(Thread):
     Save in  Matroska multimedia container format, mp4v
     """
 
+    _STOP_ITEM = (None, None)
+
     # Initialize the storage Thread
     # Opens Capture Device
-    def __init__(self, filename, fps, size):
+    def __init__(self, filename, fps, size, queue_size: int = 32):
+
+        # Proper Thread initialization (so .start()/.join() work as expected)
+        super().__init__(daemon=True)
 
         # Threading Queue, Locks, Events
-        self.queue           = Queue(maxsize=32)
+        self.queue           = Queue(maxsize=queue_size)
         self.log             = Queue(maxsize=32)
         self.stopped         = True
 
@@ -45,17 +54,25 @@ class mkvServer(Thread):
         self.measured_cps = 0.0
 
         # Initialize MKV
-        if filename is not None:
-            try: 
-                self.mkv = cv2.VideoWriter(filename, cv2.VideoWriter_fourcc(*'mp4v'), fps, size)
-            except:
-                if not self.log.full(): self.log.put_nowait((logging.ERROR, "MKV:Could not create MKV!"))
-                return False
-        else:
-            if not self.log.full(): self.log.put_nowait((logging.ERROR, "MKV:Need to provide filename to store mkv!"))
-            return False
+        self.mkv = None
+        self.mkv_open = False
 
-        Thread.__init__(self)
+        if filename is None:
+            if not self.log.full():
+                self.log.put_nowait((logging.ERROR, "MKV:Need to provide filename to store mkv!"))
+            return
+
+        try:
+            self.mkv = cv2.VideoWriter(filename, cv2.VideoWriter_fourcc(*'mp4v'), fps, size)
+            self.mkv_open = bool(self.mkv) and self.mkv.isOpened()
+            if not self.mkv_open:
+                if not self.log.full():
+                    self.log.put_nowait((logging.ERROR, f"MKV:VideoWriter failed to open: {filename}"))
+        except Exception as exc:
+            self.mkv = None
+            self.mkv_open = False
+            if not self.log.full():
+                self.log.put_nowait((logging.ERROR, f"MKV:Could not create MKV: {exc}"))
 
     #
     # Thread routines #################################################
@@ -64,34 +81,76 @@ class mkvServer(Thread):
     def stop(self):
         """stop the thread"""
         self.stopped = True
+        # Unblock writer thread if it's waiting on queue.get()
+        try:
+            if not self.queue.full():
+                self.queue.put_nowait(self._STOP_ITEM)
+        except Exception:
+            pass
+
+    def close(self):
+        """Release underlying VideoWriter (idempotent)."""
+        try:
+            mkv = getattr(self, 'mkv', None)
+            if mkv is not None:
+                mkv.release()
+        except Exception:
+            pass
+        self.mkv = None
+        self.mkv_open = False
 
     def start(self, storage_queue = None):
         """set the thread start conditions"""
         self.stopped = False
-        T = Thread(target=self.update)
-        T.daemon = True # run in background
-        T.start()
 
-    # After Stating of the Thread, this runs continously
+        if not getattr(self, 'mkv_open', False):
+            self.stopped = True
+            if not self.log.full():
+                self.log.put_nowait((logging.CRITICAL, "MKV:Not started because VideoWriter is not open"))
+            return
+
+        super().start()
+
+    # Thread entrypoint
+    def run(self):
+        self.update()
+
+    # After Starting of the Thread, this runs continuously
     def update(self):
         """ run the thread """
         last_time = time.time()
         num_frames = 0
 
-        while not self.stopped:
-            (frame_time, frame) = self.queue.get(block=True, timeout=None)
-            self.mkv.write(frame)
-            num_frames += 1
+        try:
+            while not self.stopped:
+                try:
+                    (frame_time, frame) = self.queue.get(timeout=0.25)
+                except Empty:
+                    continue
 
-            # Storage througput calculation
-            current_time = time.time()
-            if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
-                self.measured_cps = num_frames/5.0
-                if not self.log.full(): self.log.put_nowait((logging.INFO, "MKV:FPS:{}".format(self.measured_cps)))
-                last_time = current_time
-                num_frames = 0
+                if (frame_time, frame) == self._STOP_ITEM:
+                    break
 
-        self.mkv.release()
+                if frame is None:
+                    continue
+
+                try:
+                    self.mkv.write(frame)
+                    num_frames += 1
+                except Exception as exc:
+                    if not self.log.full():
+                        self.log.put_nowait((logging.ERROR, f"MKV:Write failed: {exc}"))
+
+                # Storage throughput calculation
+                current_time = time.time()
+                if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
+                    self.measured_cps = num_frames/5.0
+                    if not self.log.full():
+                        self.log.put_nowait((logging.INFO, "MKV:FPS:{}".format(self.measured_cps)))
+                    last_time = current_time
+                    num_frames = 0
+        finally:
+            self.close()
  
 ###############################################################################
 # Testing
@@ -144,9 +203,14 @@ if __name__ == '__main__':
             cv2.imshow('MKV', frame)
             num_frames += 1
             last_display = current_time
-            key = cv2.waitKey(1) 
-            if (key == 27) or (key & 0xFF == ord('q')): stop = False
-            if cv2.getWindowProperty("MKV", 0) >= 0: stop = False
+            key = cv2.waitKey(1)
+            if (key == 27) or (key & 0xFF == ord('q')):
+                stop = True
+            try:
+                if cv2.getWindowProperty("MKV", 0) < 0:
+                    stop = True
+            except Exception:
+                stop = True
 
             if not mkv.queue.full(): mkv.queue.put_nowait((current_time, frame))
 

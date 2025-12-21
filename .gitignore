@@ -12,3 +12,47 @@ dist
 .vscode
 build
 **/build
+
+# Python virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python caches
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pytype/
+.coverage
+coverage.xml
+htmlcov/
+.hypothesis/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS/editor
+Thumbs.db
+.directory
+
+# Generated camera output / recordings
+*.avi
+*.mkv
+*.mp4
+*.mov
+*.mjpeg
+*.h5
+*.hdf5
+*.tif
+*.tiff
+*.png
+*.jpg
+*.jpeg
+*.bmp
+
+# Logs
+*.log

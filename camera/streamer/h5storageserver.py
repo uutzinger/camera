@@ -6,7 +6,11 @@
 # Place frames into h5 with h5.queue.put((frame_time, frame))
 #
 # Storage array data streamer
-# Urs Utzinger 2020
+# Urs Utzinger 
+# 
+# Changes:
+# 2025 Codereview and cleanup
+# 2020 Initial release
 ###############################################################################
 
 ###############################################################################
@@ -16,6 +20,7 @@
 # Multi Threading
 from threading import Thread
 from queue import Queue
+from queue import Empty
 
 # System
 import logging, time
@@ -32,29 +37,40 @@ class h5Server(Thread):
     HDF5 file array saver
     """
 
+    _STOP_ITEM = (None, None)
+
     # Initialize the storage Thread
-    def __init__(self, filename = None):
+    def __init__(self, filename=None, queue_size: int = 32):
+
+        # Proper Thread initialization (so .start()/.join() work as expected)
+        super().__init__(daemon=True)
 
         # Threading Queue, Locks, Events
-        self.queue           = Queue(maxsize=32)
+        self.queue           = Queue(maxsize=queue_size)
         self.log             = Queue(maxsize=32)
         self.stopped         = True
 
+        self.hdf5 = None
+        self.hdf5_open = False
+
         # Initialize HDF5
-        if filename is not None:
-            try:
-                self.hdf5 = h5py.File(filename,'w')
-            except:
-                if not self.log.full(): self.log.put_nowait((logging.ERROR, "HDF5:Could not create HDF5!"))
-                return False
-        else:
-            if not self.log.full(): self.log.put_nowait((logging.ERROR, "HDF5:Need to provide filename to store data!"))
-            return False
+        if filename is None:
+            if not self.log.full():
+                self.log.put_nowait((logging.ERROR, "HDF5:Need to provide filename to store data!"))
+            return
 
-        # Init Frame and Thread
+        try:
+            self.hdf5 = h5py.File(filename, 'w')
+            self.hdf5_open = True
+        except Exception as exc:
+            self.hdf5 = None
+            self.hdf5_open = False
+            if not self.log.full():
+                self.log.put_nowait((logging.ERROR, f"HDF5:Could not create HDF5: {exc}"))
+            return
+
+        # Init
         self.measured_cps = 0.0
-
-        Thread.__init__(self)
 
     # Thread routines #################################################
     # Start Stop and Update Thread
@@ -63,13 +79,39 @@ class h5Server(Thread):
     def stop(self):
         """stop the thread"""
         self.stopped = True
+        # Unblock writer thread if it's waiting on queue.get()
+        try:
+            if not self.queue.full():
+                self.queue.put_nowait(self._STOP_ITEM)
+        except Exception:
+            pass
+
+    def close(self):
+        """Close the underlying HDF5 file (idempotent)."""
+        try:
+            hdf5 = getattr(self, 'hdf5', None)
+            if hdf5 is not None:
+                hdf5.close()
+        except Exception:
+            pass
+        self.hdf5 = None
+        self.hdf5_open = False
 
     def start(self):
         """set the thread start conditions"""
         self.stopped = False
-        T = Thread(target=self.update)
-        T.daemon = True # run in background
-        T.start()
+
+        if not getattr(self, 'hdf5_open', False):
+            self.stopped = True
+            if not self.log.full():
+                self.log.put_nowait((logging.CRITICAL, "HDF5:Not started because file is not open"))
+            return
+
+        super().start()
+
+    # Thread entrypoint
+    def run(self):
+        self.update()
 
     # After Stating of the Thread, this runs continously
     def update(self):
@@ -77,20 +119,44 @@ class h5Server(Thread):
         last_time = time.time()
         num_cubes = 0
 
-        while not self.stopped:
-            (cube_time, data_cube) = self.queue.get(block=True, timeout=None) # This waits until item is available and removed from queue
-            self.dset = self.hdf5.create_dataset(str(cube_time), data=data_cube) # 11ms
-            num_cubes += 1
+        try:
+            while not self.stopped:
+                try:
+                    (cube_time, data_cube) = self.queue.get(timeout=0.25)
+                except Empty:
+                    continue
 
-            # Storage througput calculation
-            current_time = time.time()
-            if (current_time - last_time) >= 5.0: # framearray rate every 5 secs
-                self.measured_cps = num_cubes/5.0
-                if not self.log.full(): self.log.put_nowait((logging.INFO, "HDF5:CPS:{}".format(self.measured_cps)))
-                last_time = current_time
-                num_cubes = 0
+                if (cube_time, data_cube) == self._STOP_ITEM:
+                    break
 
-        self.hdf5.close()
+                if cube_time is None or data_cube is None:
+                    continue
+
+                try:
+                    name = str(cube_time)
+                    if self.hdf5 is not None and name in self.hdf5:
+                        # Avoid name collisions (e.g. repeated timestamps)
+                        suffix = 1
+                        while f"{name}_{suffix}" in self.hdf5:
+                            suffix += 1
+                        name = f"{name}_{suffix}"
+
+                    self.hdf5.create_dataset(name, data=data_cube)  # ~11ms typical
+                    num_cubes += 1
+                except Exception as exc:
+                    if not self.log.full():
+                        self.log.put_nowait((logging.ERROR, f"HDF5:Write failed: {exc}"))
+
+                # Storage throughput calculation
+                current_time = time.time()
+                if (current_time - last_time) >= 5.0:  # cube rate every 5 secs
+                    self.measured_cps = num_cubes / 5.0
+                    if not self.log.full():
+                        self.log.put_nowait((logging.INFO, "HDF5:CPS:{}".format(self.measured_cps)))
+                    last_time = current_time
+                    num_cubes = 0
+        finally:
+            self.close()
  
 ###############################################################################
 # Testing
@@ -129,8 +195,6 @@ if __name__ == '__main__':
     last_display = time.time()
     num_frame = 0
 
-    while(cv2.getWindowProperty("HDF5", 0) >= 0):
-    
     stop = False
     while(not stop):
         current_time = time.time()

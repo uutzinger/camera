@@ -1,7 +1,9 @@
 ###############################################################################
 # Raspberry Pi CSI video capture
-# Allows configuation of codec
-# Urs Utzinger 2019, 2020
+# Uses the picamera2 library to interface with the Raspberry Pi Camera Module
+#
+# Allows configuration of codec
+# Urs Utzinger 2019, 2020, 2025
 ###############################################################################
 
 ###############################################################################
@@ -34,9 +36,15 @@ class piCapture(Thread):
     ############################################################################
     def __init__(self, configs, 
         camera_num: int = 0, 
-        res: tuple(int, int) = None, 
+        res: tuple = None, 
         exposure: float = None,
         queue_size: int = 32):
+
+        # Proper Thread initialization (so .start()/.join() work as expected)
+        super().__init__(daemon=True)
+
+        # Keep a copy of configs for consistency across capture modules
+        self._configs = configs or {}
 
         # populate desired settings from configuration file or function call
         ############################################################################
@@ -44,18 +52,18 @@ class piCapture(Thread):
         if exposure is not None:
             self._exposure   = exposure  
         else: 
-            self._exposure   = configs['exposure']
+            self._exposure   = self._configs.get('exposure', -1)
         if res is not None:
             self._camera_res = res
         else: 
-            self._camera_res = configs['camera_res']
+            self._camera_res = self._configs.get('camera_res', (640, 480))
         self._capture_width  = self._camera_res[0] 
         self._capture_height = self._camera_res[1]
-        self._output_res     = configs['output_res']
+        self._output_res     = self._configs.get('output_res', (-1, -1))
         self._output_width   = self._output_res[0]
         self._output_height  = self._output_res[1]
-        self._framerate      = configs['fps']
-        self._flip_method    = configs['flip']
+        self._framerate      = self._configs.get('fps', 30)
+        self._flip_method    = self._configs.get('flip', 0)
 
         # Threading Queue, Locks, Events
         self.capture         = Queue(maxsize=queue_size)
@@ -63,13 +71,11 @@ class piCapture(Thread):
         self.stopped         = True
 
         # open up the camera
-        self._open_cam(self)
+        self.open_cam()
 
         # Init vars
         self.frame_time   = 0.0
         self.measured_fps = 0.0
-
-        Thread.__init__(self)
 
     # Thread routines #################################################
     # Start Stop and Update Thread
@@ -80,12 +86,45 @@ class piCapture(Thread):
         self.stopped = True
         # clrean up
 
+    def close_cam(self):
+        """Close stream/buffers/camera (idempotent)."""
+        try:
+            stream = getattr(self, 'stream', None)
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+            self.stream = None
+
+            raw = getattr(self, 'rawCapture', None)
+            if raw is not None:
+                try:
+                    raw.close()
+                except Exception:
+                    pass
+            self.rawCapture = None
+
+            cam = getattr(self, 'cam', None)
+            if cam is not None:
+                try:
+                    cam.close()
+                except Exception:
+                    pass
+            self.cam = None
+            self.cam_open = False
+        except Exception:
+            pass
+
     def start(self):
-        """set the thread start conditions"""
+        """start the capture thread"""
         self.stopped = False
-        T = Thread(target=self.update)
-        T.daemon = True # run in background
-        T.start()
+        super().start()
+
+    # Thread entrypoint
+    def run(self):
+        """thread entrypoint"""
+        self.update()
 
     # After Stating of the Thread, this runs continously
     def update(self):
@@ -104,6 +143,9 @@ class piCapture(Thread):
         for f in self.stream:
             current_time = time.time()
 
+            if self.stopped:
+                break
+
             img = f.array
             self.rawCapture.truncate(0)
             num_frames += 1
@@ -111,30 +153,28 @@ class piCapture(Thread):
 
             if (img is not None) and (not self.capture.full()):
 
-                if (self._output_height > 0) or (self._flip_method > 0):
-                    # adjust output height
-                    img_resized = cv2.resize(img, self._output_res)
-                    # flip resized image
-                    if   self._flip_method == 0: # no flipping
-                        img_proc = img_resized
-                    elif self._flip_method == 1: # ccw 90
-                        img_proc = cv2.roate(img_resized, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                    elif self._flip_method == 2: # rot 180, same as flip lr & up
-                        img_proc = cv2.roate(img_resized, cv2.ROTATE_180)
+                img_proc = img
+
+                # Resize only if an explicit output size was provided
+                if (self._output_width > 0) and (self._output_height > 0):
+                    img_proc = cv2.resize(img_proc, self._output_res)
+
+                # Apply flip/rotation if requested (same enum as cv2Capture)
+                if self._flip_method != 0:
+                    if self._flip_method == 1: # ccw 90
+                        img_proc = cv2.rotate(img_proc, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                    elif self._flip_method == 2: # rot 180
+                        img_proc = cv2.rotate(img_proc, cv2.ROTATE_180)
                     elif self._flip_method == 3: # cw 90
-                        img_proc = cv2.roate(img_resized, cv2.ROTATE_90_CLOCKWISE)
-                    elif self._flip_method == 4: # horizontal
-                        img_proc = cv2.flip(img_resized, 0)
+                        img_proc = cv2.rotate(img_proc, cv2.ROTATE_90_CLOCKWISE)
+                    elif self._flip_method == 4: # horizontal (left-right)
+                        img_proc = cv2.flip(img_proc, 1)
                     elif self._flip_method == 5: # upright diagonal. ccw & lr
-                        img_proc = cv2.flip(cv2.roate(img_resized, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
-                    elif self._flip_method == 6: # vertical
-                        img_proc = cv2.flip(img_resized, 1)
+                        img_proc = cv2.flip(cv2.rotate(img_proc, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
+                    elif self._flip_method == 6: # vertical (up-down)
+                        img_proc = cv2.flip(img_proc, 0)
                     elif self._flip_method == 7: # upperleft diagonal
-                        img_proc = cv2.transpose(img_resized)
-                    else:
-                        img_proc = img_resized # not a valid flip method
-                else:
-                    img_proc = img
+                        img_proc = cv2.transpose(img_proc)
 
                 self.capture.put_nowait((self.frame_time, img_proc))
             else:
@@ -147,13 +187,11 @@ class piCapture(Thread):
                 num_frames = 0
                 last_time = current_time
 
-        self.stream.close()
-        self.rawCapture.close()
-        self.cam.close()
+        self.close_cam()
 
     # Setup the Camera
     ############################################################################
-    def _open_cam(self):
+    def open_cam(self):
         """
         Open up the camera so we can begin capturing frames
         """
