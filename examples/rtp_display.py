@@ -15,7 +15,20 @@ logging.basicConfig(level=logging.DEBUG)
 # reate camera interface
 from camera.capture.rtpcapture import rtpCapture
 print("Starting Capture")
-camera = rtpCapture(port = 554)
+
+# On Linux, rtpCapture can use GI/GStreamer if installed.
+# On Windows/macOS without GI/GStreamer, the pip-friendly fallback uses FFmpeg and
+# requires an SDP file describing the RTP stream (payload type, codec, clock rate).
+configs = {
+    # For FFmpeg fallback:
+    # - `rtp_sdp` must point to a file describing the stream (see examples/rtp_h264_pt96.sdp)
+    # - `camera_res` (or `output_res`) is required so raw frame reads can be sized correctly
+    'rtp_sdp': 'examples/rtp_h264_pt96.sdp',
+    'camera_res': (640, 480),
+}
+
+# Port must match the SDP file (m=video <port> ...)
+camera = rtpCapture(configs=configs, port=554)
 print("Getting Images")
 camera.start()
 

@@ -15,7 +15,10 @@
 ###############################################################################
 
 # Multi Processing
-from multiprocessing import Process, Event, Queue
+from multiprocessing import Process, Event, Queue, Lock
+
+# Queue exceptions
+import queue
 
 # System
 import sys, time, logging
@@ -38,15 +41,21 @@ class cv2CaptureProc(Process):
         exposure: float = None,
         queue_size: int = 32):
 
-        Process.__init__(self)
+        # Proper Process initialization (so .start()/.join() work as expected)
+        super().__init__(daemon=True)
 
         # Keep a copy of configs for consistency across capture modules
         self._configs = configs or {}
 
-        # Process Locks, Events, Queue, Log
+        # Process synchronization, events, queues
         self.stopper  = Event()
         self.log      = Queue(maxsize=queue_size)
-        self.capture  = Queue(maxsize=32)
+        self.capture  = Queue(maxsize=queue_size)
+        self.cam_lock = Lock()
+
+        # Camera state (in the child process)
+        self.cam = None
+        self.cam_open = False
 
         # populate desired settings from configuration file or function arguments
         ####################################################################
@@ -75,48 +84,73 @@ class cv2CaptureProc(Process):
     def stop(self):
         """Stop the process"""
         self.stopper.set()
-        self.process.join()
-        self.process.close()
-        self.log.close()
-        self.capture.close()
+        try:
+            if self.is_alive():
+                self.join(timeout=5.0)
+        finally:
+            # Best-effort cleanup of IPC resources (parent side)
+            try:
+                self.log.close()
+            except Exception:
+                pass
+            try:
+                self.capture.close()
+            except Exception:
+                pass
 
     def close_cam(self):
         """Release the underlying VideoCapture (idempotent, best-effort)."""
         try:
-            cam = getattr(self, 'cam', None)
-            if cam is not None:
-                cam.release()
-            self.cam = None
-            self.cam_open = False
+            with self.cam_lock:
+                cam = getattr(self, 'cam', None)
+                if cam is not None:
+                    cam.release()
+                self.cam = None
+                self.cam_open = False
         except Exception:
             pass
 
     def start(self, capture_queue = None):
-        """Setup process and start it"""
-        self.stopper.clear()
-        self.process=Process(target=self.update)
-        self.process.daemon = True
-        self.process.start()
+        """Start the capture process.
 
-    # After Stating of the process, this runs continously
-    def update(self):
-        """Run the process"""
+        Note: capture_queue is kept only for backward compatibility.
+        """
+        self.stopper.clear()
+        super().start()
+
+    # Process entrypoint
+    def run(self):
+        """Process entrypoint."""
 
         # open up the camera
         self._open_capture()
+
+        if not self.cam_open:
+            return
 
         # initialize variables
         last_time = time.time()
         num_frames = 0
 
-        while not self.stopper.is_set():
-            
-            # Capture image
-            current_time = time.time()
-            _, img = self.cam.read()
-            num_frames += 1
-            
-            if (img is not None) and (not self.capture.full()):
+        try:
+            while not self.stopper.is_set():
+
+                # Capture image
+                current_time = time.time()
+
+                with self.cam_lock:
+                    cam = self.cam
+                    if cam is None:
+                        time.sleep(0.01)
+                        continue
+                    ret, img = cam.read()
+
+                if (not ret) or (img is None):
+                    time.sleep(0.005)
+                    continue
+
+                num_frames += 1
+
                 img_proc = img
 
                 # Resize only if an explicit output size was provided
@@ -140,17 +174,26 @@ class cv2CaptureProc(Process):
                     elif self._flip_method == 7: # upperleft diagonal
                         img_proc = cv2.transpose(img_proc)
 
-                self.capture.put_nowait((current_time*1000., img_proc))
-            else:
-                if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Capture queue is full!"))
+                try:
+                    self.capture.put_nowait((current_time * 1000.0, img_proc))
+                except queue.Full:
+                    try:
+                        if not self.log.full():
+                            self.log.put_nowait((logging.WARNING, "CV2:Capture queue is full!"))
+                    except Exception:
+                        pass
 
-            # FPS calculation
-            if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
-                self.log.put_nowait((logging.INFO, "CV2CAM:FPS:{}".format(num_frames/5.0)))
-                num_frames = 0
-                last_time = current_time
-
-        self.close_cam()
+                # FPS calculation
+                if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
+                    try:
+                        if not self.log.full():
+                            self.log.put_nowait((logging.INFO, "CV2CAM:FPS:{}".format(num_frames/5.0)))
+                    except Exception:
+                        pass
+                    num_frames = 0
+                    last_time = current_time
+        finally:
+            self.close_cam()
 
     def _open_capture(self):
         """
@@ -166,7 +209,9 @@ class cv2CaptureProc(Process):
         else:
             self.cam = cv2.VideoCapture(self.camera_num, apiPreference=cv2.CAP_ANY)
 
-        if self.cam.isOpened():
+        self.cam_open = self.cam.isOpened()
+
+        if self.cam_open:
             # Apply settings to camera
             if self._camera_res[0] > 0:
                 self.width      = self._camera_res[0]  # image resolution
@@ -266,14 +311,14 @@ class cv2CaptureProc(Process):
 
     @property
     def exposure(self):
-        """ returns curent exposure """
+        """ returns current exposure """
         if self.cam_open:
             return self.cam.get(cv2.CAP_PROP_EXPOSURE)
         else: return float("NaN")
 
     @exposure.setter
     def exposure(self, val):
-        """ # sets current exposure """
+        """ sets current exposure """
         self._exposure = val
         if (val is None) or (val == -1):
             if not self.log.full(): self.log.put_nowait((logging.WARNING, "CV2:Can not set exposure to {}!".format(val)))

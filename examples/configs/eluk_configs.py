@@ -22,7 +22,7 @@ configs = {
     'gain'            : 4,              # Sensor readout gain
     'autowb'          : -1,             # enable auto white balancing
     'wb_temp'         : -1,             # white balance temperature
-    'settings'        : 0,              # open camera settings window
+    'settings'        : 1,              # open camera settings window
     ##############################################
     # Target Recognition
     ##############################################

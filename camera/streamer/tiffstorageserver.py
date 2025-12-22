@@ -24,6 +24,7 @@ from queue import Empty
 
 # System
 import logging, time
+import threading
 
 # TIFF
 import tifffile
@@ -73,14 +74,12 @@ class tiffServer(Thread):
 
         self.measured_cps = 0.0
 
-        self.measured_cps = 0.0
-
     #
     # Thread routines #################################################
     # Start Stop and Update Thread
 
     def stop(self):
-        """stop the thread"""
+        """Stop the thread (idempotent)."""
         self.stopped = True
         # Unblock writer thread if it's waiting on queue.get()
         try:
@@ -88,6 +87,14 @@ class tiffServer(Thread):
                 self.queue.put_nowait(self._STOP_ITEM)
         except Exception:
             pass
+
+        try:
+            if self.is_alive() and threading.current_thread() is not self:
+                self.join(timeout=2.0)
+        except Exception:
+            pass
+
+        self.close()
 
     def close(self):
         """Close the underlying TiffWriter (idempotent)."""
@@ -102,6 +109,8 @@ class tiffServer(Thread):
 
     def start(self):
         """ set the thread start conditions """
+        if self.is_alive():
+            return
         self.stopped = False
 
         if not getattr(self, 'tiff_open', False):

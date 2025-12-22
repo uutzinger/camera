@@ -1,6 +1,5 @@
 ###############################################################################
 # CSI video capture on Jetson Nano using gstreamer
-# Uses direct GStreamer (PyGObject) appsink; no OpenCV VideoCapture required
 # Urs Utzinger, 
 #
 # 2025, Refactor to GI/appsink + low-latency pipeline

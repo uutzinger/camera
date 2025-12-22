@@ -24,6 +24,7 @@ from queue import Empty
 
 # System
 import logging, time
+import threading
 
 # HDF5
 import h5py
@@ -77,7 +78,7 @@ class h5Server(Thread):
     ###################################################################
 
     def stop(self):
-        """stop the thread"""
+        """Stop the thread (idempotent)."""
         self.stopped = True
         # Unblock writer thread if it's waiting on queue.get()
         try:
@@ -85,6 +86,14 @@ class h5Server(Thread):
                 self.queue.put_nowait(self._STOP_ITEM)
         except Exception:
             pass
+
+        try:
+            if self.is_alive() and threading.current_thread() is not self:
+                self.join(timeout=2.0)
+        except Exception:
+            pass
+
+        self.close()
 
     def close(self):
         """Close the underlying HDF5 file (idempotent)."""
@@ -99,6 +108,8 @@ class h5Server(Thread):
 
     def start(self):
         """set the thread start conditions"""
+        if self.is_alive():
+            return
         self.stopped = False
 
         if not getattr(self, 'hdf5_open', False):

@@ -47,7 +47,7 @@ logger = logging.getLogger("cv2_capture_send2rtp")
 from camera.streamer.rtpserver import rtpServer
 
 logger.log(logging.INFO, "Starting RTP Server")
-rtp = rtpServer(resolution=rtp_size, fps=rtp_fps, host='127.0.0.1', port=554, bitrate=2048, gpu=False)
+rtp = rtpServer(resolution=rtp_size, fps=rtp_fps, host='127.0.0.1', port=554, bitrate=2048, gpu=False, sdp_path='rtp_554.sdp')
 while not rtp.log.empty():
     (level, msg) = rtp.log.get_nowait()
     logger.log(level, msg)

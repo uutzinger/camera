@@ -14,3 +14,6 @@ tifffile>=2023.7.10
 # Optional but recommended: enables additional TIFF compression codecs
 imagecodecs>=2023.3.16; python_version < "3.12"
 imagecodecs>=2024.1.1; python_version >= "3.12"
+
+# Optional: provides a bundled ffmpeg executable (useful for RTP/UDP decode on Windows/macOS without GI/GStreamer)
+imageio-ffmpeg>=0.5.1

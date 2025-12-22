@@ -23,6 +23,7 @@ from queue import Empty
 
 # System
 import logging, time
+import threading
 
 # OpenCV
 import cv2
@@ -78,7 +79,7 @@ class aviServer(Thread):
     ###################################################################
 
     def stop(self):
-        """stop the thread"""
+        """Stop the thread (idempotent)."""
         self.stopped = True
         # Unblock writer thread if it's waiting on queue.get()
         try:
@@ -86,6 +87,14 @@ class aviServer(Thread):
                 self.queue.put_nowait(self._STOP_ITEM)
         except Exception:
             pass
+
+        try:
+            if self.is_alive() and threading.current_thread() is not self:
+                self.join(timeout=2.0)
+        except Exception:
+            pass
+
+        self.close()
 
     def close(self):
         """Release underlying VideoWriter (idempotent)."""
@@ -100,6 +109,8 @@ class aviServer(Thread):
 
     def start(self):
         """set the thread start conditions"""
+        if self.is_alive():
+            return
         self.stopped = False
 
         # If VideoWriter could not be opened, don't start a busy thread.
@@ -115,7 +126,7 @@ class aviServer(Thread):
     def run(self):
         self.update()
 
-    # After Stating of the Thread, this runs continously
+    # After Stating of the Thread, this runs continuously
     def update(self):
         """ run the thread """
         last_time = time.time()

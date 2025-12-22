@@ -18,7 +18,9 @@ from camera.capture.rtspcapture import rtspCapture
 # camera = rtspCapture(rtsp='rtsp://192.168.8.50:8554/unicast')
 # camera = rtspCapture(rtsp='rtsp://10.41.83.100:554/camera')
 logger.log(logging.INFO, "Starting Capture")
-camera = rtspCapture(configs, rtsp='rtsp://127.0.0.1:554')
+# If you run the local server example (examples/rtsp_server.py), the default URL is:
+#   rtsp://127.0.0.1:8554/test
+camera = rtspCapture(configs, rtsp='rtsp://127.0.0.1:8554/test')
 logger.log(logging.INFO, "Getting Images")
 camera.start()
 

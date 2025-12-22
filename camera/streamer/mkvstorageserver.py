@@ -23,6 +23,7 @@ from queue import Empty
 
 # System
 import logging, time
+import threading
 
 # OpenCV
 import cv2
@@ -79,7 +80,7 @@ class mkvServer(Thread):
     # Start Stop and Update Thread
 
     def stop(self):
-        """stop the thread"""
+        """Stop the thread (idempotent)."""
         self.stopped = True
         # Unblock writer thread if it's waiting on queue.get()
         try:
@@ -87,6 +88,14 @@ class mkvServer(Thread):
                 self.queue.put_nowait(self._STOP_ITEM)
         except Exception:
             pass
+
+        try:
+            if self.is_alive() and threading.current_thread() is not self:
+                self.join(timeout=2.0)
+        except Exception:
+            pass
+
+        self.close()
 
     def close(self):
         """Release underlying VideoWriter (idempotent)."""
@@ -101,6 +110,8 @@ class mkvServer(Thread):
 
     def start(self, storage_queue = None):
         """set the thread start conditions"""
+        if self.is_alive():
+            return
         self.stopped = False
 
         if not getattr(self, 'mkv_open', False):

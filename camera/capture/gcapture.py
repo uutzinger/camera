@@ -1,8 +1,6 @@
 ###############################################################################
 # GStreamer camera capture, uses gstreamer to capture video
 # 
-# This is usually used for CSI video capture
-#
 # Urs Utzinger, 
 #
 # 2025, Updates
@@ -16,6 +14,7 @@
 # Multi Threading
 from threading import Thread, Lock
 from queue import Queue
+from queue import Empty
 
 # System
 import logging, time
@@ -23,8 +22,6 @@ import platform
 
 # Array
 import numpy as np
-
-
 
 # GStreamer (direct)
 try:
@@ -133,7 +130,12 @@ class gCapture(Thread):
                 else:
                     sample = self.appsink.emit("try-pull-sample", int(250 * 1e6))
                 if sample is not None:
-                    img = self._sample_to_bgr(sample)
+                    try:
+                        img = self._sample_to_bgr(sample)
+                    except Exception as exc:
+                        img = None
+                        if not self.log.full():
+                            self.log.put_nowait((logging.ERROR, f"gcapture:Failed to convert sample to BGR: {exc}"))
                     num_frames += 1
                     self.frame_time = int(current_time * 1000)
 
@@ -141,7 +143,7 @@ class gCapture(Thread):
                         self.capture.put_nowait((current_time * 1000.0, img))
                     else:
                         if not self.log.full():
-                            self.log.put_nowait((logging.WARNING, "libcameraCap:Capture Queue is full!"))
+                            self.log.put_nowait((logging.WARNING, "gcapture:Capture Queue is full!"))
                 else:
                     # no sample available within timeout; loop again
                     pass
@@ -149,7 +151,7 @@ class gCapture(Thread):
             # FPS calculation
             if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
                 self.measured_fps = num_frames/5.0
-                if not self.log.full(): self.log.put_nowait((logging.INFO, "libcameraCap:FPS:{}".format(self.measured_fps)))
+                if not self.log.full(): self.log.put_nowait((logging.INFO, "gcapture:FPS:{}".format(self.measured_fps)))
                 last_time = current_time
                 num_frames = 0
 
@@ -184,19 +186,6 @@ class gCapture(Thread):
             ###################################################################################
             # vide0/x-raw
             # https://gstreamer.freedesktop.org/documentation/additional/design/mediatype-video-raw.html
-            # videoscale
-            #  width, height
-            # videoflip
-            #  method = 
-            #   none (0) – Identity (no rotation)
-            #   clockwise (1) – Rotate clockwise 90 degrees
-            #   rotate-180 (2) – Rotate 180 degrees
-            #   counterclockwise (3) – Rotate counter-clockwise 90 degrees
-            #   horizontal-flip (4) – Flip horizontally
-            #   vertical-flip (5) – Flip vertically
-            #   upper-left-diagonal (6) – Flip across upper left/lower right diagonal
-            #   upper-right-diagonal (7) – Flip across upper right/lower left diagonal
-            #   automatic (8) – Select flip method based on image-orientation tag
             ###################################################################################
 
             if   flip_method == 0: flip = 0 # no flipping
@@ -221,7 +210,10 @@ class gCapture(Thread):
             if flip != 0:
                 parts.append('! videoflip method={:d} '.format(flip))
 
-            parts.append('! videoconvert ')
+            if self._gst_element_has_property('videoconvert', 'n-threads'):
+                parts.append('! videoconvert n-threads=0 ')
+            else:
+                parts.append('! videoconvert ')
             parts.append('! video/x-raw, format=(string)BGR ')
 
             # Latency controls:
@@ -238,6 +230,13 @@ class gCapture(Thread):
 
     def _gst_has_element(self, element_name: str) -> bool:
         if Gst is None:
+            return False
+        if not hasattr(self.__class__, "_gst_inited"):
+            Gst.init(None)
+            self.__class__._gst_inited = True
+        try:
+            return Gst.ElementFactory.find(element_name) is not None
+        except Exception:
             return False
 
     def _gst_element_has_property(self, element_name: str, prop_name: str) -> bool:
@@ -256,13 +255,6 @@ class gCapture(Thread):
             return element.find_property(prop_name) is not None
         except Exception:
             return False
-        if not hasattr(self.__class__, "_gst_inited"):
-            Gst.init(None)
-            self.__class__._gst_inited = True
-        try:
-            return Gst.ElementFactory.find(element_name) is not None
-        except Exception:
-            return False
 
     def _gstreamer_source(self,
         camera_num: int,
@@ -275,7 +267,7 @@ class gCapture(Thread):
 
         Source selection priority:
         1) configs['gst_source_str'] (full custom source string)
-        2) configs['gst_source'] or configs['source'] (one of: auto, libcamera, v4l2, nvargus)
+        2) configs['gst_source'] or configs['source'] (one of: auto, libcamera, v4l2, nvargus, ksvideo, dshow)
         3) auto-detect based on available GStreamer elements
 
         The returned string should end in a raw video stream that can be consumed by
@@ -298,14 +290,56 @@ class gCapture(Thread):
                 source = None
         source = (source or 'auto').strip().lower()
 
-        # Auto-detect by plugin availability first
+        # Auto-detect by platform + plugin availability
         if source == 'auto':
-            if self._gst_has_element('libcamerasrc'):
-                source = 'libcamera'
-            elif self._gst_has_element('nvarguscamerasrc'):
-                source = 'nvargus'
+            system = platform.system().strip().lower()
+            if system == 'windows':
+                # Windows webcam sources (depending on installed plugin set)
+                if self._gst_has_element('ksvideosrc'):
+                    source = 'ksvideo'
+                elif self._gst_has_element('dshowvideosrc'):
+                    source = 'dshow'
+                else:
+                    # No known Windows webcam source available; fall back to a literal
+                    # and let pipeline parsing fail with a meaningful message.
+                    source = 'ksvideosrc'
             else:
-                source = 'v4l2'
+                if self._gst_has_element('libcamerasrc'):
+                    source = 'libcamera'
+                elif self._gst_has_element('nvarguscamerasrc'):
+                    source = 'nvargus'
+                else:
+                    source = 'v4l2'
+
+        if source in ('ksvideo', 'ksvideosrc'):
+            # Windows: ksvideosrc typically supports device-index; if not, user can supply
+            # a custom source string via gst_source_str.
+            device_str = ''
+            if self._gst_element_has_property('ksvideosrc', 'device-index'):
+                device_str = f'device-index={int(camera_num)} '
+            return (
+                'ksvideosrc '
+                + device_str
+                + extra_props_str
+                + '! video/x-raw, '
+                + 'width=(int){:d}, height=(int){:d}, '.format(capture_width, capture_height)
+                + 'framerate=(fraction){:d}/1 '.format(int(framerate))
+            )
+
+        if source in ('dshow', 'dshowvideosrc'):
+            # Windows: dshowvideosrc device selection is backend-dependent.
+            # Prefer device-index if present; otherwise rely on default device.
+            device_str = ''
+            if self._gst_element_has_property('dshowvideosrc', 'device-index'):
+                device_str = f'device-index={int(camera_num)} '
+            return (
+                'dshowvideosrc '
+                + device_str
+                + extra_props_str
+                + '! video/x-raw, '
+                + 'width=(int){:d}, height=(int){:d}, '.format(capture_width, capture_height)
+                + 'framerate=(fraction){:d}/1 '.format(int(framerate))
+            )
 
         if source in ('libcamera', 'libcamerasrc'):
             return (
@@ -350,6 +384,49 @@ class gCapture(Thread):
                 device = None
             if not device:
                 device = f'/dev/video{camera_num}'
+
+            # V4L2 cameras often expose 720p/1080p only as MJPG/H264.
+            # Default remains raw; set configs['v4l2_format'] to 'mjpg'/'mjpeg'
+            # to enable JPEG decode in the pipeline.
+            v4l2_format = None
+            try:
+                v4l2_format = self._configs.get('v4l2_format') or self._configs.get('pixel_format')
+            except Exception:
+                v4l2_format = None
+            v4l2_format = (str(v4l2_format).strip().lower() if v4l2_format is not None else 'raw')
+
+            fps_i = int(round(float(framerate))) if framerate is not None else 0
+            if fps_i <= 0:
+                fps_i = 30
+
+            if v4l2_format in ('mjpg', 'mjpeg', 'jpeg'):
+                # Prefer hardware-accelerated JPEG decoders when present.
+                jpegdec = 'jpegdec'
+                for candidate in ('nvjpegdec', 'vaapijpegdec', 'v4l2jpegdec', 'jpegdec'):
+                    if self._gst_has_element(candidate):
+                        jpegdec = candidate
+                        break
+
+                # Many drivers only advertise discrete FPS for MJPG (often 30).
+                # Request the device's native FPS at the source, then use videorate
+                # to throttle to the desired framerate if needed.
+                src = (
+                    'v4l2src device={:s} io-mode=2 '.format(device)
+                    + extra_props_str
+                    + '! image/jpeg, '
+                    + 'width=(int){:d}, height=(int){:d}, '.format(capture_width, capture_height)
+                    + 'framerate=(fraction)30/1 '
+                    # Drop frames early (before decode) if downstream can't keep up.
+                    + '! queue leaky=downstream max-size-buffers=1 '
+                    + f'! {jpegdec} '
+                )
+                if fps_i != 30:
+                    src += (
+                        '! videorate '
+                        + '! video/x-raw, framerate=(fraction){:d}/1 '.format(fps_i)
+                    )
+                return src
+
             return (
                 'v4l2src device={:s} io-mode=2 '.format(device)
                 + extra_props_str
@@ -383,7 +460,7 @@ class gCapture(Thread):
 
         if Gst is None:
             if not self.log.full():
-                self.log.put_nowait((logging.CRITICAL, "libcameraCap:GStreamer python bindings (PyGObject) not available"))
+                self.log.put_nowait((logging.CRITICAL, "gcapture:GStreamer python bindings (PyGObject) not available"))
             self.pipeline = None
             self.appsink = None
             self.cam_open = False
@@ -419,7 +496,7 @@ class gCapture(Thread):
             self.appsink = None
             self.cam_open = False
             if not self.log.full():
-                self.log.put_nowait((logging.CRITICAL, f"libcameraCap:Failed to open GStreamer pipeline: {exc}"))
+                self.log.put_nowait((logging.CRITICAL, f"gcapture:Failed to open GStreamer pipeline: {exc}"))
 
     def close_cam(self):
         if getattr(self, "pipeline", None) is not None and Gst is not None:
@@ -439,10 +516,19 @@ class gCapture(Thread):
         if caps is None:
             return None
 
-        info = GstVideo.VideoInfo()
-        ok = info.from_caps(caps)
-        if not ok:
-            return None
+        # PyGObject/GStreamer API compatibility:
+        # - Older: info = GstVideo.VideoInfo(); info.from_caps(caps) -> bool
+        # - Newer: GstVideo.VideoInfo.new_from_caps(caps) -> VideoInfo
+        info_new = getattr(GstVideo.VideoInfo, "new_from_caps", None)
+        if callable(info_new):
+            info = info_new(caps)
+            if info is None:
+                return None
+        else:
+            info = GstVideo.VideoInfo()
+            ok = info.from_caps(caps)
+            if not ok:
+                return None
 
         buf = sample.get_buffer()
         if buf is None:
@@ -482,9 +568,10 @@ if __name__ == '__main__':
     import cv2
 
     configs = {
-        'camera_res'      : (3280, 2464),   # width & height
+        'camera_res'      : (1280, 720),   # width & height
         'exposure'        : -1,             # microseconds, internally converted to nano seconds, <= 0 autoexposure
-        'fps'             : 5,              # can not get more than 60fps
+        'fps'             : 30,              # can not get more than 60fps
+        'v4l2_format'     : 'mjpg',         # many USB cams expose 720p as MJPG
         'output_res'      : (-1, -1),       # Output resolution 
         'flip'            : 0,              # 0=norotation 
                                             # 1=ccw90deg 
@@ -502,29 +589,75 @@ if __name__ == '__main__':
         display_interval = 1.0/configs['displayfps']
         
     logging.basicConfig(level=logging.DEBUG)
-    logger = logging.getLogger("Raspi libcamera Capture")
+    logger = logging.getLogger("GStreamer Capture")
 
     logger.log(logging.DEBUG, "Starting Capture")
     
     camera = gCapture(configs, camera_num=0)
     camera.start()
 
+    if not getattr(camera, "cam_open", False):
+        while not camera.log.empty():
+            (level, msg) = camera.log.get_nowait()
+            logger.log(level, "{}".format(msg))
+        raise SystemExit("Failed to open GStreamer pipeline")
+
     logger.log(logging.DEBUG, "Getting Frames")
-    
-    window_name = "Raspi libcamera CSI Camera"
+
+    dps_measure_time = 2.0  # assess performance every 2 secs
+
+    window_name = "Raspi GStreamer CSI Camera"
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    textLocation0 = (10, 25)
+    textLocation1 = (10, 60)
+    fontScale = 1
+    fontColor = (255, 255, 255)
+    lineType = 2
     window_handle = cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
     last_display = time.perf_counter()
     stop = False    
+    consecutive_timeouts = 0
+
+    # Initialize Variables
+    last_display = time.perf_counter()
+    last_fps_time = time.perf_counter()
+    measured_dps = 0
+    num_frames_received = 0
+    num_frames_displayed = 0
 
     while not stop:
 
         current_time = time.perf_counter()
-        (frame_time, frame) = camera.capture.get(block=True, timeout=None)
+        try:
+            (frame_time, frame) = camera.capture.get(block=True, timeout=5)
+            num_frames_received += 1
+            consecutive_timeouts = 0
+        except Empty:
+            consecutive_timeouts += 1
+            while not camera.log.empty():
+                (level, msg) = camera.log.get_nowait()
+                logger.log(level, "{}".format(msg))
+            if consecutive_timeouts >= 3:
+                raise SystemExit("No frames received from GStreamer (timeout)")
+            continue
+
+        if (current_time - last_fps_time) >= dps_measure_time:
+            measured_fps = num_frames_received / dps_measure_time
+            logger.log(logging.INFO, "MAIN:Frames received per second:{}".format(measured_fps))
+            num_frames_received = 0
+            measured_dps = num_frames_displayed / dps_measure_time
+            logger.log(logging.INFO, "MAIN:Frames displayed per second:{}".format(measured_dps))
+            num_frames_displayed = 0
+            last_fps_time = current_time
 
         if (current_time - last_display) >= display_interval:
-            cv2.imshow(window_name, frame)
+            frame_display = frame.copy()
+            cv2.putText(frame_display, "Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
+            cv2.putText(frame_display, "Display FPS:{} [Hz]".format(measured_dps), textLocation1, font, fontScale, fontColor, lineType)
+            cv2.imshow(window_name, frame_display)
             last_display = current_time
+            num_frames_displayed += 1            
             if cv2.waitKey(1) & 0xFF == ord('q'):  stop = True
             #try: 
             #    if cv2.getWindowProperty(window_name, cv2.WND_PROP_AUTOSIZE) < 0: 

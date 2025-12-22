@@ -254,7 +254,13 @@ class cv2Capture(Thread):
             # Exposure settings are backend-dependent; apply with robust helper.
             self.apply_exposure_settings()
 
-            if self._settings > -1: self.cam.set(cv2.CAP_PROP_SETTINGS, 0.0) # open camera settings window
+            if self._settings > -1:
+                # OpenCV's CAP_PROP_SETTINGS is backend/OS-specific.
+                # It typically opens a native camera property dialog on Windows (e.g. DirectShow).
+                # On Linux/V4L2 this usually does nothing.
+                ok = self.cam.set(cv2.CAP_PROP_SETTINGS, 0.0)
+                if not ok and not self.log.full():
+                    self.log.put_nowait((logging.WARNING, "CV2:CAP_PROP_SETTINGS not supported by this backend/OS"))
             
             # Update records
             self._camera_res    = self.resolution
@@ -362,7 +368,9 @@ class cv2Capture(Thread):
         Open up the camera settings window
         """
         if self.cam_open:
-            self.cam.set(cv2.CAP_PROP_SETTINGS, 0.0)
+            ok = self.cam.set(cv2.CAP_PROP_SETTINGS, 0.0)
+            if not ok and not self.log.full():
+                self.log.put_nowait((logging.WARNING, "CV2:CAP_PROP_SETTINGS not supported by this backend/OS"))
 
     # Camera routines #################################################
     # Reading and setting camera options
@@ -391,7 +399,7 @@ class cv2Capture(Thread):
 
     @property
     def height(self):
-        """ returns videocapture height """
+        """ returns video capture height """
         if self.cam_open:
             return as_int(self._get_prop(cv2.CAP_PROP_FRAME_HEIGHT), default=-1)
         else: return -1
@@ -470,7 +478,7 @@ class cv2Capture(Thread):
         else: return -1
     @autoexposure.setter
     def autoexposure(self, val):
-        """sets autoexposure.
+        """sets auto exposure.
 
         Supported inputs:
         - -1: don't change

@@ -196,12 +196,26 @@ rtspcapture_configs = {
 }
 
 
-# RTP (UDP) point-to-point stream capture via OpenCV + GStreamer
+# RTP (UDP) point-to-point stream capture
 # ---------------------------------------------------------------------------
 # Backend: camera/capture/rtpcapture.py (rtpCapture)
-# Note: `port` is passed as an argument to the constructor, not via configs.
+
+# Behavior:
+# - If Python GI is available: uses GStreamer appsink.
+# - Otherwise: tries OpenCV+CAP_GSTREAMER (only if OpenCV was built with GStreamer).
+# - Otherwise: uses FFmpeg fallback (requires an SDP file via rtp_sdp).
 
 rtpcapture_configs = {
+    # Network
+    'port': 554,
+    'prefer_gi': True,
+
+    # FFmpeg fallback (used when GI/GStreamer is not available)
+    # Provide an SDP file describing the RTP stream (payload type, codec, clock rate).
+    # 'rtp_sdp': 'stream.sdp',
+    # When using FFmpeg rawvideo pipe, a frame size is required.
+    # 'camera_res': (1280, 720),
+
     'output_res': (-1, -1),
     'flip': 0,
     'displayfps': 30,

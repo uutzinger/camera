@@ -6,7 +6,7 @@
 #
 # Urs Utzinger
 #
-# 2025
+# 2025 Codereview and cleanup
 # 2022 Updated binning and frame format control
 # 2021 Trigger update, initialize, use only queue to access frames
 # 2020 Initial release
@@ -644,10 +644,10 @@ class blackflyCapture(Thread):
     def autoexposure(self, val):
         """sets autoexposure """
         # On:
-        # 1) Turn on autoexposure
-        # 2) Update FPS as autoexposure reduces framerate
+        # 1) Turn on auto exposure
+        # 2) Update FPS as auto exposure reduces framerate
         # Off:
-        # 1) Turn off autoexposre
+        # 1) Turn off auto exposre
         # 2) Set exposure 
         # 3) Set max FPS
         if (val is None) or (val == -1):
@@ -655,7 +655,7 @@ class blackflyCapture(Thread):
             return
         if self.cam_open:
             if val > 0: 
-                # Setting Autoexposure on
+                # Setting auto exposure on
                 if self.cam.ExposureAuto.GetAccessMode() == PySpin.RW:
                     with self.cam_lock: self.cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Continuous)
                     if not self.log.full(): self.log.put_nowait((logging.INFO, "PySpin:Camera:Autoexposure:{}".format(1)))
@@ -670,7 +670,7 @@ class blackflyCapture(Thread):
                 else:
                     if not self.log.full(): self.log.put_nowait((logging.ERROR, "PySpin:Camera:Failed to set Frame Rate to:{}".format(self._framerate)))
             else:
-                # Setting Autoexposure off
+                # Setting autoe xposure off
                 if self.cam.ExposureAuto.GetAccessMode() == PySpin.RW:
                     with self.cam_lock: self.cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
                     if not self.log.full(): self.log.put_nowait((logging.INFO, "PySpin:Camera:Autoexposure: {}".format(0)))
