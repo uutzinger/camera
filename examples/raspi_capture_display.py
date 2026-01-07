@@ -56,7 +56,7 @@ window_name      = 'Camera'
 font             = cv2.FONT_HERSHEY_SIMPLEX
 textLocation0    = (10,20)
 textLocation1    = (10,60)
-fontScale        = 1
+fontScale        = 0.5
 fontColor        = (255,255,255)
 lineType         = 2
 cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL

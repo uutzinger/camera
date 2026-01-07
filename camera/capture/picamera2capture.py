@@ -245,6 +245,30 @@ class piCamera2Capture(Thread):
             # Apply initial controls
             controls = {}
 
+            # Prefer full sensor field-of-view: set ScalerCrop to active array if available
+            try:
+                props = getattr(self.picam2, "camera_properties", {})
+                crop_rect = None
+                paa = None
+                if isinstance(props, dict):
+                    paa = props.get("PixelArrayActiveAreas") or props.get("ActiveArea")
+                if paa:
+                    rect = None
+                    if isinstance(paa, (list, tuple)):
+                        rect = paa[0] if len(paa) > 0 else None
+                    else:
+                        rect = paa
+                    if isinstance(rect, (list, tuple)) and len(rect) == 4:
+                        crop_rect = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+                if crop_rect is None:
+                    pas = props.get("PixelArraySize") if isinstance(props, dict) else None
+                    if isinstance(pas, (list, tuple)) and len(pas) == 2:
+                        crop_rect = (0, 0, int(pas[0]), int(pas[1]))
+                if crop_rect is not None:
+                    controls["ScalerCrop"] = crop_rect
+            except Exception:
+                pass
+
             exposure = self._exposure
             autoexp  = self._autoexposure
             autowb   = self._autowb
