@@ -274,29 +274,30 @@ class piCamera2Capture(Thread):
             # Apply initial controls
             controls = {}
 
-            # Prefer full sensor field-of-view: set ScalerCrop to active array if available
-            try:
-                props = getattr(self.picam2, "camera_properties", {})
-                crop_rect = None
-                paa = None
-                if isinstance(props, dict):
-                    paa = props.get("PixelArrayActiveAreas") or props.get("ActiveArea")
-                if paa:
-                    rect = None
-                    if isinstance(paa, (list, tuple)):
-                        rect = paa[0] if len(paa) > 0 else None
-                    else:
-                        rect = paa
-                    if isinstance(rect, (list, tuple)) and len(rect) == 4:
-                        crop_rect = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
-                if crop_rect is None:
-                    pas = props.get("PixelArraySize") if isinstance(props, dict) else None
-                    if isinstance(pas, (list, tuple)) and len(pas) == 2:
-                        crop_rect = (0, 0, int(pas[0]), int(pas[1]))
-                if crop_rect is not None:
-                    controls["ScalerCrop"] = crop_rect
-            except Exception:
-                pass
+            # Prefer full sensor field-of-view for processed streams only (not raw)
+            if self._stream_name == "main":
+                try:
+                    props = getattr(self.picam2, "camera_properties", {})
+                    crop_rect = None
+                    paa = None
+                    if isinstance(props, dict):
+                        paa = props.get("PixelArrayActiveAreas") or props.get("ActiveArea")
+                    if paa:
+                        rect = None
+                        if isinstance(paa, (list, tuple)):
+                            rect = paa[0] if len(paa) > 0 else None
+                        else:
+                            rect = paa
+                        if isinstance(rect, (list, tuple)) and len(rect) == 4:
+                            crop_rect = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+                    if crop_rect is None:
+                        pas = props.get("PixelArraySize") if isinstance(props, dict) else None
+                        if isinstance(pas, (list, tuple)) and len(pas) == 2:
+                            crop_rect = (0, 0, int(pas[0]), int(pas[1]))
+                    if crop_rect is not None:
+                        controls["ScalerCrop"] = crop_rect
+                except Exception:
+                    pass
 
             exposure = self._exposure
             autoexp  = self._autoexposure
@@ -327,6 +328,25 @@ class piCamera2Capture(Thread):
                 ok = self._set_controls(controls)
                 if ok and not self.log.full():
                     self.log.put_nowait((logging.INFO, f"PiCam2:Controls set {controls}"))
+
+            # Emit a note about potential FOV cropping in raw windowed modes
+            try:
+                props = getattr(self.picam2, "camera_properties", {})
+                aw, ah = None, None
+                if isinstance(props, dict):
+                    pas = props.get("PixelArraySize")
+                    if isinstance(pas, (list, tuple)) and len(pas) == 2:
+                        aw, ah = int(pas[0]), int(pas[1])
+                if self._stream_name == "raw" and aw and ah:
+                    rw, rh = self._capture_width, self._capture_height
+                    if rw < aw and rh < ah:
+                        if not self.log.full():
+                            self.log.put_nowait((
+                                logging.INFO,
+                                f"PiCam2:RAW mode {rw}x{rh} is a sensor window (cropped FOV vs {aw}x{ah})."
+                            ))
+            except Exception:
+                pass
 
             if not self.log.full():
                 self.log.put_nowait((logging.INFO, "PiCam2:Camera opened"))
