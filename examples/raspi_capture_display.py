@@ -32,13 +32,16 @@ configs = {
     # 1280x720 60fps
     # 1920x1080 6.4fps
     # 2592x1944 6.4fps
+    #
+    # list the camera properties with 
+    #     list_Picamera2Properties.py
     ##############################################
-    'camera_res'      : (320, 240),     # camera width & height
+    'camera_res'      : (640, 480),     # camera width & height
     'exposure'        : 0,              # microseconds, 0/-1 for auto
     'autoexposure'    : 1,              # 0=manual, 1=auto
     'autowb'          : 1,              # 0=disable, 1=enable
     'fps'             : 120,            # 
-    'fourcc'          : 'YU12',         # less bandwdith, later make format opencv ready 
+    'format'          : 'SRGGB8',       # Picamera2/libcamera format (YU12/YUV420, BGR3/BGR888, SRGGB8, ...)
     'buffersize'      : 4,              # default is 4 for V4L2, max 10, 
     'output_res'      : (-1, -1),       # output resolution same as input 
     'flip'            : 0,              # 0=norotation 
@@ -102,14 +105,8 @@ try:
         try:
             (frame_time, frame) = camera.capture.get(timeout=0.25)
             num_frames_received += 1
-            # If YUV420 (YU12/I420) was requested, convert to BGR for OpenCV ops
-            if (
-                frame is not None
-                and frame.ndim == 2
-                and str(configs.get('fourcc','')).upper() in ('YU12','I420','YUV420')
-            ):
-               # frame shape for I420 is (h*3/2, w); OpenCV handles this directly
-               frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_I420)
+            # Convert using picamera2capture helper directly to OpenCV BGR
+            frame = camera.convert(frame, to='BGR888')
         except Empty:
             frame = None
 

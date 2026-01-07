@@ -72,11 +72,14 @@ class piCamera2Capture(Thread):
         self._flip_method  = self._configs.get("flip", 0)
         self._autoexposure = self._configs.get("autoexposure", -1)
         self._autowb       = self._configs.get("autowb", -1)
-        self._fourcc       = str(self._configs.get("fourcc", "")).upper()
+        # Preferred format name (Picamera2/libcamera), fallback to fourcc for legacy configs
+        self._requested_format = str(self._configs.get("format", "")).upper()
+        self._fourcc           = str(self._configs.get("fourcc", "")).upper()
         # Control whether to use libcamera hardware transform
         self._hw_transform = bool(self._configs.get("hw_transform", 1))
         # Resolved format and transform flags
         self._format: str | None = None
+        self._stream_name: str = "main"
         self._transform_applied: bool = False
 
         # Threading
@@ -124,7 +127,7 @@ class piCamera2Capture(Thread):
 
                 try:
                     with self.cam_lock:
-                        img = self.picam2.capture_array("main")
+                        img = self.picam2.capture_array(self._stream_name)
                         self._last_metadata = self._capture_metadata_nolock()
                 except Exception as exc:
                     if not self.log.full():
@@ -200,8 +203,15 @@ class piCamera2Capture(Thread):
             except Exception:
                 self._camera_controls = None
 
-            # Prefer BGR888 so frames are OpenCV-ready unless user requested YUV.
-            picam_format = self._map_fourcc(self._fourcc) or "BGR888"
+            # Resolve requested format and stream
+            req = (self._requested_format or self._fourcc or "").upper()
+            is_raw = self._is_raw_format(req)
+            if is_raw and req:
+                self._stream_name = "raw"
+                picam_format = req
+            else:
+                self._stream_name = "main"
+                picam_format = self._map_format(req) or "BGR888"
             self._format = picam_format
             
             # Choose main stream size: honor output_res when provided (avoids CPU resize)
@@ -221,24 +231,43 @@ class piCamera2Capture(Thread):
             self._transform_applied = transform is not None and self._flip_method != 0
             config = None
             try:
-                kwargs = dict(main={"size": main_size, "format": picam_format},
-                              controls={"FrameRate": self._framerate})
+                if self._stream_name == "raw":
+                    kwargs = dict(raw={"size": main_size, "format": picam_format},
+                                  controls={"FrameRate": self._framerate})
+                else:
+                    kwargs = dict(main={"size": main_size, "format": picam_format},
+                                  controls={"FrameRate": self._framerate})
                 if transform is not None:
                     kwargs["transform"] = transform
                 config = self.picam2.create_video_configuration(**kwargs)
             except Exception:
                 # Fallbacks
-                for fmt in ("BGR888", "RGB888"):
-                    try:
-                        kwargs = dict(main={"size": main_size, "format": fmt},
-                                      controls={"FrameRate": self._framerate})
-                        if transform is not None:
-                            kwargs["transform"] = transform
-                        config = self.picam2.create_video_configuration(**kwargs)
-                        self._format = fmt
-                        break
-                    except Exception:
-                        continue
+                if self._stream_name == "raw":
+                    # try a safer raw format fallback
+                    for fmt in ("SRGGB8", "SRGGB10_CSI2P"):
+                        try:
+                            kwargs = dict(raw={"size": main_size, "format": fmt},
+                                          controls={"FrameRate": self._framerate})
+                            if transform is not None:
+                                kwargs["transform"] = transform
+                            config = self.picam2.create_video_configuration(**kwargs)
+                            self._format = fmt
+                            break
+                        except Exception:
+                            continue
+                if config is None:
+                    for fmt in ("BGR888", "RGB888"):
+                        try:
+                            kwargs = dict(main={"size": main_size, "format": fmt},
+                                          controls={"FrameRate": self._framerate})
+                            if transform is not None:
+                                kwargs["transform"] = transform
+                            config = self.picam2.create_video_configuration(**kwargs)
+                            self._format = fmt
+                            self._stream_name = "main"
+                            break
+                        except Exception:
+                            continue
 
             self.picam2.configure(config)
 
@@ -390,6 +419,81 @@ class piCamera2Capture(Thread):
             "I420": "YUV420",  # planar 4:2:0
         }
         return table.get(fourcc)
+
+    def _map_format(self, fmt: str) -> str | None:
+        """Map requested format to libcamera name; pass through raw names."""
+        if not fmt:
+            return None
+        if self._is_raw_format(fmt):
+            return fmt
+        # accept common names
+        return self._map_fourcc(fmt) or (
+            fmt if fmt in ("BGR888", "RGB888", "YUYV", "MJPEG", "YUV420") else None
+        )
+
+    def _is_raw_format(self, fmt: str) -> bool:
+        if not fmt:
+            return False
+        fmt = fmt.upper()
+        return fmt.startswith("SRGGB") or fmt.startswith("SBGGR") or fmt.startswith("SGBRG") or fmt.startswith("SGRBG")
+
+    # ---------------------------------------------------------------------
+    # Public conversion helper
+    # ---------------------------------------------------------------------
+    def convert(self, frame, to: str = 'BGR888'):
+        """Convert a captured frame to the requested OpenCV-friendly format.
+
+        Supported targets: 'BGR888' (default), 'RGB888'. Returns input if
+        conversion is unnecessary or fails.
+        """
+        if frame is None:
+            return None
+        to = (to or 'BGR888').upper()
+        code = self._conversion_code(to)
+        if code is None:
+            # Already in target? Handle simple channel swap if needed.
+            fmt = (self._format or '').upper()
+            try:
+                if fmt == 'BGR888' and to == 'RGB888' and getattr(frame, 'ndim', 0) == 3:
+                    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                if fmt == 'RGB888' and to == 'BGR888' and getattr(frame, 'ndim', 0) == 3:
+                    return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                return frame
+            except Exception:
+                return frame
+        try:
+            return cv2.cvtColor(frame, code)
+        except Exception:
+            return frame
+
+    def _conversion_code(self, to: str):
+        fmt = (self._format or '').upper()
+        to = (to or 'BGR888').upper()
+        if not fmt:
+            return None
+        # No conversion needed when formats match
+        if (fmt == 'BGR888' and to == 'BGR888') or (fmt == 'RGB888' and to == 'RGB888'):
+            return None
+        # Packed RGB/BGR swap
+        if fmt == 'BGR888' and to == 'RGB888':
+            return cv2.COLOR_BGR2RGB
+        if fmt == 'RGB888' and to == 'BGR888':
+            return cv2.COLOR_RGB2BGR
+        # YUV planar and packed to BGR/RGB
+        if fmt == 'YUV420':
+            return cv2.COLOR_YUV2BGR_I420 if to == 'BGR888' else cv2.COLOR_YUV2RGB_I420
+        if fmt == 'YUYV':
+            return cv2.COLOR_YUV2BGR_YUY2 if to == 'BGR888' else cv2.COLOR_YUV2RGB_YUY2
+        # Raw Bayer patterns demosaic
+        if fmt.startswith('SRGGB'):
+            return cv2.COLOR_BAYER_RG2BGR if to == 'BGR888' else cv2.COLOR_BAYER_RG2RGB
+        if fmt.startswith('SBGGR'):
+            return cv2.COLOR_BAYER_BG2BGR if to == 'BGR888' else cv2.COLOR_BAYER_BG2RGB
+        if fmt.startswith('SGBRG'):
+            return cv2.COLOR_BAYER_GB2BGR if to == 'BGR888' else cv2.COLOR_BAYER_GB2RGB
+        if fmt.startswith('SGRBG'):
+            return cv2.COLOR_BAYER_GR2BGR if to == 'BGR888' else cv2.COLOR_BAYER_GR2RGB
+        return None
 
     def _flip_to_transform(self, flip: int, Transform):
         """Map cv2 flip enum to libcamera Transform."""
