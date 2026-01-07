@@ -64,15 +64,22 @@ class piCamera2Capture(Thread):
         self._capture_width = int(self._camera_res[0])
         self._capture_height = int(self._camera_res[1])
 
-        self._output_res = self._configs.get("output_res", (-1, -1))
-        self._output_width = int(self._output_res[0])
+        self._output_res    = self._configs.get("output_res", (-1, -1))
+        self._output_width  = int(self._output_res[0])
         self._output_height = int(self._output_res[1])
 
-        self._framerate = self._configs.get("fps", 30)
-        self._flip_method = self._configs.get("flip", 0)
+        self._framerate    = self._configs.get("fps", 30)
+        self._flip_method  = self._configs.get("flip", 0)
         self._autoexposure = self._configs.get("autoexposure", -1)
+        self._autowb       = self._configs.get("autowb", -1)
+        self._fourcc       = str(self._configs.get("fourcc", "")).upper()
+        # Resolved format and transform flags
+        self._format: str | None = None
+        self._transform_applied: bool = False
 
         # Threading
+        # Allow override via configs['buffersize']
+        queue_size = int(self._configs.get("buffersize", queue_size))
         self.capture = Queue(maxsize=queue_size)
         self.log = Queue(maxsize=32)
         self.stopped = True
@@ -102,12 +109,12 @@ class piCamera2Capture(Thread):
         if not self.cam_open:
             return
 
-        last_time = time.time()
+        last_time = time.perf_counter()
         num_frames = 0
 
         try:
             while not self.stopped:
-                current_time = time.time()
+                current_time = time.perf_counter()
 
                 if self.picam2 is None:
                     time.sleep(0.01)
@@ -131,20 +138,21 @@ class piCamera2Capture(Thread):
                 self.frame_time = int(current_time * 1000)
 
                 img_proc = img
+                is_yuv420 = (self._format == "YUV420")
 
                 # If the configured format yields 4 channels, drop alpha.
                 try:
-                    if getattr(img_proc, "ndim", 0) == 3 and img_proc.shape[2] == 4:
+                    if (not is_yuv420) and getattr(img_proc, "ndim", 0) == 3 and img_proc.shape[2] == 4:
                         img_proc = img_proc[:, :, :3]
                 except Exception:
                     pass
 
                 # Resize only if an explicit output size was provided
-                if (self._output_width > 0) and (self._output_height > 0):
+                if (self._output_width > 0) and (self._output_height > 0) and (not is_yuv420):
                     img_proc = cv2.resize(img_proc, self._output_res)
 
                 # Apply flip/rotation if requested (same enum as cv2Capture)
-                if self._flip_method != 0:
+                if (self._flip_method != 0) and (not self._transform_applied) and (not is_yuv420):
                     if self._flip_method == 1:  # ccw 90
                         img_proc = cv2.rotate(img_proc, cv2.ROTATE_90_COUNTERCLOCKWISE)
                     elif self._flip_method == 2:  # rot 180
@@ -190,30 +198,83 @@ class piCamera2Capture(Thread):
             except Exception:
                 self._camera_controls = None
 
-            # Prefer BGR888 so frames are OpenCV-ready.
-            # Some systems may not support it; fall back to RGB888 if needed.
+            # Prefer BGR888 so frames are OpenCV-ready unless user requested YUV.
+            picam_format = self._map_fourcc(self._fourcc) or "BGR888"
+            self._format = picam_format
+            
+            # Choose main stream size: honor output_res when provided (avoids CPU resize)
+            if (self._output_width > 0) and (self._output_height > 0):
+                main_size = (self._output_width, self._output_height)
+            else:
+                main_size = (self._capture_width, self._capture_height)
+
+            # Try hardware transform via libcamera Transform
+            transform = None
+            try:
+                from libcamera import Transform  # type: ignore
+                transform = self._flip_to_transform(self._flip_method, Transform)
+            except Exception:
+                transform = None
+            self._transform_applied = transform is not None and self._flip_method != 0
             config = None
             try:
-                config = self.picam2.create_video_configuration(
-                    main={"size": (self._capture_width, self._capture_height), "format": "BGR888"},
-                    controls={"FrameRate": self._framerate},
-                )
+                kwargs = dict(main={"size": main_size, "format": picam_format},
+                              controls={"FrameRate": self._framerate})
+                if transform is not None:
+                    kwargs["transform"] = transform
+                config = self.picam2.create_video_configuration(**kwargs)
             except Exception:
-                config = self.picam2.create_video_configuration(
-                    main={"size": (self._capture_width, self._capture_height), "format": "RGB888"},
-                    controls={"FrameRate": self._framerate},
-                )
+                # Fallbacks
+                for fmt in ("BGR888", "RGB888"):
+                    try:
+                        kwargs = dict(main={"size": main_size, "format": fmt},
+                                      controls={"FrameRate": self._framerate})
+                        if transform is not None:
+                            kwargs["transform"] = transform
+                        config = self.picam2.create_video_configuration(**kwargs)
+                        self._format = fmt
+                        break
+                    except Exception:
+                        continue
 
             self.picam2.configure(config)
 
-            # Apply exposure settings (best-effort) before starting.
-            self.apply_exposure_settings()
+            # Apply initial controls
+            controls = {}
+
+            exposure = self._exposure
+            autoexp  = self._autoexposure
+            autowb   = self._autowb
+
+            manual_requested = exposure is not None and exposure > 0
+            if manual_requested:
+                controls["AeEnable"] = False
+                controls["ExposureTime"] = int(exposure)
+            else:
+                if autoexp is None or autoexp == -1:
+                    pass
+                elif autoexp > 0:
+                    controls["AeEnable"] = True
+                else:
+                    controls["AeEnable"] = False
+
+            controls["AwbEnable"] =  bool(autowb)
+
+            if controls:
+                # Best effort: set before and after start to ensure they stick
+                self._set_controls(controls)
 
             self.picam2.start()
             self.cam_open = True
 
+            if controls:
+                ok = self._set_controls(controls)
+                if ok and not self.log.full():
+                    self.log.put_nowait((logging.INFO, f"PiCam2:Controls set {controls}"))
+
             if not self.log.full():
                 self.log.put_nowait((logging.INFO, "PiCam2:Camera opened"))
+
         except Exception as exc:
             self.picam2 = None
             self.cam_open = False
@@ -287,41 +348,46 @@ class piCamera2Capture(Thread):
                 self.log.put_nowait((logging.WARNING, f"PiCam2:Failed to set controls {controls}: {exc}"))
             return False
 
-    def apply_exposure_settings(self):
-        """Best-effort exposure/AE mapping to Picamera2/libcamera controls.
+    def _map_fourcc(self, fourcc: str) -> str | None:
+        """Map common FOURCC strings to Picamera2/libcamera format names."""
+        if not fourcc:
+            return None
+        table = {
+            "BGR3": "BGR888",
+            "RGB3": "RGB888",
+            "MJPG": "MJPEG",
+            "YUY2": "YUYV",
+            "YUYV": "YUYV",
+            "YUV420": "YUV420",
+            "YU12": "YUV420",  # planar 4:2:0
+            "I420": "YUV420",  # planar 4:2:0
+        }
+        return table.get(fourcc)
 
-        Notes:
-        - Picamera2 uses libcamera controls:
-          - AeEnable: bool
-          - ExposureTime: microseconds
-        - This code treats `exposure > 0` as a request for manual exposure time.
-        """
-
-        if self.picam2 is None:
-            return
-
-        exposure = self._exposure
-        autoexp = self._autoexposure
-
-        controls = {}
-
-        manual_requested = exposure is not None and exposure > 0
-        if manual_requested:
-            controls["AeEnable"] = False
-            controls["ExposureTime"] = int(exposure)
-        else:
-            if autoexp is None or autoexp == -1:
-                pass
-            elif autoexp > 0:
-                controls["AeEnable"] = True
-            else:
-                controls["AeEnable"] = False
-
-        if controls:
-            ok = self._set_controls(controls)
-            if ok and not self.log.full():
-                self.log.put_nowait((logging.INFO, f"PiCam2:Controls set {controls}"))
-
+    def _flip_to_transform(self, flip: int, Transform):
+        """Map cv2 flip enum to libcamera Transform."""
+        try:
+            t = Transform()
+        except Exception:
+            return None
+        if flip == 0:
+            return t
+        if flip == 1:   # ccw 90
+            t = Transform(hflip=0, vflip=0, rotation=270)
+        elif flip == 2: # 180
+            t = Transform(hflip=1, vflip=1)
+        elif flip == 3: # cw 90
+            t = Transform(hflip=0, vflip=0, rotation=90)
+        elif flip == 4: # horizontal
+            t = Transform(hflip=1, vflip=0)
+        elif flip == 6: # vertical
+            t = Transform(hflip=0, vflip=1)
+        elif flip == 5: # upright diagonal (ccw90 + hflip)
+            t = Transform(hflip=1, vflip=0, rotation=270)
+        elif flip == 7: # upper-left diagonal (transpose)
+            t = Transform(hflip=1, vflip=0, rotation=90)
+        return t
+        
     # ---------------------------------------------------------------------
     # Picamera2/libcamera Getters & Setters
     # ---------------------------------------------------------------------

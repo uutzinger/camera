@@ -11,18 +11,22 @@ import time
 
 from queue import Empty
 
+# Optimize OpenCV performance on small CPUs
+cv2.setUseOptimized(True)
+try:
+    cv2.setNumThreads(2)
+except Exception:
+    pass
+
 loop_interval = 1.0/200.0
 
 # default camera starts at 0 by operating system
 camera_index = 0
 
-# Can import or define camera configuration below
-# from configs.raspi_v1module_configs  import configs as configs
-# from configs.raspi_v2module_configs  import configs as configs
 
 configs = {
     ##############################################
-    # Camera Settings
+    # Camera Options for Raspberry Pi v1 Camera
     # 320x240 90fps
     # 640x480 90fps
     # 1280x720 60fps
@@ -30,12 +34,13 @@ configs = {
     # 2592x1944 6.4fps
     ##############################################
     'camera_res'      : (320, 240),     # camera width & height
-    'exposure'        : 1000,          # microseconds
-    'autoexposure'    : 0,              # 
-    'fps'             : 120,             # 
-    'fourcc'          : 'YU12',         # 
+    'exposure'        : 0,              # microseconds, 0/-1 for auto
+    'autoexposure'    : 1,              # 0=manual, 1=auto
+    'autowb'          : 1,              # 0=disable, 1=enable
+    'fps'             : 120,            # 
+    'fourcc'          : 'YU12',         # less bandwdith, later make format opencv ready 
     'buffersize'      : 4,              # default is 4 for V4L2, max 10, 
-    'output_res'      : (-1, -1),       # Output resolution 
+    'output_res'      : (-1, -1),       # output resolution same as input 
     'flip'            : 0,              # 0=norotation 
     'displayfps'      : 10              # frame rate for display server
     }
@@ -88,62 +93,71 @@ num_frames_received    = 0
 num_frames_displayed   = 0
 
 stop = False
-while(not stop):
+try:
+    while(not stop):
 
-    current_time = time.perf_counter()
+        current_time = time.perf_counter()
 
-    # wait for new image (timeout keeps UI responsive even if capture stalls)
-    try:
-        (frame_time, frame) = camera.capture.get(timeout=0.25)
-        num_frames_received += 1
-    except Empty:
-        frame = None
-
-    #display log
-    while not camera.log.empty():
-        (level, msg) = camera.log.get_nowait()
-        logger.log(level, "{}".format(msg))
-
-    # calc stats
-    if (current_time - last_fps_time) >= dps_measure_time:
-        measured_fps = num_frames_received/dps_measure_time
-        logger.log(logging.INFO, "MAIN:Frames received per second:{}".format(measured_fps))
-        num_frames_received = 0
-        measured_dps = num_frames_displayed/dps_measure_time
-        logger.log(logging.INFO, "MAIN:Frames displayed per second:{}".format(measured_dps))
-        num_frames_displayed = 0
-        last_fps_time = current_time
-
-    # display
-    if (frame is not None) and ((current_time - last_display) >= display_interval):
-        frame_display = frame.copy()        
-        cv2.putText(frame_display,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
-        cv2.putText(frame_display,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
-        cv2.imshow(window_name, frame_display)
-        ## quit the program if users enter q or closes the display window
-        ## the waitKey function limits the display frame rate
-        ## without waitKey the opencv window is not refreshed
-        if cv2.waitKey(1) & 0xFF == ord('q'): stop = True
+        # wait for new image (timeout keeps UI responsive even if capture stalls)
         try:
-            if cv2.getWindowProperty(window_name, 0) < 0: stop = True
-        except: stop =True
-        last_display = current_time
-        num_frames_displayed += 1
+            (frame_time, frame) = camera.capture.get(timeout=0.25)
+            num_frames_received += 1
+            # If YUV420 (YU12/I420) was requested, convert to BGR for OpenCV ops
+            if (
+                frame is not None
+                and frame.ndim == 2
+                and str(configs.get('fourcc','')).upper() in ('YU12','I420','YUV420')
+            ):
+               # frame shape for I420 is (h*3/2, w); OpenCV handles this directly
+               frame = cv2.cvtColor(frame, cv2.COLOR_YUV2BGR_I420)
+        except Empty:
+            frame = None
 
-    # avoid looping unnecessarely, this is only relevant for low fps and non blocking capture
-    #end_time = time.perf_counter()
-    #delay_time = loop_interval - (end_time - current_time)
-    #if  delay_time >= 0.005:
-    #    time.sleep(delay_time)  # this creates at least 3ms delay, regardless of delay_time
+        # display log
+        while not camera.log.empty():
+            (level, msg) = camera.log.get_nowait()
+            logger.log(level, "{}".format(msg))
 
-# Clean up
-camera.stop()
-try:
-    camera.join(timeout=2.0)
-except Exception:
-    pass
-try:
-    camera.close_cam()
-except Exception:
-    pass
-cv2.destroyAllWindows()
+        # calc stats
+        if (current_time - last_fps_time) >= dps_measure_time:
+            measured_fps = num_frames_received/dps_measure_time
+            logger.log(logging.INFO, "MAIN:Frames received per second:{}".format(measured_fps))
+            num_frames_received = 0
+            measured_dps = num_frames_displayed/dps_measure_time
+            logger.log(logging.INFO, "MAIN:Frames displayed per second:{}".format(measured_dps))
+            num_frames_displayed = 0
+            last_fps_time = current_time
+
+        # analyze your frame here
+        # .....
+
+        # display (at slower rate than capture)
+        if (frame is not None) and ((current_time - last_display) >= display_interval):
+            frame_display = frame.copy()        
+            cv2.putText(frame_display,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
+            cv2.putText(frame_display,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
+            cv2.imshow(window_name, frame_display)
+
+            ## quit the program if users enter q or closes the display window
+            ## the waitKey function limits the display frame rate
+            ## without waitKey the opencv window is not refreshed
+            if cv2.waitKey(1) & 0xFF == ord('q'): 
+                stop = True
+            try:
+                if cv2.getWindowProperty(window_name, 0) < 0: 
+                    stop = True
+            except: 
+                stop = True
+            last_display = current_time
+            num_frames_displayed += 1
+
+finally:
+    # Clean up
+    try:
+        camera.stop()
+        camera.join(timeout=2.0)
+        camera.close_cam()
+    except Exception:
+        pass
+
+    cv2.destroyAllWindows()
