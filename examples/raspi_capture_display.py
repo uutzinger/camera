@@ -62,7 +62,7 @@ lineType         = 2
 cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 
 # Setting up logging
-logging.basicConfig(level=logging.DEBUG) # options are: DEBUG, INFO, ERROR, WARNING
+logging.basicConfig(level=logging.INFO) # options are: DEBUG, INFO, ERROR, WARNING
 logger = logging.getLogger("Raspi Capture")
 
 # Create camera interface based on computer OS you are running
@@ -133,23 +133,31 @@ try:
 
         # display (at slower rate than capture)
         if (frame is not None) and ((current_time - last_display) >= display_interval):
-            frame_display = frame.copy()        
-            cv2.putText(frame_display,"Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
-            cv2.putText(frame_display,"Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
-            cv2.imshow(window_name, frame_display)
-
-            ## quit the program if users enter q or closes the display window
-            ## the waitKey function limits the display frame rate
-            ## without waitKey the opencv window is not refreshed
-            if cv2.waitKey(1) & 0xFF == ord('q'): 
-                stop = True
+            # If the window was closed, stop before calling imshow (prevents recreation)
             try:
-                if cv2.getWindowProperty(window_name, 0) < 0: 
-                    stop = True
-            except: 
+                window_visible = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) >= 1
+            except Exception:
+                window_visible = False
+            if not window_visible:
                 stop = True
-            last_display = current_time
-            num_frames_displayed += 1
+            else:
+                frame_display = frame.copy()
+                cv2.putText(frame_display, "Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation0, font, fontScale, fontColor, lineType)
+                cv2.putText(frame_display, "Display FPS:{} [Hz]".format(measured_dps),        textLocation1, font, fontScale, fontColor, lineType)
+                cv2.imshow(window_name, frame_display)
+
+                # quit the program if users enter q or closes the display window
+                # the waitKey function limits the display frame rate
+                # without waitKey the opencv window is not refreshed
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    stop = True
+                try:
+                    if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+                        stop = True
+                except Exception:
+                    stop = True
+                last_display = current_time
+                num_frames_displayed += 1
 
 finally:
     # Clean up

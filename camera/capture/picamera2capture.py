@@ -73,6 +73,8 @@ class piCamera2Capture(Thread):
         self._autoexposure = self._configs.get("autoexposure", -1)
         self._autowb       = self._configs.get("autowb", -1)
         self._fourcc       = str(self._configs.get("fourcc", "")).upper()
+        # Control whether to use libcamera hardware transform
+        self._hw_transform = bool(self._configs.get("hw_transform", 1))
         # Resolved format and transform flags
         self._format: str | None = None
         self._transform_applied: bool = False
@@ -208,13 +210,14 @@ class piCamera2Capture(Thread):
             else:
                 main_size = (self._capture_width, self._capture_height)
 
-            # Try hardware transform via libcamera Transform
+            # Try hardware transform via libcamera Transform (only if needed)
             transform = None
-            try:
-                from libcamera import Transform  # type: ignore
-                transform = self._flip_to_transform(self._flip_method, Transform)
-            except Exception:
-                transform = None
+            if self._hw_transform and (self._flip_method != 0):
+                try:
+                    from libcamera import Transform  # type: ignore
+                    transform = self._flip_to_transform(self._flip_method, Transform)
+                except Exception:
+                    transform = None
             self._transform_applied = transform is not None and self._flip_method != 0
             config = None
             try:
