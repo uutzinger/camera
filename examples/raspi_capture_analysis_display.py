@@ -184,6 +184,12 @@ logger = logging.getLogger("Raspi Capture")
 
 # Configs and Variables ----
 
+# You can obtain the MoveNet model from TensorFlow Hub:
+# fast model
+# wget -O model.tflite "https://tfhub.dev/google/lite-model/movenet/singlepose/lightning/tflite/int8/4?lite-format=tflite"
+# or more accurate model
+# wget -O model.tflite "https://tfhub.dev/google/lite-model/movenet/singlepose/thunder/tflite/int8/4?lite-format=tflite"
+
 model_path = "model.tflite"
 
 # default camera starts at 0 by operating system
