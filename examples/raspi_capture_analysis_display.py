@@ -201,8 +201,8 @@ configs = {
     #     list_Picamera2Properties.py
     ##############################################
     # Capture mode:
-    #   'preview' -> full-FOV processed stream (BGR/YUV), scaled to 'camera_res' (libcamera scales)
-    #   'raw'     -> high-FPS raw sensor window (exact sensor mode only), cropped FOV
+    #   'main' -> full-FOV processed stream (BGR/YUV), scaled to 'camera_res' (libcamera scales)
+    #   'raw'  -> high-FPS raw sensor window (exact sensor mode only), cropped FOV
     'mode'           : 'preview',
     'camera_res'      : (640, 480),     # unified resolution
     'exposure'        : 0,              # microseconds, 0/-1 for auto
@@ -290,21 +290,6 @@ logger.log(
     "Config: mode=%s format=%s camera_res=%s output_res=%s",
     configs.get('mode'), configs.get('format'), configs.get('camera_res'), configs.get('output_res')
 )
-
-try:
-    # Provide guidance on available formats/resolutions
-    if hasattr(camera, 'get_supported_preview_formats'):
-        pfmts = camera.get_supported_preview_formats()
-        logger.log(logging.INFO, "Preview formats supported: %s", ", ".join(pfmts))
-        logger.log(logging.INFO, "Preview resolutions can be arbitrary; non-native AR may crop.")
-    if hasattr(camera, 'get_supported_raw_options') and configs.get('mode') == 'raw':
-        modes = camera.get_supported_raw_options()
-        if modes:
-            summary = ", ".join([f"{m['format']}@{m['size'][0]}x{m['size'][1]}" for m in modes])
-            logger.log(logging.INFO, "Raw sensor modes: %s", summary)
-        logger.log(logging.INFO, "Run examples/list_Picamera2Properties.py to list full sensor modes and controls.")
-except Exception:
-    pass
 
 camera.start()
 

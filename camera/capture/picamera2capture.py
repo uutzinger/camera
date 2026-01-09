@@ -12,6 +12,7 @@
 # ChatGPT, OpenAI
 #
 # Changes:
+# 2026 Optimizations
 # 2025 Initial Release
 ###############################################################################
 
@@ -47,9 +48,9 @@ class piCamera2Capture(Thread):
         # Keep a copy of configs for consistency across capture modules
         self._configs = configs or {}
 
-        # Normalize configs: derive preview/raw keys from camera_res for consistent handling
+        # Normalize configs: derive main/raw keys from camera_res for consistent handling
         try:
-            mode = str(self._configs.get("mode", "preview")).lower()
+            mode = str(self._configs.get("mode", "main")).lower()
             # Pick a base resolution: function arg > 'camera_res' > default
             base_res = None
             if res is not None:
@@ -63,7 +64,7 @@ class piCamera2Capture(Thread):
             # Ensure camera_res present; derive others internally
             self._configs.setdefault("camera_res", base_res)
             # Formats defaults
-            self._configs.setdefault("preview_format", str(self._configs.get("preview_format", self._configs.get("format", "BGR3"))))
+            self._configs.setdefault("main_format", str(self._configs.get("main_format", self._configs.get("format", "BGR3"))))
             self._configs.setdefault("raw_format", str(self._configs.get("raw_format", self._configs.get("format", "SRGGB8"))))
         except Exception:
             # Best effort; downstream code has its own defaults
@@ -85,7 +86,7 @@ class piCamera2Capture(Thread):
 
         self._capture_width = int(self._camera_res[0])
         self._capture_height = int(self._camera_res[1])
-        # Preview size derived from camera_res; raw size defaults handled by _raw_res
+        # Main stream size derived from camera_res; raw size defaults handled by _raw_res
 
         self._output_res    = self._configs.get("output_res", (-1, -1))
         self._output_width  = int(self._output_res[0])
@@ -98,13 +99,19 @@ class piCamera2Capture(Thread):
         # Preferred format name (Picamera2/libcamera), fallback to fourcc for legacy configs
         self._requested_format = str(self._configs.get("format", "")).upper()
         self._fourcc           = str(self._configs.get("fourcc", "")).upper()
-        # Mode selection: 'preview' (processed) or 'raw' (sensor window)
-        self._mode = str(self._configs.get("mode", "preview")).lower()
-        # Separate preview/raw format overrides (optional)
-        self._preview_format = str(self._configs.get("preview_format", self._requested_format)).upper()
+        # Mode selection: 'main' (processed) or 'raw' (sensor window)
+        self._mode = str(self._configs.get("mode", "main")).lower()
+        # Policy for selecting sensor modes: 'default', 'maximize_fov', 'maximize_fps'
+        self._stream_policy = str(self._configs.get("stream_policy", "default")).lower()
+        # Separate main/raw format overrides (optional)
+        self._main_format = str(self._configs.get("main_format", self._requested_format)).upper()
         self._raw_format     = str(self._configs.get("raw_format", self._requested_format)).upper()
         # Raw resolution override (optional), defaults to camera_res
         self._raw_res = self._configs.get("raw_res", (self._capture_width, self._capture_height))
+        # Low-latency controls
+        self._low_latency  = bool(self._configs.get("low_latency", False))
+        # Optional explicit buffer_count override for Picamera2/libcamera
+        self._buffer_count = self._configs.get("buffer_count", None)
         # Control whether to use libcamera hardware transform
         self._hw_transform = bool(self._configs.get("hw_transform", 1))
         # Resolved format and transform flags
@@ -116,8 +123,15 @@ class piCamera2Capture(Thread):
         self._needs_drop_alpha: bool = False
 
         # Threading
-        # Allow override via configs['buffersize']
-        queue_size = int(self._configs.get("buffersize", queue_size))
+        # Decide effective queue size: explicit buffersize wins; otherwise
+        # low_latency prefers a size-1 queue (latest frame), else default.
+        cfg_buffersize = self._configs.get("buffersize", None)
+        if cfg_buffersize is not None:
+            queue_size = int(cfg_buffersize)
+        elif self._low_latency:
+            queue_size = 1
+        else:
+            queue_size = int(queue_size)
         self.capture = Queue(maxsize=queue_size)
         self.log = Queue(maxsize=32)
         self.stopped = True
@@ -131,6 +145,38 @@ class piCamera2Capture(Thread):
         self.measured_fps = 0.0
 
         self.open_cam()
+
+    # ------------------------------------------------------------------
+    # Friendly mappings for AE metering and AWB modes
+    # ------------------------------------------------------------------
+
+    # libcamera / Picamera2 AeMeteringMode:
+    #   0 = CentreWeighted, 1 = Spot, 2 = Matrix
+    _AE_METERING_MAP = {
+        "centre": 0,
+        "center": 0,
+        "centreweighted": 0,
+        "centerweighted": 0,
+        "average": 0,
+        "spot": 1,
+        "matrix": 2,
+        "evaluative": 2,
+    }
+
+    # libcamera / Picamera2 AwbMode:
+    #   0 = Auto, 1 = Tungsten, 2 = Fluorescent,
+    #   3 = Indoor, 4 = Daylight, 5 = Cloudy
+    _AWB_MODE_MAP = {
+        "auto": 0,
+        "tungsten": 1,
+        "incandescent": 1,
+        "fluorescent": 2,
+        "indoor": 3,
+        "warm": 3,
+        "daylight": 4,
+        "sunny": 4,
+        "cloudy": 5,
+    }
 
     def stop(self):
         """Stop the thread."""
@@ -205,11 +251,24 @@ class piCamera2Capture(Thread):
                     elif self._flip_method == 7:  # upperleft diagonal
                         img_proc = cv2.transpose(img_proc)
 
-                if not self.capture.full():
-                    self.capture.put_nowait((self.frame_time, img_proc))
+                # Queue handling: low_latency prefers latest-frame semantics.
+                if self._low_latency and self.capture.maxsize == 1:
+                    # Overwrite any stale frame so consumer always sees newest.
+                    try:
+                        if not self.capture.empty():
+                            _ = self.capture.get_nowait()
+                    except Exception:
+                        pass
+                    try:
+                        self.capture.put_nowait((self.frame_time, img_proc))
+                    except Exception:
+                        pass
                 else:
-                    if not self.log.full():
-                        self.log.put_nowait((logging.WARNING, "PiCam2:Capture Queue is full!"))
+                    if not self.capture.full():
+                        self.capture.put_nowait((self.frame_time, img_proc))
+                    else:
+                        if not self.log.full():
+                            self.log.put_nowait((logging.WARNING, "PiCam2:Capture Queue is full!"))
 
 
                 # FPS calculation
@@ -243,17 +302,36 @@ class piCamera2Capture(Thread):
                     raw_size = (raw_w, raw_h)
                 except Exception:
                     raw_size = (self._capture_width, self._capture_height)
+                # First, validate against available raw modes
+                orig_rf, orig_raw_size = rf, raw_size
                 rf, raw_size = self._validate_raw_selection(rf, raw_size)
+                # Then, let the policy helper pick a concrete sensor mode (if possible)
+                selected_raw = self._select_raw_sensor_mode(desired_size=raw_size)
+                if selected_raw is not None:
+                    raw_size = selected_raw["size"]
+                    rf = selected_raw["format"]
+                    # For RAW, track the actual capture size for downstream logic/logging
+                    try:
+                        self._capture_width, self._capture_height = int(raw_size[0]), int(raw_size[1])
+                    except Exception:
+                        pass
+                    if not self.log.full():
+                        req_str = f"{orig_rf}@{orig_raw_size[0]}x{orig_raw_size[1]}" if isinstance(orig_raw_size, tuple) else str(orig_rf)
+                        sel_str = f"{rf}@{raw_size[0]}x{raw_size[1]}"
+                        self.log.put_nowait((
+                            logging.INFO,
+                            f"PiCam2:RAW sensor selection policy={self._stream_policy} requested={req_str} selected={sel_str} fps~{selected_raw['fps']}"
+                        ))
                 picam_format = rf
             else:
                 self._stream_name = "main"
-                # Prefer explicit preview_format, then requested
-                pfmt = self._preview_format or req
+                # Prefer explicit main_format, then requested
+                pfmt = self._main_format or req
                 mapped = self._map_format(pfmt) or "BGR888"
-                # Enforce supported preview formats
-                if mapped not in self.get_supported_preview_formats():
+                # Enforce supported main formats
+                if mapped not in self.get_supported_main_formats():
                     if not self.log.full():
-                        self.log.put_nowait((logging.INFO, f"PiCam2:Preview format {mapped} not ideal; using BGR888. Supported preview formats: {', '.join(self.get_supported_preview_formats())}"))
+                        self.log.put_nowait((logging.INFO, f"PiCam2:Main format {mapped} not ideal; using BGR888. Supported main formats: {', '.join(self.get_supported_main_formats())}"))
                         self.log.put_nowait((logging.INFO, "PiCam2:For raw formats and resolutions, run examples/list_Picamera2Properties.py"))
                     mapped = "BGR888"
                 picam_format = mapped
@@ -261,11 +339,29 @@ class piCamera2Capture(Thread):
             picam_format = self._format or picam_format
             
             # Choose main stream size: honor output_res when provided (avoids CPU resize).
-            # Otherwise use camera_res for preview.
+            # Otherwise use camera_res for main stream.
             if (self._output_width > 0) and (self._output_height > 0):
                 main_size = (self._output_width, self._output_height)
             else:
                 main_size = (self._capture_width, self._capture_height)
+
+            # For Main Stream, compute a preferred sensor mode (for logging/policy only).
+            selected_main = None
+            if self._stream_name == "main":
+                try:
+                    selected_main = self._select_main_sensor_mode(desired_size=main_size)
+                    if selected_main is not None and not self.log.full():
+                        fmt = selected_main["format"]
+                        (sw, sh) = selected_main["size"]
+                        fps = selected_main["fps"]
+                        req_str = f"{main_size[0]}x{main_size[1]}"
+                        sel_str = f"{fmt}@{sw}x{sh}"
+                        self.log.put_nowait((
+                            logging.INFO,
+                            f"PiCam2:MAIN sensor selection policy={self._stream_policy} requested={req_str} selected={sel_str} fps~{fps}"
+                        ))
+                except Exception:
+                    pass
             # Raw stream size validated above when in raw mode; otherwise derive from configs
             if self._stream_name != "raw":
                 try:
@@ -287,25 +383,35 @@ class piCamera2Capture(Thread):
             config = None
             try:
                 if self._stream_name == "raw":
-                    kwargs = dict(raw={"size": raw_size, "format": picam_format},
+                    picam_kwargs = dict(raw={"size": raw_size, "format": picam_format},
                                   controls={"FrameRate": self._framerate})
                 else:
-                    kwargs = dict(main={"size": main_size, "format": picam_format},
+                    picam_kwargs = dict(main={"size": main_size, "format": picam_format},
                                   controls={"FrameRate": self._framerate})
+                # Optional low-latency: prefer small buffer_count when requested
+                # unless user explicitly set buffer_count in configs.
+                buffer_count = self._buffer_count
+                if buffer_count is None and self._low_latency:
+                    buffer_count = 3
+                if buffer_count is not None:
+                    try:
+                        picam_kwargs["buffer_count"] = int(buffer_count)
+                    except Exception:
+                        pass
                 if transform is not None:
-                    kwargs["transform"] = transform
-                config = self.picam2.create_video_configuration(**kwargs)
+                    picam_kwargs["transform"] = transform
+                config = self.picam2.create_video_configuration(**picam_kwargs)
             except Exception:
                 # Fallbacks
                 if self._stream_name == "raw":
                     # try a safer raw format fallback
                     for fmt in ("SRGGB8", "SRGGB10_CSI2P"):
                         try:
-                            kwargs = dict(raw={"size": raw_size, "format": fmt},
+                            picam_kwargs = dict(raw={"size": raw_size, "format": fmt},
                                           controls={"FrameRate": self._framerate})
                             if transform is not None:
-                                kwargs["transform"] = transform
-                            config = self.picam2.create_video_configuration(**kwargs)
+                               picam_kwargs["transform"] = transform
+                            config = self.picam2.create_video_configuration(**picam_kwargs)
                             self._set_format(fmt)
                             break
                         except Exception:
@@ -313,11 +419,11 @@ class piCamera2Capture(Thread):
                 if config is None:
                     for fmt in ("BGR888", "RGB888"):
                         try:
-                            kwargs = dict(main={"size": main_size, "format": fmt},
+                            picam_kwargs = dict(main={"size": main_size, "format": fmt},
                                           controls={"FrameRate": self._framerate})
                             if transform is not None:
-                                kwargs["transform"] = transform
-                            config = self.picam2.create_video_configuration(**kwargs)
+                                picam_kwargs["transform"] = transform
+                            config = self.picam2.create_video_configuration(**picam_kwargs)
                             self._set_format(fmt)
                             self._stream_name = "main"
                             break
@@ -366,6 +472,7 @@ class piCamera2Capture(Thread):
                 controls["AeEnable"] = False
                 controls["ExposureTime"] = int(exposure)
             else:
+                # Only touch AE when explicitly requested; ensure AeEnable is True/False
                 if autoexp is None or autoexp == -1:
                     pass
                 elif autoexp > 0:
@@ -373,7 +480,29 @@ class piCamera2Capture(Thread):
                 else:
                     controls["AeEnable"] = False
 
-            controls["AwbEnable"] =  bool(autowb)
+            # Default AE metering: CentreWeighted (0) when not otherwise set.
+            # Accept integers or friendly strings (e.g. 'center', 'spot', 'matrix').
+            try:
+                cfg_meter = self._configs.get("aemeteringmode", 0)
+                meter_val = self._parse_aemeteringmode(cfg_meter)
+                controls.setdefault("AeMeteringMode", meter_val)
+            except Exception:
+                pass
+
+            # Only touch AWB when explicitly requested; ensure AwbEnable is True/False
+            if autowb is None or autowb == -1:
+                pass
+            else:
+                controls["AwbEnable"] = bool(autowb)
+
+            # Default AWB mode: Auto (0) when not otherwise set.
+            # Accept integers or friendly strings (e.g. 'auto', 'daylight', 'cloudy').
+            try:
+                cfg_awbmode = self._configs.get("awbmode", 0)
+                awbmode_val = self._parse_awbmode(cfg_awbmode)
+                controls.setdefault("AwbMode", awbmode_val)
+            except Exception:
+                pass
 
             if controls:
                 # Best effort: set before and after start to ensure they stick
@@ -410,14 +539,46 @@ class piCamera2Capture(Thread):
                 self.log.put_nowait((logging.INFO, "PiCam2:Camera opened"))
                 # Informative summary
                 if self._stream_name == "main":
-                    self.log.put_nowait((logging.INFO, f"PiCam2:Preview mode {main_size[0]}x{main_size[1]} format={self._format}. Supported preview formats: {', '.join(self.get_supported_preview_formats())}"))
-                    self.log.put_nowait((logging.INFO, "PiCam2:Preview can scale to arbitrary resolutions; non-native aspect ratios may crop. For raw modes list, run examples/list_Picamera2Properties.py."))
+                    self.log.put_nowait((logging.INFO, f"PiCam2:Main Stream mode {main_size[0]}x{main_size[1]} format={self._format}. Supported main formats: {', '.join(self.get_supported_main_formats())}"))
+                    self.log.put_nowait((logging.INFO, "PiCam2:Main Stream can scale to arbitrary resolutions; non-native aspect ratios may crop. For raw modes list, run examples/list_Picamera2Properties.py."))
+                    # List suggested Main Stream options (sensor-mode based)
+                    try:
+                        main_opts = self.get_suggested_main_options()
+                        if main_opts:
+                            self.log.put_nowait((logging.INFO, "PiCam2:Suggested Main Stream options (camera_res/output_res, max_fps, full_fov):"))
+                            for opt in main_opts:
+                                if self.log.full():
+                                    break
+                                cr = opt.get("camera_res", (0, 0))
+                                mr = opt.get("output_res", cr)
+                                fmt = opt.get("main_format", "BGR888")
+                                fps = float(opt.get("max_fps", 0.0) or 0.0)
+                                full = bool(opt.get("full_fov", False))
+                                self.log.put_nowait((
+                                    logging.INFO,
+                                    f"PiCam2:  {cr[0]}x{cr[1]} -> {mr[0]}x{mr[1]} fmt={fmt} max_fps~{fps:.1f} full_fov={full}"
+                                ))
+                    except Exception:
+                        pass
                 else:
-                    modes = self.get_supported_raw_options()
-                    if modes:
-                        avail = ", ".join([f"{m['format']}@{m['size'][0]}x{m['size'][1]}" for m in modes])
-                        self.log.put_nowait((logging.INFO, f"PiCam2:Raw mode {raw_size[0]}x{raw_size[1]} format={self._format}. Available raw sensor modes: {avail}"))
-                        self.log.put_nowait((logging.INFO, "PiCam2:Raw resolutions/formats must match sensor modes. See examples/list_Picamera2Properties.py for details."))
+                    # RAW stream: list full RAW sensor options from get_supported_raw_options()
+                    try:
+                        modes = self.get_supported_raw_options()
+                        if modes:
+                            self.log.put_nowait((logging.INFO, f"PiCam2:Raw Stream {raw_size[0]}x{raw_size[1]} format={self._format}. Available RAW sensor modes (fmt@WxH~fps):"))
+                            for m in modes:
+                                if self.log.full():
+                                    break
+                                fmt = m.get('format')
+                                size = m.get('size', (0, 0))
+                                fps = float(m.get('fps', 0.0) or 0.0)
+                                self.log.put_nowait((
+                                    logging.INFO,
+                                    f"PiCam2:  {fmt}@{size[0]}x{size[1]}~{fps:.1f}"
+                                ))
+                            self.log.put_nowait((logging.INFO, "PiCam2:Raw Stream resolutions/formats must match sensor modes. See examples/list_Picamera2Properties.py for details."))
+                    except Exception:
+                        pass
 
         except Exception as exc:
             self.picam2 = None
@@ -495,6 +656,44 @@ class piCamera2Capture(Thread):
                 self.log.put_nowait((logging.WARNING, f"PiCam2:Failed to set controls {controls}: {exc}"))
             return False
 
+    # ------------------------------------------------------------------
+    # Friendly parsers for AE metering and AWB mode
+    # ------------------------------------------------------------------
+
+    def _parse_aemeteringmode(self, value) -> int:
+        """Parse AE metering from int or friendly string.
+
+        Accepts integers (0/1/2) or strings like 'center', 'spot', 'matrix'.
+        Defaults to 0 (CentreWeighted) on error.
+        """
+        if value is None or value == -1:
+            return 0
+        if isinstance(value, str):
+            key = value.strip().lower()
+            if key in self._AE_METERING_MAP:
+                return int(self._AE_METERING_MAP[key])
+        try:
+            return int(value)
+        except Exception:
+            return 0
+
+    def _parse_awbmode(self, value) -> int:
+        """Parse AWB mode from int or friendly string.
+
+        Accepts integers (0..5) or strings like 'auto', 'daylight', 'cloudy'.
+        Defaults to 0 (Auto) on error.
+        """
+        if value is None or value == -1:
+            return 0
+        if isinstance(value, str):
+            key = value.strip().lower()
+            if key in self._AWB_MODE_MAP:
+                return int(self._AWB_MODE_MAP[key])
+        try:
+            return int(value)
+        except Exception:
+            return 0
+
     def _map_fourcc(self, fourcc: str) -> str | None:
         """Map common FOURCC strings to Picamera2/libcamera format names."""
         if not fourcc:
@@ -546,32 +745,225 @@ class piCamera2Capture(Thread):
     # Supported options helpers
     # ---------------------------------------------------------------------
 
-    def get_supported_preview_formats(self):
-        """Return preview formats we support and can convert efficiently."""
+    def get_supported_main_formats(self):
+        """Return main formats we support and can convert efficiently."""
         return ["BGR888", "RGB888", "YUV420", "YUYV"]
 
     def get_supported_raw_options(self):
-        """Return available raw sensor modes as a list of dicts with format and size.
+        """Return available RAW (Bayer) sensor modes.
 
-        Example: [{"format": "SRGGB8", "size": (640,480)}, ...]
+        RAW modes are Bayer-only formats whose names start with one of:
+        SRGGB, SBGGR, SGBRG, SGRBG. YUV420 and other processed formats are
+        *not* reported here.
+
+        Returns a list of dicts with at least:
+            {"format": str, "size": (w, h), "fps": float, "area": int}
+
+        Older callers that only read "format" and "size" remain compatible.
         """
         modes = []
         try:
-            if self.picam2 is not None:
-                sensor_modes = getattr(self.picam2, "sensor_modes", None)
-                if isinstance(sensor_modes, list):
-                    for m in sensor_modes:
-                        try:
-                            fmt = m.get("format")
-                            size_val = m.get("size")
-                            size = tuple(size_val) if isinstance(size_val, (list, tuple)) else None
-                            if fmt and size and self._is_raw_format(fmt):
-                                modes.append({"format": fmt, "size": (int(size[0]), int(size[1]))})
-                        except Exception:
-                            continue
+            all_modes = self._list_sensor_modes()
+            for m in all_modes:
+                try:
+                    fmt = m.get("format")
+                    size = m.get("size")
+                    if not fmt or not size or not self._is_raw_format(fmt):
+                        continue
+                    modes.append({
+                        "format": fmt,
+                        "size": (int(size[0]), int(size[1])),
+                        "fps": float(m.get("fps", 0.0) or 0.0),
+                        "area": int(m.get("area", int(size[0]) * int(size[1])))
+                    })
+                except Exception:
+                    continue
         except Exception:
             pass
         return modes
+
+    def _list_sensor_modes(self):
+        """Internal: normalize Picamera2 sensor_modes to a common dict structure.
+
+        Returns list of dicts: {"format", "size", "fps", "area"}.
+        """
+        modes = []
+        if self.picam2 is None:
+            return modes
+        try:
+            sensor_modes = getattr(self.picam2, "sensor_modes", None)
+            if not isinstance(sensor_modes, list):
+                return modes
+            for m in sensor_modes:
+                try:
+                    fmt = m.get("format")
+                    size_val = m.get("size")
+                    if not fmt or not isinstance(size_val, (list, tuple)) or len(size_val) != 2:
+                        continue
+                    w, h = int(size_val[0]), int(size_val[1])
+                    fps = m.get("fps", m.get("max_fps", 0))  # field name varies between builds
+                    try:
+                        fps = float(fps) if fps is not None else 0.0
+                    except Exception:
+                        fps = 0.0
+                    modes.append({
+                        "format": fmt,
+                        "size": (w, h),
+                        "fps": fps,
+                        "area": w * h,
+                    })
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return modes
+
+    def _select_raw_sensor_mode(self, desired_size: tuple[int, int] | None = None):
+        """Choose a RAW (Bayer) sensor mode.
+
+        RAW mode only uses Bayer formats (SRGGB*/SBGGR*/SGBRG*/SGRBG*).
+
+        Policy:
+        - Default and 'maximize_fps': prefer highest FPS, then larger area.
+        - 'maximize_fov': prefer largest area, then FPS.
+        - desired_size is used as a soft tie-breaker (closest area).
+        """
+        modes = [m for m in self._list_sensor_modes() if self._is_raw_format(m["format"])]
+        if not modes:
+            return None
+
+        desired_w, desired_h = (None, None)
+        if desired_size and len(desired_size) == 2:
+            desired_w, desired_h = int(desired_size[0]), int(desired_size[1])
+
+        def score_fps_first(m):
+            # Higher FPS first, then larger area
+            return (-m["fps"], -m["area"])
+
+        def score_fov_first(m):
+            # Larger area first, then FPS
+            return (-m["area"], -m["fps"])
+
+        if self._stream_policy == "maximize_fov":
+            modes.sort(key=score_fov_first)
+        else:
+            # default and 'maximize_fps': FPS first, then FOV
+            modes.sort(key=score_fps_first)
+
+        # Optional tie-breaker: closest area to desired
+        if desired_w and desired_h:
+            desired_area = desired_w * desired_h
+            def add_area_penalty(m):
+                return abs(m["area"] - desired_area)
+            # stable sort: keep FPS/FOV ordering, refine by area difference
+            modes.sort(key=add_area_penalty)
+
+        return modes[0]
+
+    def _select_main_sensor_mode(self, desired_size: tuple[int, int] | None = None):
+        """Choose a sensor mode for Main Stream.
+
+        Policy:
+        - Prefer largest FOV (area) first.
+        - Second priority: highest FPS.
+        - desired_size is a soft tie-breaker towards requested resolution.
+        - stream_policy == 'maximize_fps' inverts (FPS first, FOV second).
+        """
+        modes = self._list_sensor_modes()
+        if not modes:
+            return None
+
+        desired_w, desired_h = (None, None)
+        if desired_size and len(desired_size) == 2:
+            desired_w, desired_h = int(desired_size[0]), int(desired_size[1])
+
+        def score_fov_first(m):
+            return (-m["area"], -m["fps"])
+
+        def score_fps_first(m):
+            return (-m["fps"], -m["area"])
+
+        if self._stream_policy == "maximize_fps":
+            modes.sort(key=score_fps_first)
+        else:
+            # 'default' and 'maximize_fov' behave the same initially
+            modes.sort(key=score_fov_first)
+
+        if desired_w and desired_h:
+            desired_area = desired_w * desired_h
+            def add_area_penalty(m):
+                return abs(m["area"] - desired_area)
+            modes.sort(key=add_area_penalty)
+
+        return modes[0]
+
+    def get_suggested_main_options(self, max_options: int = 8):
+        """Return suggested Main Stream configurations for this camera.
+
+        Each entry is a dict describing a "good" main-stream choice based on
+        available sensor modes and this instance's policy:
+
+            {
+                "camera_res": (w, h),   # suggested camera_res
+                "output_res": (w, h),   # suggested output_res
+                "main_format": str,     # one of get_supported_main_formats()
+                "max_fps": float,       # approximate max fps for this mode
+                "full_fov": bool        # True if near-maximum sensor area
+            }
+
+        This helper is read-only and does not reconfigure the camera.
+        """
+        suggestions = []
+        if self.picam2 is None:
+            return suggestions
+
+        modes = self._list_sensor_modes()
+        if not modes:
+            return suggestions
+
+        # Determine what counts as full FOV (within 95% of max area)
+        max_area = max(m["area"] for m in modes)
+        full_fov_threshold = 0.95 * max_area
+
+        # Deduplicate by size while preserving order from policy sort
+        seen_sizes = set()
+        # Sort using main sensor-mode selection policy
+        preferred = self._select_main_sensor_mode(desired_size=self._camera_res)
+        if preferred is not None:
+            # Put preferred mode first if not already
+            # (we still iterate over all modes below)
+            pass
+
+        # Sort modes FOV-first by default, or FPS-first if policy demands it
+        if self._stream_policy == "maximize_fps":
+            modes.sort(key=lambda m: (-m["fps"], -m["area"]))
+        else:
+            modes.sort(key=lambda m: (-m["area"], -m["fps"]))
+
+        for m in modes:
+            size = m["size"]
+            if not isinstance(size, (list, tuple)) or len(size) != 2:
+                continue
+            w, h = int(size[0]), int(size[1])
+            if (w, h) in seen_sizes:
+                continue
+            seen_sizes.add((w, h))
+
+            full_fov = m["area"] >= full_fov_threshold
+            max_fps = float(m.get("fps", 0.0) or 0.0)
+
+            suggestions.append({
+                "camera_res": (w, h),
+                "output_res": (w, h),
+                "main_format": "BGR888",
+                "max_fps": max_fps,
+                "full_fov": bool(full_fov),
+            })
+
+            if len(suggestions) >= max_options:
+                break
+
+        return suggestions
 
     def _validate_raw_selection(self, desired_fmt: str, desired_size: tuple[int, int]):
         """Validate raw format and size against sensor modes, applying sensible fallbacks.
@@ -694,7 +1086,7 @@ class piCamera2Capture(Thread):
         return t
         
     # ---------------------------------------------------------------------
-    # Picamera2/libcamera Getters & Setters
+    # Camera size/res helpers
     # ---------------------------------------------------------------------
 
     @property
@@ -717,7 +1109,6 @@ class piCamera2Capture(Thread):
             return
         self.size = (int(self._capture_width), int(value))
 
-    @property
     def resolution(self):
         return (int(self._capture_width), int(self._capture_height))
 
@@ -732,6 +1123,41 @@ class piCamera2Capture(Thread):
                 self.size = (int(value[0]), int(value[1]))
         else:
             self.size = (int(value), int(value))
+
+    @property
+    def size(self):
+        return (self._capture_width, self._capture_height)
+
+    @size.setter
+    def size(self, value):
+        if value is None:
+            return
+        if not isinstance(value, (tuple, list)) or len(value) != 2:
+            raise ValueError("size must be a (width, height) tuple")
+
+        width, height = int(value[0]), int(value[1])
+        if width <= 0 or height <= 0:
+            raise ValueError("size must be positive")
+
+        # Reconfiguration while the capture thread is running is risky.
+        if not self.stopped:
+            if not self.log.full():
+                self.log.put_nowait((logging.WARNING, "PiCam2:size change requires restart; stop() first"))
+            return
+
+        self._capture_width = width
+        self._capture_height = height
+        self._camera_res = (width, height)
+
+        # If camera is open, reconfigure it.
+        if self.cam_open:
+            self.close_cam()
+            self.open_cam()
+
+    # ---------------------------------------------------------------------
+    # Picamera2/libcamera Getters & Setters
+    # Camera Controls
+    # ---------------------------------------------------------------------
 
     @property
     def exposure(self):
@@ -752,6 +1178,8 @@ class piCamera2Capture(Thread):
             return
         self._set_controls({"AnalogueGain": float(value)})
 
+    # Auto Exposure
+
     @property
     def autoexposure(self):
         # Match cv2Capture semantics: -1 unknown, else 0/1.
@@ -767,6 +1195,34 @@ class piCamera2Capture(Thread):
         self._set_controls({"AeEnable": bool(value)})
 
     @property
+    def aemeteringmode(self):
+        """AE metering mode. Default to CentreWeighted (0) if unknown."""
+        val = self._get_control("AeMeteringMode")
+        if val is None:
+            return 0
+        return int(val)
+    @aemeteringmode.setter
+    def aemeteringmode(self, value):
+        """Set AE metering mode.
+
+        Accepts either an int (0=CentreWeighted, 1=Spot, 2=Matrix)
+        or a friendly string ('center', 'spot', 'matrix'). None/-1 -> 0.
+        """
+        meter_val = self._parse_aemeteringmode(value)
+        self._set_controls({"AeMeteringMode": meter_val})
+
+    @property
+    def aeexposuremode(self):
+        return self._get_control("AeExposureMode")
+    @aeexposuremode.setter
+    def aeexposuremode(self, value):
+        if value is None or value == -1:
+            return
+        self._set_controls({"AeExposureMode": int(value)})
+
+    # Auto White Balance
+
+    @property
     def autowb(self):
         awb = self._get_control("AwbEnable")
         if awb is None:
@@ -777,6 +1233,27 @@ class piCamera2Capture(Thread):
         if value is None or value == -1:
             return
         self._set_controls({"AwbEnable": bool(value)})
+
+    @property
+    def awbmode(self):
+        """AWB mode. Default to Auto (0) if unknown."""
+        val = self._get_control("AwbMode")
+        if val is None:
+            return 0
+        return int(val)
+    @awbmode.setter
+    def awbmode(self, value):
+        """Set AWB mode.
+
+        Accepts either an int (0=Auto, 1=Tungsten, 2=Fluorescent,
+        3=Indoor, 4=Daylight, 5=Cloudy) or a friendly string
+        ('auto', 'tungsten', 'fluorescent', 'indoor', 'daylight', 'cloudy').
+        None/-1 -> 0 (Auto).
+        """
+        awb_val = self._parse_awbmode(value)
+        self._set_controls({"AwbMode": awb_val})
+
+    # Color
 
     @property
     def wbtemperature(self):
@@ -801,6 +1278,8 @@ class piCamera2Capture(Thread):
             raise ValueError("ColourGains must be a (red_gain, blue_gain) tuple")
         self._set_controls({"ColourGains": (float(value[0]), float(value[1]))})
 
+    # Autofocus
+
     @property
     def afmode(self):
         return self._get_control("AfMode")
@@ -819,23 +1298,7 @@ class piCamera2Capture(Thread):
             return
         self._set_controls({"LensPosition": float(value)})
 
-    @property
-    def aemeteringmode(self):
-        return self._get_control("AeMeteringMode")
-    @aemeteringmode.setter
-    def aemeteringmode(self, value):
-        if value is None or value == -1:
-            return
-        self._set_controls({"AeMeteringMode": int(value)})
-
-    @property
-    def aeexposuremode(self):
-        return self._get_control("AeExposureMode")
-    @aeexposuremode.setter
-    def aeexposuremode(self, value):
-        if value is None or value == -1:
-            return
-        self._set_controls({"AeExposureMode": int(value)})
+    # Brightness, Contrast, Saturation, Sharpness, Noise Reduction
 
     @property
     def brightness(self):
@@ -894,36 +1357,6 @@ class piCamera2Capture(Thread):
             return
         self._framerate = float(value)
         self._set_controls({"FrameRate": float(value)})
-
-    @property
-    def size(self):
-        return (self._capture_width, self._capture_height)
-
-    @size.setter
-    def size(self, value):
-        if value is None:
-            return
-        if not isinstance(value, (tuple, list)) or len(value) != 2:
-            raise ValueError("size must be a (width, height) tuple")
-
-        width, height = int(value[0]), int(value[1])
-        if width <= 0 or height <= 0:
-            raise ValueError("size must be positive")
-
-        # Reconfiguration while the capture thread is running is risky.
-        if not self.stopped:
-            if not self.log.full():
-                self.log.put_nowait((logging.WARNING, "PiCam2:size change requires restart; stop() first"))
-            return
-
-        self._capture_width = width
-        self._capture_height = height
-        self._camera_res = (width, height)
-
-        # If camera is open, reconfigure it.
-        if self.cam_open:
-            self.close_cam()
-            self.open_cam()
 
 
 ###############################################################################

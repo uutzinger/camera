@@ -1,11 +1,14 @@
 import sys
 import pprint
+import logging
 
 try:
     from picamera2 import Picamera2
 except Exception as exc:
     print("Picamera2 not available:", exc)
     sys.exit(1)
+
+logging.basicConfig(level=logging.WARNING) # options are: DEBUG, INFO, ERROR, WARNING
 
 pp = pprint.PrettyPrinter(indent=2, width=100, compact=True)
 

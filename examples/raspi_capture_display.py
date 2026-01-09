@@ -35,25 +35,52 @@ camera_index = 0
 
 configs = {
     ##############################################
-    # list the camera properties with 
-    #     list_Picamera2Properties.py
+    # Picamera2 capture configuration
+    #
+    # List the camera properties with:
+    #     examples/list_Picamera2Properties.py
+    #
+    # Core capture mode:
+    #   'main' -> full-FOV processed stream (BGR/YUV), scaled to 'camera_res' (libcamera scales)
+    #   'raw'  -> high-FPS raw sensor window (exact sensor mode only), cropped FOV
     ##############################################
-    # Capture mode:
-    #   'preview' -> full-FOV processed stream (BGR/YUV), scaled to 'camera_res' (libcamera scales)
-    #   'raw'     -> high-FPS raw sensor window (exact sensor mode only), cropped FOV
-    'mode'           : 'preview',
-    'camera_res'      : (640, 480),     # unified resolution
-    'exposure'        : 0,              # microseconds, 0/-1 for auto
-    'autoexposure'    : 1,              # 0=manual, 1=auto
-    'autowb'          : 1,              # 0=disable, 1=enable
-    'fps'             : 120,            # 
-    # Preview formats: BGR3 (BGR888), RGB3 (RGB888), YU12 (YUV420), YUY2 (YUYV)
-    # Raw formats:     SRGGB8, SRGGB10_CSI2P, (see properties script)
-    'format'         : 'BGR3',
-    'buffersize'      : 4,              # default is 4 for V4L2, max 10, 
-    'output_res'      : (-1, -1),       # output resolution same as input 
-    'flip'            : 0,              # 0=norotation 
-    'displayfps'      : 10              # frame rate for display server
+    'mode'            : 'main',         # 'main' or 'raw'
+    # Resolution and frame rate
+    'camera_res'      : (640, 480),     # requested main stream size (w, h)
+    # 'raw_res'       : (640, 480),     # optional raw sensor window (w, h); defaults to camera_res
+    'output_res'      : (-1, -1),       # (-1, -1): output == input; else libcamera scales main to this
+    'fps'             : 120,            # requested frame rate
+    # Exposure / Auto-exposure
+    'exposure'        : 0,              # manual ExposureTime in microseconds; 0/-1 -> leave AE in charge
+    'autoexposure'    : 1,              # -1: leave unchanged, 0: AE off, 1: AE on
+    # AE metering: int or friendly string ('center', 'spot', 'matrix')
+    'aemeteringmode' : 'center',        # default: CentreWeighted (0) if omitted
+    # Auto White Balance
+    'autowb'          : 1,              # -1: leave unchanged, 0: AWB off, 1: AWB on
+    # AWB mode: int or friendly string ('auto', 'tungsten', 'fluorescent', 'indoor', 'daylight', 'cloudy')
+    'awbmode'        : 'auto',          # default: Auto (0) if omitted
+    # Formats
+    # Main Stream formats: BGR3 (BGR888), RGB3 (RGB888), YU12 (YUV420), YUY2 (YUYV)
+    # Raw Streanm formats: SRGGB8, SRGGB10_CSI2P (see properties script)
+    'format'          : 'BGR3',         # legacy combined format
+    # 'main_format'   : 'BGR3',         # optional explicit main format override
+    # 'raw_format'    : 'SRGGB8',       # optional explicit RAW format override
+    # Sensor-mode selection policy
+    #   'default' / 'maximize_fov' : prefer widest FOV (for main)
+    #   'maximize_fps'             : prefer highest FPS
+    'stream_policy'  : 'default',
+    # Low-latency options
+    #   low_latency=True  -> small camera buffer_count and size-1 queue (latest frame)
+    #   low_latency=False -> Picamera2 default buffer_count and normal queue
+    'low_latency'     : False,
+    # Optional explicit overrides (advanced):
+    # 'buffer_count'  : 3,              # libcamera buffer_count passed to Picamera2
+    # Flip and transforms
+    'flip'            : 0,              # 0..7 as in README Video Flip table
+    # 'hw_transform'  : 1,              # 1: try libcamera transform, 0: always use CPU flip
+    # Queues and display
+    # 'buffersize'    : 4,              # capture queue size; if omitted and low_latency=True -> 1
+    'displayfps'      : 10              # frame rate for display server (UI update)
 }
 
 # Display ----
@@ -101,21 +128,6 @@ logger.log(
     "Config: mode=%s format=%s camera_res=%s output_res=%s",
     configs.get('mode'), configs.get('format'), configs.get('camera_res'), configs.get('output_res')
 )
-
-try:
-    # Provide guidance on available formats/resolutions
-    if hasattr(camera, 'get_supported_preview_formats'):
-        pfmts = camera.get_supported_preview_formats()
-        logger.log(logging.INFO, "Preview formats supported: %s", ", ".join(pfmts))
-        logger.log(logging.INFO, "Preview resolutions can be arbitrary; non-native AR may crop.")
-    if hasattr(camera, 'get_supported_raw_options') and configs.get('mode') == 'raw':
-        modes = camera.get_supported_raw_options()
-        if modes:
-            summary = ", ".join([f"{m['format']}@{m['size'][0]}x{m['size'][1]}" for m in modes])
-            logger.log(logging.INFO, "Raw sensor modes: %s", summary)
-        logger.log(logging.INFO, "Run examples/list_Picamera2Properties.py to list full sensor modes and controls.")
-except Exception:
-    pass
 
 camera.start()
 

@@ -58,16 +58,16 @@ cv2 capture architecture. The video subsystem is chosen based on the operating s
 
 ### **rtspCapture** <!-- omit from toc -->
 
-RTSP capture architecture. RTSP camera can stream to multiple clients.
+RTSP network server capture. An RTSP camera can stream to multiple clients.
 
 - If Python GI is available: uses GStreamer appsink (low latency, configurable).
-- Otherwise (default on Windows/macOS with pip-installed OpenCV): uses OpenCV `VideoCapture(rtsp_url)` (typically FFmpeg backend).
+- Otherwise uses OpenCV `VideoCapture(rtsp_url)` (typically FFmpeg backend) (default on Windows/macOS with pip-installed OpenCV).
 
 - Examples: [examples/rtsp_display.py](examples/rtsp_display.py)
 
 ### **rtpCapture** <!-- omit from toc -->
 
-RTP (UDP) stream is usually single-client.
+RTP (UDP) network stream is usually single-client.
 
 - If Python GI is available: uses GStreamer appsink.
 - Otherwise: uses FFmpeg via `imageio-ffmpeg` and requires an SDP file (`rtp_sdp`) to describe the RTP payload.
@@ -76,15 +76,33 @@ RTP (UDP) stream is usually single-client.
 
 ### **piCapture** <!-- omit from toc -->
 
-Interface for legacy picamera module.
+Interface for legacy picamera software module. This is now replaced with picamera2 on latest raspian.
 
 - Example configs: [examples/configs/all_capture_configs.py](examples/configs/all_capture_configs.py)
 
 ### **piCamera2Capture** <!-- omit from toc -->
 
-Interface for PiCamera2 module.
+Interface for PiCamera2 module. The replaces picameracapture above.
+It provides access to the raw camera stream and a main processed stream that converts the raw stream with scaling, orientation and color format.
 
-- Examples: [examples/raspi_capture_display.py](examples/raspi_capture_display.py)
+- Examples:
+  - [examples/raspi_capture_display.py](examples/raspi_capture_display.py) (MAIN stream)
+  - [examples/raspi_capture_raw_maxfps_lowlatency.py](examples/raspi_capture_raw_maxfps_lowlatency.py) (RAW, max-FPS, low-latency; PiCamera2 only)
+
+Basic config keys (see example for details):
+- `mode`: `'main'` (processed, full-FOV stream) or `'raw'` (raw sensor window, cropped FOV).
+- `camera_res`: requested main stream size `(w, h)`.
+- `output_res`: `(-1, -1)` for “same as input”, or a target output size for libcamera or opencv scaling.
+- `fps`: requested frame rate.
+- `format` / `main_format` / `raw_format`: main stream formats like `BGR3`, `RGB3`, `YU12`, `YUY2`, or raw Bayer formats like `SRGGB8`.
+- `flip`: 0..7 as in the Video Flip table;
+- optionally `hw_transform` to use libcamera for image transforms.
+- `exposure` (µs) and `autoexposure`: `-1` leave, `0` manual, `1` auto.
+- `aemeteringmode`: int (0=CentreWeighted, 1=Spot, 2=Matrix) or string (`"center"`, `"spot"`, `"matrix"`).
+- `autowb`: `-1` leave, `0` disable, `1` enable; `awbmode` int/string (`"auto"`, `"daylight"`, `"cloudy"`, etc.).
+- `stream_policy`: `'default'` / `'maximize_fov'` (prefer widest FOV) or `'maximize_fps'` (prefer highest FPS sensor mode).
+- `low_latency`: when `True`, uses a small `buffer_count` (default 3 unless overridden) and a a capture queue that holds only latest frame unless `buffersize` is explicitly set.
+- `buffer_count` / `buffersize`: advanced overrides for camera‑side and Python‑side buffering depth.
 
 ### **gCapture** <!-- omit from toc -->
 
@@ -117,7 +135,6 @@ Background writer threads for saving frames/cubes to disk.
 - MKV (mp4v): [camera/streamer/mkvstorageserver.py](camera/streamer/mkvstorageserver.py)
 - HDF5 arrays: [camera/streamer/h5storageserver.py](camera/streamer/h5storageserver.py)
 - TIFF stacks: [camera/streamer/tiffstorageserver.py](camera/streamer/tiffstorageserver.py)
-
 
 ## Installation
 
