@@ -96,16 +96,17 @@ class piCamera2Capture(Thread):
         self._flip_method  = self._configs.get("flip", 0)
         self._autoexposure = self._configs.get("autoexposure", -1)
         self._autowb       = self._configs.get("autowb", -1)
-        # Preferred format name (Picamera2/libcamera), fallback to fourcc for legacy configs
-        self._requested_format = str(self._configs.get("format", "")).upper()
-        self._fourcc           = str(self._configs.get("fourcc", "")).upper()
+        # Preferred format name (Picamera2/libcamera), fallback to fourcc for legacy configs.
+        # Keep original case here; callers decide if/when to normalise.
+        self._requested_format = str(self._configs.get("format", ""))
+        self._fourcc           = str(self._configs.get("fourcc", ""))
         # Mode selection: 'main' (processed) or 'raw' (sensor window)
         self._mode = str(self._configs.get("mode", "main")).lower()
         # Policy for selecting sensor modes: 'default', 'maximize_fov', 'maximize_fps'
         self._stream_policy = str(self._configs.get("stream_policy", "default")).lower()
         # Separate main/raw format overrides (optional)
-        self._main_format = str(self._configs.get("main_format", self._requested_format)).upper()
-        self._raw_format     = str(self._configs.get("raw_format", self._requested_format)).upper()
+        self._main_format = str(self._configs.get("main_format", self._requested_format))
+        self._raw_format     = str(self._configs.get("raw_format", self._requested_format))
         # Raw resolution override (optional), defaults to camera_res
         self._raw_res = self._configs.get("raw_res", (self._capture_width, self._capture_height))
         # Low-latency controls
@@ -290,8 +291,8 @@ class piCamera2Capture(Thread):
 
         try:
             self.picam2 = Picamera2(camera_num=self.camera_num)
-            # Resolve requested format and stream
-            req = (self._requested_format or self._fourcc or "").upper()
+            # Resolve requested format and stream (normalise case once here)
+            req = str(self._requested_format or self._fourcc or "").upper()
             # Decide initial stream based on mode
             if self._mode == "raw":
                 self._stream_name = "raw"
@@ -721,14 +722,41 @@ class piCamera2Capture(Thread):
             fmt if fmt in ("BGR888", "RGB888", "YUYV", "MJPEG", "YUV420") else None
         )
 
-    def _is_raw_format(self, fmt: str) -> bool:
+    def _is_raw_format(self, fmt) -> bool:
+        """Return True if *fmt* represents a RAW Bayer format.
+
+        Accepts both plain strings (e.g. "SRGGB8") and libcamera /
+        Picamera2 pixel format objects, whose string representation or
+        ``name`` attribute encodes the format.
+        """
         if not fmt:
             return False
-        fmt = fmt.upper()
-        return fmt.startswith("SRGGB") or fmt.startswith("SBGGR") or fmt.startswith("SGBRG") or fmt.startswith("SGRBG")
+
+        # Normalise to an upper-case string, handling non-string objects
+        # such as libcamera PixelFormat gracefully.
+        try:
+            fmt_str = fmt.upper()  # type: ignore[assignment]
+        except Exception:
+            name = getattr(fmt, "name", None)
+            if isinstance(name, str):
+                fmt_str = name.upper()
+            else:
+                fmt_str = str(fmt).upper()
+
+        return (
+            fmt_str.startswith("SRGGB")
+            or fmt_str.startswith("SBGGR")
+            or fmt_str.startswith("SGBRG")
+            or fmt_str.startswith("SGRBG")
+        )
 
     def _set_format(self, fmt: str | None):
-        fmt_upper = (fmt or "").upper()
+        # Normalise possibly non-string formats to an upper-case string.
+        try:
+            fmt_upper = (fmt or "").upper()  # type: ignore[arg-type]
+        except Exception:
+            fmt_upper = str(fmt).upper() if fmt is not None else ""
+
         self._format = fmt_upper if fmt_upper else None
         self._is_yuv420 = fmt_upper == "YUV420"
         non_alpha = {"BGR888", "RGB888", "YUV420", "YUYV", "MJPEG"}
@@ -770,8 +798,15 @@ class piCamera2Capture(Thread):
                     size = m.get("size")
                     if not fmt or not size or not self._is_raw_format(fmt):
                         continue
+                    # Normalise format to a plain upper-case string so that
+                    # downstream helpers never have to worry about libcamera
+                    # PixelFormat objects.
+                    try:
+                        fmt_str = str(fmt).upper()
+                    except Exception:
+                        fmt_str = str(fmt)
                     modes.append({
-                        "format": fmt,
+                        "format": fmt_str,
                         "size": (int(size[0]), int(size[1])),
                         "fps": float(m.get("fps", 0.0) or 0.0),
                         "area": int(m.get("area", int(size[0]) * int(size[1])))
@@ -979,7 +1014,19 @@ class piCamera2Capture(Thread):
             return (desired_fmt, desired_size)
 
         desired_fmt = (desired_fmt or "").upper()
-        sizes_for_fmt = [m["size"] for m in modes if m["format"].upper() == desired_fmt]
+        # All mode formats from get_supported_raw_options() are already
+        # normalised to upper-case strings, but be defensive.
+        sizes_for_fmt = []
+        for m in modes:
+            try:
+                mf = m.get("format")
+                if not mf:
+                    continue
+                mf_upper = mf.upper() if isinstance(mf, str) else str(mf).upper()
+                if mf_upper == desired_fmt:
+                    sizes_for_fmt.append(m["size"])
+            except Exception:
+                continue
         if sizes_for_fmt:
             # If requested size is supported for the format, keep; else take first size for that format
             if tuple(desired_size) in sizes_for_fmt:
