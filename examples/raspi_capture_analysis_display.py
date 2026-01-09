@@ -186,7 +186,7 @@ logger = logging.getLogger("Raspi Capture")
 for _name in ("picamera2", "libcamera"):
     logging.getLogger(_name).setLevel(logging.CRITICAL)
 # Also silence libcamera C++ logs via environment (must be set before libcamera loads)
-os.environ.setdefault("LIBCAMERA_LOG_LEVELS", "*:0")  # 0=ERROR, 1=WARNING, 2=INFO, 3=DEBUG
+os.environ.setdefault("LIBCAMERA_LOG_LEVELS", "*:3")  # 3=ERROR, 2=WARNING, 1=INFO, 0=DEBUG
     
 # Configs and Variables ----
 

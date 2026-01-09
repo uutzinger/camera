@@ -1,6 +1,7 @@
 import sys
 import pprint
 import logging
+import os
 
 try:
     from picamera2 import Picamera2
@@ -13,6 +14,7 @@ logging.basicConfig(level=logging.WARNING)  # options are: DEBUG, INFO, ERROR, W
 # Silence Picamera2 / libcamera logs; keep only this script's logging output
 for _name in ("picamera2", "libcamera"):
     logging.getLogger(_name).setLevel(logging.CRITICAL)
+os.environ.setdefault("LIBCAMERA_LOG_LEVELS", "*:3")  # 3=ERROR, 2=WARNING, 1=INFO, 0=DEBUG
 
 pp = pprint.PrettyPrinter(indent=2, width=100, compact=True)
 
