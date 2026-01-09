@@ -359,7 +359,7 @@ while(not stop):
             stop = True
         for name in (main_window_name, binned_window_name, ratioed_window_name, processed_window_name):
             try:
-                if cv2.getWindowProperty(name, 0) < 0:
+                if cv2.getWindowProperty(name, cv2.WND_PROP_VISIBLE) < 0:
                     stop = True
             except Exception:
                 stop = True

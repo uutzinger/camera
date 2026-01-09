@@ -41,7 +41,7 @@ last_time = time.perf_counter()
 last_display = time.perf_counter()
 
 # Main Loop
-while (cv2.getWindowProperty(window_name, 0) >= 0):
+while (cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) >= 0):
     current_time = time.perf_counter()
 
     # update displayed frames per second

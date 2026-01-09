@@ -124,7 +124,7 @@ def main() -> None:
             if frame is None:
                 # Still allow window-close / stop
                 try:
-                    if cv2.getWindowProperty(window_name, 0) < 0:
+                    if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 0:
                         break
                 except Exception:
                     break
@@ -181,7 +181,7 @@ def main() -> None:
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
                 try:
-                    if cv2.getWindowProperty(window_name, 0) < 0:
+                    if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 0:
                         break
                 except Exception:
                     break

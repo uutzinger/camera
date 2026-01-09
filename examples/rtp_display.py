@@ -34,7 +34,7 @@ camera.start()
 
 cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE) # or WINDOW_NORMAL
 
-while(cv2.getWindowProperty(window_name, 0) >= 0):
+while(cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) >= 0):
     (frame_time, frame) = camera.capture.get(block=True, timeout=None)
     cv2.imshow(window_name, frame)
     if cv2.waitKey(1) & 0xFF == ord('q'): break

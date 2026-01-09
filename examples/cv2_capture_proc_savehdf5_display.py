@@ -127,7 +127,7 @@ def main() -> None:
                 # Still allow window-close / stop
                 for name in (window_name, proc_window):
                     try:
-                        if cv2.getWindowProperty(name, 0) < 0:
+                        if cv2.getWindowProperty(name, cv2.WND_PROP_VISIBLE) < 0:
                             stop = True
                     except Exception:
                         stop = True
@@ -193,7 +193,7 @@ def main() -> None:
 
                 for name in (window_name, proc_window):
                     try:
-                        if cv2.getWindowProperty(name, 0) < 0:
+                        if cv2.getWindowProperty(name, cv2.WND_PROP_VISIBLE) < 0:
                             stop = True
                     except Exception:
                         stop = True

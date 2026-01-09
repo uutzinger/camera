@@ -182,10 +182,10 @@ try:
         if (frame is not None) and ((current_time - last_display) >= display_interval):
             # If the window was closed, stop before calling imshow (prevents recreation)
             try:
-                window_visible = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) >= 1
+                window_visible = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE)
             except Exception:
-                window_visible = False
-            if not window_visible:
+                window_visible = -1
+            if window_visible < 0:
                 stop = True
             else:
                 frame_display = frame.copy()
@@ -202,11 +202,7 @@ try:
                 # without waitKey the opencv window is not refreshed
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     stop = True
-                try:
-                    if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
-                        stop = True
-                except Exception:
-                    stop = True
+
                 last_display = current_time
                 num_frames_displayed += 1
 

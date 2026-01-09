@@ -115,7 +115,7 @@ measured_dps = 0
 num_frames_received = 0
 num_frames_displayed = 0
 
-while cv2.getWindowProperty(window_name, 0) >= 0:
+while cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) >= 0:
     current_time = time.perf_counter()
 
     # wait for new image

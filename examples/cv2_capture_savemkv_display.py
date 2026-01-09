@@ -174,7 +174,7 @@ def main() -> None:
                     stop = True
 
                 try:
-                    if cv2.getWindowProperty(window_name, 0) < 0:
+                    if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 0:
                         stop = True
                 except Exception:
                     stop = True

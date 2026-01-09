@@ -25,7 +25,7 @@ logger.log(logging.INFO, "Getting Images")
 camera.start()
 
 window_handle = cv2.namedWindow("RTSP", cv2.WINDOW_NORMAL)
-while(cv2.getWindowProperty("RTSP", 0) >= 0):
+while(cv2.getWindowProperty("RTSP", cv2.WND_PROP_VISIBLE) >= 0):
     (frame_time, frame) = camera.capture.get(block=True, timeout=None)
     cv2.imshow('RTSP', frame)
     if cv2.waitKey(1) & 0xFF == ord('q'): break
