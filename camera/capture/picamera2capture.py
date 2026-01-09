@@ -1092,7 +1092,6 @@ class piCamera2Capture(Thread):
     @property
     def width(self):
         return int(self._capture_width)
-
     @width.setter
     def width(self, value):
         if value is None or value == -1:
@@ -1102,16 +1101,15 @@ class piCamera2Capture(Thread):
     @property
     def height(self):
         return int(self._capture_height)
-
     @height.setter
     def height(self, value):
         if value is None or value == -1:
             return
         self.size = (int(self._capture_width), int(value))
 
+    @property
     def resolution(self):
         return (int(self._capture_width), int(self._capture_height))
-
     @resolution.setter
     def resolution(self, value):
         if value is None or value == -1:
@@ -1127,7 +1125,6 @@ class piCamera2Capture(Thread):
     @property
     def size(self):
         return (self._capture_width, self._capture_height)
-
     @size.setter
     def size(self, value):
         if value is None:
