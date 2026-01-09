@@ -185,6 +185,8 @@ logger = logging.getLogger("Raspi Capture")
 # Silence Picamera2 / libcamera logs; keep only this script's logging output
 for _name in ("picamera2", "libcamera"):
     logging.getLogger(_name).setLevel(logging.CRITICAL)
+# Also silence libcamera C++ logs via environment (must be set before libcamera loads)
+os.environ.setdefault("LIBCAMERA_LOG_LEVELS", "*:0")  # 0=ERROR, 1=WARNING, 2=INFO, 3=DEBUG
     
 # Configs and Variables ----
 
