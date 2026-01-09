@@ -29,7 +29,10 @@ except Exception:
 
 logging.basicConfig(level=logging.INFO)  # options: DEBUG, INFO, WARNING, ERROR
 logger = logging.getLogger("Raspi RAW MaxFPS")
-
+# Silence Picamera2 / libcamera logs; keep only this script's logging output
+for _name in ("picamera2", "libcamera"):
+    logging.getLogger(_name).setLevel(logging.CRITICAL)
+    
 # default camera starts at 0 by operating system
 camera_index = 0
 

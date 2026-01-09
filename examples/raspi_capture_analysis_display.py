@@ -182,6 +182,10 @@ def draw_pose(frame_bgr: np.ndarray, points, min_score=0.2):
 logging.basicConfig(level=logging.INFO) # options are: DEBUG, INFO, ERROR, WARNING
 logger = logging.getLogger("Raspi Capture")
 
+# Silence Picamera2 / libcamera logs; keep only this script's logging output
+for _name in ("picamera2", "libcamera"):
+    logging.getLogger(_name).setLevel(logging.CRITICAL)
+    
 # Configs and Variables ----
 
 # You can obtain the MoveNet model from TensorFlow Hub:

@@ -8,7 +8,11 @@ except Exception as exc:
     print("Picamera2 not available:", exc)
     sys.exit(1)
 
-logging.basicConfig(level=logging.WARNING) # options are: DEBUG, INFO, ERROR, WARNING
+logging.basicConfig(level=logging.WARNING)  # options are: DEBUG, INFO, ERROR, WARNING
+
+# Silence Picamera2 / libcamera logs; keep only this script's logging output
+for _name in ("picamera2", "libcamera"):
+    logging.getLogger(_name).setLevel(logging.CRITICAL)
 
 pp = pprint.PrettyPrinter(indent=2, width=100, compact=True)
 

@@ -28,6 +28,10 @@ except Exception:
 logging.basicConfig(level=logging.INFO) # options are: DEBUG, INFO, ERROR, WARNING
 logger = logging.getLogger("Raspi Capture")
 
+# Silence Picamera2 / libcamera logs; keep only this script's logging output
+for _name in ("picamera2", "libcamera"):
+    logging.getLogger(_name).setLevel(logging.CRITICAL)
+
 # Configs and Variables ----
 
 # default camera starts at 0 by operating system
