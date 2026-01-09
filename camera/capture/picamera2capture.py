@@ -26,6 +26,7 @@ from queue import Queue
 import logging
 import time
 import cv2
+import numpy as np
 
 try:
     from picamera2 import Picamera2
@@ -1014,29 +1015,62 @@ class piCamera2Capture(Thread):
             return (desired_fmt, desired_size)
 
         desired_fmt = (desired_fmt or "").upper()
+
+        # Helper: extract the Bayer pattern prefix (e.g. 'SRGGB') from a
+        # libcamera-style pixel format string such as 'SRGGB10_CSI2P'.
+        def _bayer_prefix(f: str) -> str:
+            for p in ("SRGGB", "SBGGR", "SGBRG", "SGRBG"):
+                if f.startswith(p):
+                    return p
+            return ""
+
+        desired_prefix = _bayer_prefix(desired_fmt)
+
         # All mode formats from get_supported_raw_options() are already
-        # normalised to upper-case strings, but be defensive.
-        sizes_for_fmt = []
+        # upper-case strings. First try an exact match on the full name.
+        exact_sizes = []
         for m in modes:
             try:
-                mf = m.get("format")
-                if not mf:
-                    continue
-                mf_upper = mf.upper() if isinstance(mf, str) else str(mf).upper()
-                if mf_upper == desired_fmt:
-                    sizes_for_fmt.append(m["size"])
+                mf = m.get("format") or ""
+                if mf == desired_fmt:
+                    exact_sizes.append(m["size"])
             except Exception:
                 continue
-        if sizes_for_fmt:
-            # If requested size is supported for the format, keep; else take first size for that format
-            if tuple(desired_size) in sizes_for_fmt:
+        if exact_sizes:
+            if tuple(desired_size) in exact_sizes:
                 return (desired_fmt, tuple(desired_size))
-            sel_size = sizes_for_fmt[0]
+            sel_size = exact_sizes[0]
             if not self.log.full():
                 self.log.put_nowait((logging.INFO, f"PiCam2:Requested raw size {desired_size} not in {desired_fmt}; using {sel_size}."))
             return (desired_fmt, sel_size)
 
-        # Requested format not available; pick the first available mode
+        # Next, fall back to matching only on the Bayer prefix (e.g. 'SRGGB'),
+        # so configs can specify 'SRGGB' and still match 'SRGGB10_CSI2P'.
+        if desired_prefix:
+            prefix_matches = []
+            for m in modes:
+                try:
+                    mf = m.get("format") or ""
+                    if _bayer_prefix(str(mf)) == desired_prefix:
+                        prefix_matches.append(m)
+                except Exception:
+                    continue
+            if prefix_matches:
+                # Among prefix matches, honour the requested size if present,
+                # otherwise just take the first matching mode.
+                sizes_for_prefix = [m["size"] for m in prefix_matches]
+                if tuple(desired_size) in sizes_for_prefix:
+                    return (prefix_matches[sizes_for_prefix.index(tuple(desired_size))]["format"], tuple(desired_size))
+                sel = prefix_matches[0]
+                sel_fmt, sel_size = sel["format"], sel["size"]
+                if not self.log.full():
+                    self.log.put_nowait((
+                        logging.INFO,
+                        f"PiCam2:Requested raw format {desired_fmt} not available; using {sel_fmt}@{sel_size[0]}x{sel_size[1]} (matched Bayer pattern {desired_prefix})."
+                    ))
+                return (sel_fmt, sel_size)
+
+        # Requested format/pattern not available at all; pick the first mode.
         sel_fmt = modes[0]["format"]
         sel_size = modes[0]["size"]
         if not self.log.full():
@@ -1052,8 +1086,11 @@ class piCamera2Capture(Thread):
     def convert(self, frame, to: str = 'BGR888'):
         """Convert a captured frame to the requested OpenCV-friendly format.
 
-        Supported targets: 'BGR888' (default), 'RGB888'. Returns input if
-        conversion is unnecessary or fails.
+        Supported targets: 'BGR888' (default), 'RGB888'. For Bayer RAW
+        formats such as SRGGB10, SRGGB12, etc., this helper will demosaic
+        and normalise higher bit-depth data down to 8-bit when an 8-bit
+        packed target is requested. Returns input if conversion is
+        unnecessary or fails.
         """
         if frame is None:
             return None
@@ -1071,9 +1108,37 @@ class piCamera2Capture(Thread):
             except Exception:
                 return frame
         try:
-            return cv2.cvtColor(frame, code)
+            out = cv2.cvtColor(frame, code)
         except Exception:
             return frame
+
+        # If we converted from a high bit-depth RAW source (e.g. SRGGB10)
+        # but the caller requested an 8-bit packed target ('BGR888' /
+        # 'RGB888'), scale down to uint8 for display/processing.
+        try:
+            if (
+                to in ('BGR888', 'RGB888')
+                and hasattr(out, 'dtype')
+                and np.issubdtype(out.dtype, np.integer)
+                and out.dtype.itemsize > 1
+            ):
+                src_fmt = (self._format or '').upper()
+                # Infer effective bit depth from the raw format name.
+                bit_depth = 16
+                for cand in (16, 14, 12, 10):
+                    if str(cand) in src_fmt:
+                        bit_depth = cand
+                        break
+                shift = max(0, bit_depth - 8)
+                if shift > 0:
+                    out = (out >> shift).astype(np.uint8)
+                else:
+                    out = out.astype(np.uint8)
+        except Exception:
+            # On any failure here, just return the cvtColor result.
+            pass
+
+        return out
 
     def _conversion_code(self, to: str):
         fmt = (self._format or '').upper()

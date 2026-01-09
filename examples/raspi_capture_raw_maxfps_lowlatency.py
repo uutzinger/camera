@@ -50,17 +50,17 @@ configs = {
     # List the camera properties and sensor modes with:
     #   examples/list_Picamera2Properties.py
     ##############################################
-\    'mode'            : 'raw',
+    'mode'            : 'raw',
     'camera_res'      : (640, 480),     # hint resolution (w, h)
     'output_res'      : (-1, -1),       # RAW: keep sensor mode size; avoid extra CPU resize
     'fps'             : 120,            # requested frame rate (sensor modes / exposure may limit this)
     'exposure'        : 0,              # manual ExposureTime [us]; 0/-1 -> AE in charge
     'autoexposure'    : 1,              # -1: leave, 0: AE off, 1: AE on
-    'aemeteringmode' : 'center',
+    'aemeteringmode'  : 'center',
     'autowb'          : 1,              # -1: leave, 0: AWB off, 1: AWB on
-    'awbmode'        : 'auto',
-    'raw_format'      : 'SRGGB8',
-    'stream_policy'  : 'maximize_fps',
+    'awbmode'         : 'auto',
+    'raw_format'      : 'SGRBG',        # RAW Bayer pattern (e.g. SGRBG10_CSI2P)
+    'stream_policy'   : 'maximize_fps',
     'low_latency'     : True,
     'flip'            : 0,              # no rotation/flip for maximum throughput
     'displayfps'      : 15,             # UI update rate; capture FPS may be higher
