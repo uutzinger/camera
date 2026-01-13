@@ -147,12 +147,6 @@ while cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) >= 0:
         last_display = current_time
         num_frames_displayed += 1
 
-    # avoid looping unnecessarily (relevant for low fps and non-blocking capture)
-    # end_time = time.perf_counter()
-    # delay_time = loop_interval - (end_time - current_time)
-    # if delay_time >= 0.005:
-    #     time.sleep(delay_time)  # this creates at least 3ms delay, regardless of delay_time
-
 # Clean up
 camera.stop()
 cv2.destroyAllWindows()

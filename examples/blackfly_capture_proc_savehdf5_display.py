@@ -165,10 +165,7 @@ def main() -> None:
                 if (key & 0xFF) == ord('q'):
                     stop = True
                 for name in (window_name, proc_window):
-                    try:
-                        if cv2.getWindowProperty(name, cv2.WND_PROP_VISIBLE) < 0:
-                            stop = True
-                    except Exception:
+                    if cv2.getWindowProperty(name, cv2.WND_PROP_VISIBLE) < 0:
                         stop = True
 
                 last_display = current_time

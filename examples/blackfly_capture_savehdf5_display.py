@@ -112,10 +112,7 @@ def main() -> None:
                 key = cv2.waitKey(1)
                 if (key & 0xFF) == ord('q'):
                     stop = True
-                try:
-                    if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 0:
-                        stop = True
-                except Exception:
+                if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 0:
                     stop = True
 
                 last_display = current_time

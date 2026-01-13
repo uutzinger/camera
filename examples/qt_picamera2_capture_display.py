@@ -1,0 +1,266 @@
+"""Qt5/Qt6 example: Raspberry Pi Picamera2 display with Start/Stop.
+
+This is the Qt counterpart to examples/picamera2_capture_display.py.
+
+- Uses camera.capture.picamera2captureQt.piCamera2CaptureQt
+- Displays frames in a Qt window (no cv2.imshow)
+- Provides a Start/Stop toggle button
+
+Run:
+    python3 examples/qt_picamera2_capture_display.py
+
+Notes:
+- This is intended for Raspberry Pi OS with `picamera2` installed.
+- If running headless, you still need a working Qt display backend.
+"""
+
+import os
+import sys
+import time
+import logging
+
+try:
+    from PyQt6.QtCore import Qt, QTimer  # type: ignore
+    from PyQt6.QtGui import QPixmap  # type: ignore
+    from PyQt6.QtWidgets import (  # type: ignore
+        QApplication,
+        QLabel,
+        QMainWindow,
+        QPushButton,
+        QVBoxLayout,
+        QHBoxLayout,
+        QWidget,
+    )
+except Exception:  # pragma: no cover
+    from PyQt5.QtCore import Qt, QTimer  # type: ignore
+    from PyQt5.QtGui import QPixmap  # type: ignore
+    from PyQt5.QtWidgets import (  # type: ignore
+        QApplication,
+        QLabel,
+        QMainWindow,
+        QPushButton,
+        QVBoxLayout,
+        QHBoxLayout,
+        QWidget,
+    )
+
+
+# Enum compatibility between Qt5 and Qt6
+try:
+    _ALIGN_CENTER = Qt.AlignmentFlag.AlignCenter
+    _KEEP_ASPECT = Qt.AspectRatioMode.KeepAspectRatio
+    _FAST_TRANSFORM = Qt.TransformationMode.FastTransformation
+except Exception:  # pragma: no cover
+    _ALIGN_CENTER = Qt.AlignCenter
+    _KEEP_ASPECT = Qt.KeepAspectRatio
+    _FAST_TRANSFORM = Qt.FastTransformation
+
+
+# Silence libcamera logs (must be set before libcamera loads)
+os.environ.setdefault('LIBCAMERA_LOG_LEVELS', '*:3')  # 3=ERROR
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowTitle('PiCamera2 Qt Display')
+
+        # Match picamera2_capture_display defaults (can be edited)
+        self.configs = {
+            ################################################################
+            # Picamera2 capture configuration
+            #
+            # List camera properties with:
+            #     examples/list_Picamera2Properties.py
+            ################################################################
+            # Capture mode:
+            #   'main' -> full-FOV processed stream (BGR/YUV), scaled to 'camera_res' (libcamera scales)
+            #   'raw'  -> high-FPS raw sensor window (exact sensor mode only), cropped FOV
+            'mode'            : 'main',
+            'camera_res'      : (640, 480),     # requested main stream size (w, h)
+            'exposure'        : 0,              # microseconds, 0/-1 for auto
+            'fps'             : 60,             # requested capture frame rate
+            'autoexposure'    : 1,              # -1 leave unchanged, 0 AE off, 1 AE on
+            'aemeteringmode'  : 'center',       # int or 'center'|'spot'|'matrix'
+            'autowb'          : 1,              # -1 leave unchanged, 0 AWB off, 1 AWB on
+            'awbmode'         : 'auto',         # int or friendly string
+            # Main stream formats: BGR3 (BGR888), RGB3 (RGB888), YU12 (YUV420), YUY2 (YUYV)
+            # Raw stream formats:  SRGGB8, SRGGB10_CSI2P, (see properties script)
+            'format'          : 'BGR3',
+            'stream_policy'   : 'default',      # 'maximize_fov', 'maximize_fps', 'default'
+            'low_latency'     : True,           # low_latency=True prefers size-1 buffer (latest frame)
+            'buffersize'      : 4,              # FrameBuffer capacity override (wrapper-level)
+            'output_res'      : (-1, -1),       # (-1,-1): output == input; else libcamera scales main
+            'flip'            : 0,              # 0=norotation
+            'displayfps'      : 30              # consumer-side display throttle
+        }
+
+        displayfps = float(self.configs.get('displayfps', 0) or 0)
+        capture_fps = float(self.configs.get('fps', 0) or 0)
+        if displayfps <= 0:
+            self._display_interval = 0.0
+        elif capture_fps > 0 and displayfps >= 0.8 * capture_fps:
+            self._display_interval = 0.0
+        else:
+            self._display_interval = 1.0 / displayfps
+        self._last_display = 0.0
+
+        # Lazy import so this file can be opened on non-Pi systems
+        from camera.capture.picamera2captureQt import piCamera2CaptureQt
+
+        self.capture = piCamera2CaptureQt(self.configs, camera_num=0)
+        self.capture.stats.connect(self.on_stats)
+        self.capture.log.connect(self.on_log)
+        self.capture.started.connect(self.on_started)
+        self.capture.stopped.connect(self.on_stopped)
+
+        # Poll/drain buffer in GUI thread (no frameReady signal)
+        self._poll_timer = QTimer(self)
+        interval_ms = 0 if self._display_interval <= 0.0 else max(1, int(self._display_interval * 1000.0))
+        self._poll_timer.setInterval(interval_ms)
+        self._poll_timer.timeout.connect(self.on_poll)
+
+        # UI
+        self.video = QLabel('No video')
+        self.video.setAlignment(_ALIGN_CENTER)
+        self.video.setMinimumSize(320, 240)
+
+        self.btn_toggle = QPushButton('Start')
+        self.btn_toggle.clicked.connect(self.start_stream)
+
+        button_row = QHBoxLayout()
+        button_row.addWidget(self.btn_toggle)
+        button_row.addStretch(1)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.video, stretch=1)
+        layout.addLayout(button_row)
+
+        root = QWidget()
+        root.setLayout(layout)
+        self.setCentralWidget(root)
+
+        # Logging
+        self._logger = logging.getLogger('picamera2_capture_qt_display')
+
+    def _set_toggle_to_start(self):
+        self.btn_toggle.setText('Start')
+        try:
+            self.btn_toggle.clicked.disconnect(self.stop_stream)
+        except Exception:
+            pass
+        try:
+            self.btn_toggle.clicked.connect(self.start_stream)
+        except Exception:
+            pass
+
+    def _set_toggle_to_stop(self):
+        self.btn_toggle.setText('Stop')
+        try:
+            self.btn_toggle.clicked.disconnect(self.start_stream)
+        except Exception:
+            pass
+        try:
+            self.btn_toggle.clicked.connect(self.stop_stream)
+        except Exception:
+            pass
+
+    def start_stream(self):
+        # Toggle immediately (text + connection) on press
+        self._set_toggle_to_stop()
+        self.capture.start()
+
+    def stop_stream(self):
+        # Prevent repeated presses while stopping
+        self.btn_toggle.setEnabled(False)
+        self.capture.stop()
+
+    def on_started(self):
+        self._logger.info('Capture started')
+        try:
+            self.capture.log_stream_options()
+        except Exception:
+            pass
+        try:
+            self._poll_timer.start()
+        except Exception:
+            pass
+        self.btn_toggle.setEnabled(True)
+        self._set_toggle_to_stop()
+
+    def on_stopped(self):
+        self._logger.info('Capture stopped')
+        try:
+            self._poll_timer.stop()
+        except Exception:
+            pass
+        self.btn_toggle.setEnabled(True)
+        self._set_toggle_to_start()
+
+    def on_log(self, level: int, message: str):
+        # Mirror to python logging
+        try:
+            self._logger.log(int(level), str(message))
+        except Exception:
+            self._logger.info('%s', message)
+
+    def on_stats(self, fps: float):
+        self.statusBar().showMessage(f'Capture FPS: {fps:.1f}')
+
+    def on_poll(self):
+        buf = getattr(self.capture, "buffer", None)
+        if buf is None:
+            return
+
+        # Drain to the most recent frame to minimize display latency.
+        last = None
+        try:
+            while buf.avail() > 0:
+                last = buf.pull(copy=True)
+        except Exception:
+            last = None
+
+        if not last:
+            return
+
+        frame, _ts_ms = last
+
+        try:
+            img = self.capture.convertQimage(frame)
+            if img is None:
+                raise ValueError('convertQimage() returned None')
+            pix = QPixmap.fromImage(img)
+            # Keep aspect ratio and fit the label
+            self.video.setPixmap(pix.scaled(self.video.size(), _KEEP_ASPECT, _FAST_TRANSFORM))
+        except Exception as exc:
+            self.video.setText(f'Frame error: {exc}')
+
+    def resizeEvent(self, event):
+        # Re-scale current pixmap when resizing
+        pm = self.video.pixmap()
+        if pm is not None and not pm.isNull():
+            self.video.setPixmap(pm.scaled(self.video.size(), _KEEP_ASPECT, _FAST_TRANSFORM))
+        super().resizeEvent(event)
+
+    def closeEvent(self, event):
+        # Ensure capture thread shuts down
+        try:
+              self.capture.close_cam(timeout=2.0)
+        except Exception:
+            pass
+        super().closeEvent(event)
+
+
+def main() -> int:
+    logging.basicConfig(level=logging.INFO)
+
+    app = QApplication(sys.argv)
+    win = MainWindow()
+    win.resize(900, 600)
+    win.show()
+    return app.exec()
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

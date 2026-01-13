@@ -82,14 +82,28 @@ Interface for legacy picamera software module. This is now replaced with picamer
 
 ### **piCamera2Capture** <!-- omit from toc -->
 
-Interface for PiCamera2 module. The replaces picameracapture above.
-It provides access to the raw camera stream and a main processed stream that converts the raw stream with scaling, orientation and color format.
+Interface for Raspberry Pi Picamera2/libcamera (replaces legacy `piCapture`).
 
-- Examples:
-  - [examples/raspi_capture_display.py](examples/raspi_capture_display.py) (MAIN stream)
-  - [examples/raspi_capture_raw_maxfps_lowlatency.py](examples/raspi_capture_raw_maxfps_lowlatency.py) (RAW, max-FPS, low-latency; PiCamera2 only)
+Two wrappers are provided:
 
-Basic config keys (see example for details):
+- `piCamera2Capture` (threaded, non-Qt): [camera/capture/picamera2capture.py](camera/capture/picamera2capture.py)
+- `piCamera2CaptureQt` (Qt5/Qt6): [camera/capture/picamera2captureQt.py](camera/capture/picamera2captureQt.py)
+
+Frame delivery model (both wrappers):
+
+- Frames are written into a single-producer/single-consumer ring buffer `camera.buffer`.
+- Consumers poll (NO queue semantics): `if camera.buffer.avail() > 0: frame, ts_ms = camera.buffer.pull(copy=...)`.
+- `ts_ms` is a float timestamp in milliseconds (sub-ms precision).
+- Qt wrapper does not emit a per-frame signal; GUI code should poll via a `QTimer`.
+
+Examples:
+
+- Qt display (polls via `QTimer`): [examples/qt_picamera2_capture_display.py](examples/qt_picamera2_capture_display.py)
+- MAIN stream display: [examples/picamera2_capture_display.py](examples/picamera2_capture_display.py)
+- RAW / max-FPS / low-latency: [examples/picamera2_capture_raw_maxfps_lowlatency.py](examples/picamera2_capture_raw_maxfps_lowlatency.py)
+
+Basic config keys (see examples for details):
+
 - `mode`: `'main'` (processed, full-FOV stream) or `'raw'` (raw sensor window, cropped FOV).
 - `camera_res`: requested main stream size `(w, h)`.
 - `output_res`: `(-1, -1)` for “same as input”, or a target output size for libcamera or opencv scaling.
@@ -101,8 +115,11 @@ Basic config keys (see example for details):
 - `aemeteringmode`: int (0=CentreWeighted, 1=Spot, 2=Matrix) or string (`"center"`, `"spot"`, `"matrix"`).
 - `autowb`: `-1` leave, `0` disable, `1` enable; `awbmode` int/string (`"auto"`, `"daylight"`, `"cloudy"`, etc.).
 - `stream_policy`: `'default'` / `'maximize_fov'` (prefer widest FOV) or `'maximize_fps'` (prefer highest FPS sensor mode).
-- `low_latency`: when `True`, uses a small `buffer_count` (default 3 unless overridden) and a a capture queue that holds only latest frame unless `buffersize` is explicitly set.
-- `buffer_count` / `buffersize`: advanced overrides for camera‑side and Python‑side buffering depth.
+- `low_latency`: when `True`, uses a small camera-side `buffer_count` and a Python-side `FrameBuffer` capacity of 1 unless `buffersize` is explicitly set.
+- `buffer_count`: camera-side buffering depth (libcamera/Picamera2).
+- `buffersize`: Python-side `FrameBuffer` capacity (overrides default/`queue_size`).
+- `buffer_overwrite`: allow producer to overwrite when full (default True).
+- `buffer_copy`: default `copy` behavior for `pull()` (default False).
 
 ### **gCapture** <!-- omit from toc -->
 
@@ -322,13 +339,14 @@ Maximum usable exposure time is typically limited by frame interval. Roughly, ma
 Try ```cv2_capture_display.py``` from ```./examples```.
 You need to set the proper config file in the program. You should not need to edit python files in capture or streamer folder.
 
-**Naming convention**: examples use backend-explicit names like ```cv2_*```, ```gcapture_*```, ```raspi_*```, and ```blackfly_capture_*```.
+**Naming convention**: examples use backend-explicit names like ```cv2_*```, ```gcapture_*```, ```picamera2_*``` / ```qt_picamera2_*```, and ```blackfly_capture_*```.
 
 **Capture + display**:
 
 - ```cv2_capture_display.py``` OpenCV capture + display.
 - ```gcapture_display.py``` GStreamer appsink capture (`gCapture`) + display.
-- ```raspi_capture_display.py``` Raspberry Pi capture + display (prefers Picamera2, falls back to OpenCV).
+- ```picamera2_capture_display.py``` Raspberry Pi Picamera2 capture + display (MAIN stream).
+- ```qt_picamera2_capture_display.py``` Raspberry Pi Picamera2 + Qt display (polling via `QTimer`).
 - ```blackfly_capture_display.py``` Blackfly capture + display + FPS reporting.
 - ```rtsp_display.py``` RTSP receive + display.
 - ```rtp_display.py``` RTP receive + display.
