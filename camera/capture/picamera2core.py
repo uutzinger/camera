@@ -815,7 +815,25 @@ class PiCamera2Core:
             try:
                 fps_req = float(self._framerate or 0)
                 if fps_req > 0:
-                    controls.setdefault("FrameRate", fps_req)
+                    # Only apply runtime FrameRate if it is not exceeding what the
+                    # camera advertises via sensor modes.
+                    modes = self._list_sensor_modes()
+                    max_mode_fps = 0.0
+                    for m in modes:
+                        try:
+                            mfps = float(m.get("fps", 0.0) or 0.0)
+                            if mfps > max_mode_fps:
+                                max_mode_fps = mfps
+                        except Exception:
+                            continue
+
+                    if max_mode_fps > 0.0 and fps_req > (1.01 * max_mode_fps):
+                        self._log(
+                            logging.INFO,
+                            f"PiCam2:Requested FPS {fps_req:g} exceeds sensor-mode max {max_mode_fps:g}; leaving FrameRate unset",
+                        )
+                    else:
+                        controls.setdefault("FrameRate", fps_req)
             except Exception:
                 pass
 
