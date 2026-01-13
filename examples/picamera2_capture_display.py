@@ -159,8 +159,8 @@ def main() -> None:
 
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     stop = True
-                if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 0:
-                    stop = True
+                # if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 0:
+                #    stop = True
 
                 last_display = current_time
                 num_frames_displayed += 1
