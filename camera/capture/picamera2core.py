@@ -747,28 +747,32 @@ class PiCamera2Core:
             controls = {}
 
             if self._stream_name == "main":
-                try:
-                    props = getattr(self.picam2, "camera_properties", {})
-                    crop_rect = None
-                    paa = None
-                    if isinstance(props, dict):
-                        paa = props.get("PixelArrayActiveAreas") or props.get("ActiveArea")
-                    if paa:
-                        rect = None
-                        if isinstance(paa, (list, tuple)):
-                            rect = paa[0] if len(paa) > 0 else None
-                        else:
-                            rect = paa
-                        if isinstance(rect, (list, tuple)) and len(rect) == 4:
-                            crop_rect = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
-                    if crop_rect is None:
-                        pas = props.get("PixelArraySize") if isinstance(props, dict) else None
-                        if isinstance(pas, (list, tuple)) and len(pas) == 2:
-                            crop_rect = (0, 0, int(pas[0]), int(pas[1]))
-                    if crop_rect is not None:
-                        controls["ScalerCrop"] = crop_rect
-                except Exception:
-                    pass
+                # Default behavior prefers full-FOV crop for the processed stream.
+                # For `stream_policy=maximize_fps`, avoid forcing full-FOV because it can
+                # prevent libcamera from selecting higher-FPS windowed sensor modes.
+                if self._stream_policy != "maximize_fps":
+                    try:
+                        props = getattr(self.picam2, "camera_properties", {})
+                        crop_rect = None
+                        paa = None
+                        if isinstance(props, dict):
+                            paa = props.get("PixelArrayActiveAreas") or props.get("ActiveArea")
+                        if paa:
+                            rect = None
+                            if isinstance(paa, (list, tuple)):
+                                rect = paa[0] if len(paa) > 0 else None
+                            else:
+                                rect = paa
+                            if isinstance(rect, (list, tuple)) and len(rect) == 4:
+                                crop_rect = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+                        if crop_rect is None:
+                            pas = props.get("PixelArraySize") if isinstance(props, dict) else None
+                            if isinstance(pas, (list, tuple)) and len(pas) == 2:
+                                crop_rect = (0, 0, int(pas[0]), int(pas[1]))
+                        if crop_rect is not None:
+                            controls["ScalerCrop"] = crop_rect
+                    except Exception:
+                        pass
 
             exposure = self._exposure
             autoexp = self._autoexposure
@@ -802,6 +806,16 @@ class PiCamera2Core:
                 cfg_awbmode = self._configs.get("awbmode", 0)
                 awbmode_val = self._parse_awbmode(cfg_awbmode)
                 controls.setdefault("AwbMode", awbmode_val)
+            except Exception:
+                pass
+
+            # Apply requested framerate as a runtime control.
+            # Some pipelines ignore the FrameRate in create_video_configuration() but
+            # accept it once the camera is running.
+            try:
+                fps_req = float(self._framerate or 0)
+                if fps_req > 0:
+                    controls.setdefault("FrameRate", fps_req)
             except Exception:
                 pass
 
