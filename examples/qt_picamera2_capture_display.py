@@ -3,7 +3,7 @@
 This is the Qt counterpart to examples/picamera2_capture_display.py.
 
 - Uses camera.capture.picamera2captureQt.piCamera2CaptureQt
-- Displays frames in a Qt window (no cv2.imshow)
+- Displays frames in a Qt window
 - Provides a Start/Stop toggle button
 
 Run:
@@ -144,6 +144,18 @@ class MainWindow(QMainWindow):
         # Logging
         self._logger = logging.getLogger('picamera2_capture_qt_display')
 
+        # FPS tracking
+        self._capture_fps = 0.0
+        self._display_fps = 0.0
+        self._display_frames = 0
+        self._display_fps_last_t = time.perf_counter()
+        self._update_statusbar()
+
+    def _update_statusbar(self) -> None:
+        self.statusBar().showMessage(
+            f'Capture FPS: {self._capture_fps:.1f} | Display FPS: {self._display_fps:.1f}'
+        )
+
     def _set_toggle_to_start(self):
         self.btn_toggle.setText('Start')
         try:
@@ -206,7 +218,11 @@ class MainWindow(QMainWindow):
             self._logger.info('%s', message)
 
     def on_stats(self, fps: float):
-        self.statusBar().showMessage(f'Capture FPS: {fps:.1f}')
+        try:
+            self._capture_fps = float(fps)
+        except Exception:
+            self._capture_fps = 0.0
+        self._update_statusbar()
 
     def on_poll(self):
         buf = getattr(self.capture, "buffer", None)
@@ -239,6 +255,16 @@ class MainWindow(QMainWindow):
             pix = QPixmap.fromImage(img)
             # Keep aspect ratio and fit the label
             self.video.setPixmap(pix.scaled(self.video.size(), _KEEP_ASPECT, _FAST_TRANSFORM))
+
+            # Display FPS: count successful GUI updates and update periodically.
+            now = time.perf_counter()
+            self._display_frames += 1
+            dt = now - self._display_fps_last_t
+            if dt >= 5.0:
+                self._display_fps = self._display_frames / dt
+                self._display_frames = 0
+                self._display_fps_last_t = now
+                self._update_statusbar()
         except Exception as exc:
             self.video.setText(f'Frame error: {exc}')
 
@@ -252,7 +278,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         # Ensure capture thread shuts down
         try:
-              self.capture.close_cam(timeout=2.0)
+            self.capture.close_cam(timeout=2.0)
         except Exception:
             pass
         super().closeEvent(event)
