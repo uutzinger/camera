@@ -693,10 +693,15 @@ class PiCamera2Core:
 
             config = None
             try:
+                try:
+                    fr = float(self._framerate or 0.0)
+                except Exception:
+                    fr = 0.0
+                cfg_controls = {"FrameRate": fr} if fr > 0.0 else {}
                 if self._stream_name == "raw":
-                    picam_kwargs = dict(raw={"size": raw_size, "format": picam_format}, controls={"FrameRate": self._framerate})
+                    picam_kwargs = dict(raw={"size": raw_size, "format": picam_format}, controls=cfg_controls)
                 else:
-                    picam_kwargs = dict(main={"size": main_size, "format": picam_format}, controls={"FrameRate": self._framerate})
+                    picam_kwargs = dict(main={"size": main_size, "format": picam_format}, controls=cfg_controls)
 
                 buffer_count = self._buffer_count
                 if buffer_count is None and self._low_latency:
@@ -714,7 +719,7 @@ class PiCamera2Core:
                 if self._stream_name == "raw":
                     for fmt in ("SRGGB8", "SRGGB10_CSI2P"):
                         try:
-                            picam_kwargs = dict(raw={"size": raw_size, "format": fmt}, controls={"FrameRate": self._framerate})
+                            picam_kwargs = dict(raw={"size": raw_size, "format": fmt}, controls=cfg_controls)
                             if transform is not None:
                                 picam_kwargs["transform"] = transform
                             config = self.picam2.create_video_configuration(**picam_kwargs)
@@ -725,7 +730,7 @@ class PiCamera2Core:
                 if config is None:
                     for fmt in ("BGR888", "RGB888"):
                         try:
-                            picam_kwargs = dict(main={"size": main_size, "format": fmt}, controls={"FrameRate": self._framerate})
+                            picam_kwargs = dict(main={"size": main_size, "format": fmt}, controls=cfg_controls)
                             if transform is not None:
                                 picam_kwargs["transform"] = transform
                             config = self.picam2.create_video_configuration(**picam_kwargs)

@@ -39,7 +39,7 @@ def main() -> None:
         'mode'            : 'main',
         'camera_res'      : (640, 480),     # requested main stream size (w, h)
         'exposure'        : 0,              # microseconds, 0/-1 for auto
-        'fps'             : 120,            # requested capture frame rate
+        'fps'             : 0,              # 0: do not request; matches picamera2_direct defaults
         'autoexposure'    : 1,              # -1 leave unchanged, 0 AE off, 1 AE on
         'aemeteringmode'  : 'center',       # int or 'center'|'spot'|'matrix'
         'autowb'          : 1,              # -1 leave unchanged, 0 AWB off, 1 AWB on
@@ -47,14 +47,12 @@ def main() -> None:
         # Main stream formats: BGR3 (BGR888), RGB3 (RGB888), YU12 (YUV420), YUY2 (YUYV)
         # Raw stream formats:  SRGGB8, SRGGB10_CSI2P, (see properties script)
         'format'          : 'BGR3',
-        "stream_policy"   : "default",      # 'maximize_fov', 'maximize_fps', 'default'
-        'low_latency'     : False,          # low_latency=True prefers size-1 queue (latest frame)
-        'buffersize'      : 4,              # capture queue size override (wrapper-level)
+        "stream_policy"   : "default",      # match picamera2_direct defaults
+        'low_latency'     : False,          # match picamera2_direct defaults
+        'buffersize'      : 4,              # wrapper buffer depth (not in direct script)
         'output_res'      : (-1, -1),       # (-1,-1): output == input; else libcamera scales main
         'flip'            : 0,              # 0=norotation 
     }
-
-    capture_fps = float(configs.get("fps", 0) or 0)
 
     dps_measure_time = 5.0
 
@@ -82,9 +80,6 @@ def main() -> None:
     camera.start()
 
     last_fps_time = time.perf_counter()
-    measured_dps = 0.0
-    num_frames_received = 0
-    num_frames_displayed = 0
 
     stop = False
     try:
@@ -92,11 +87,11 @@ def main() -> None:
             current_time = time.perf_counter()
 
             frame = None
-            _frame_time = None
             if getattr(camera, "buffer", None) is not None and camera.buffer.avail() > 0:
-                frame, _frame_time = camera.buffer.pull(copy=True)
-                if frame is not None:
-                    num_frames_received += 1
+                # Drain all pending frames so the consumer doesn't fall behind.
+                # Use copy=False to avoid extra memcpy overhead in the consumer.
+                while camera.buffer.avail() > 0:
+                    frame, _ts_ms = camera.buffer.pull(copy=False)
 
             # display log
             while not camera.log.empty():
@@ -104,9 +99,7 @@ def main() -> None:
                 logger.log(level, "{}".format(msg))
 
             if (current_time - last_fps_time) >= dps_measure_time:
-                measured_fps = num_frames_received / dps_measure_time
-                logger.log(logging.INFO, "MAIN:Frames received per second:{}".format(measured_fps))
-                num_frames_received = 0
+                logger.info("CAPTURE:Frames captured per second: %s", camera.measured_fps)
                 last_fps_time = current_time
 
     finally:
