@@ -831,8 +831,23 @@ class piCamera2CaptureQt(QObject):
             if not isinstance(frame, np.ndarray):
                 return None
 
+            # Qt expects 8-bit pixels for the formats we use here.
+            # Be permissive and downcast common dtypes.
+            if frame.dtype != np.uint8:
+                if np.issubdtype(frame.dtype, np.floating):
+                    # Heuristic: treat [0,1] floats as normalized.
+                    maxv = float(np.nanmax(frame)) if frame.size else 0.0
+                    if maxv <= 1.0:
+                        frame = np.clip(frame * 255.0, 0.0, 255.0).astype(np.uint8)
+                    else:
+                        frame = np.clip(frame, 0.0, 255.0).astype(np.uint8)
+                else:
+                    # For uint16/uint32/etc, keep the low 8 bits (fast, display-only).
+                    frame = frame.astype(np.uint8, copy=False)
+
             if frame.ndim == 2:
                 h, w = frame.shape
+                frame = np.ascontiguousarray(frame)
                 return QImage(
                     frame.data,
                     w,
@@ -844,9 +859,11 @@ class piCamera2CaptureQt(QObject):
             if frame.ndim != 3 or frame.shape[2] < 3:
                 return None
 
-            # Assume BGR input and swap to RGB for Qt
-            bgr = frame[:, :, :3]
-            rgb = bgr[:, :, ::-1]
+            # Assume BGR input and swap to RGB for Qt.
+            # Important: avoid negative-stride channel reversal views, which can
+            # break QImage construction on some stacks.
+            bgr = np.ascontiguousarray(frame[:, :, :3])
+            rgb = np.ascontiguousarray(bgr[:, :, ::-1])
             h, w, _ = rgb.shape
             return QImage(
                 rgb.data,

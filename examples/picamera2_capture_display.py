@@ -75,8 +75,6 @@ def main() -> None:
     else:
         display_interval = 1.0 / displayfps # throttled display
 
-    dps_measure_time = 5.0
-
     window_name = "Camera"
     font = cv2.FONT_HERSHEY_SIMPLEX
     textLocation0 = (10, 20)
@@ -111,10 +109,6 @@ def main() -> None:
     camera.start()
 
     last_display = time.perf_counter()
-    last_fps_time = time.perf_counter()
-    measured_dps = 0.0
-    num_frames_received = 0
-    num_frames_displayed = 0
 
     stop = False
     try:
@@ -124,23 +118,14 @@ def main() -> None:
             frame = None
             _frame_time = None
             if getattr(camera, "buffer", None) is not None and camera.buffer.avail() > 0:
-                frame, _frame_time = camera.buffer.pull(copy=True)
-                if frame is not None:
-                    num_frames_received += 1
+                # Pull latest available frame.
+                # Use copy=False to avoid extra memcpy; we copy only when displaying.
+                frame, _frame_time = camera.buffer.pull(copy=False)
 
             # display log
             while not camera.log.empty():
                 (level, msg) = camera.log.get_nowait()
                 logger.log(level, "{}".format(msg))
-
-            if (current_time - last_fps_time) >= dps_measure_time:
-                measured_fps = num_frames_received / dps_measure_time
-                logger.log(logging.INFO, "MAIN:Frames received per second:{}".format(measured_fps))
-                num_frames_received = 0
-                measured_dps = num_frames_displayed / dps_measure_time
-                logger.log(logging.INFO, "MAIN:Frames displayed per second:{}".format(measured_dps))
-                num_frames_displayed = 0
-                last_fps_time = current_time
 
             # display (at slower rate than capture)
             if (frame is not None) and ((current_time - last_display) >= display_interval):
@@ -148,7 +133,7 @@ def main() -> None:
                 cv2.putText(frame_display, "Capture FPS:{:.1f} [Hz]".format(camera.measured_fps),
                     textLocation0, font, fontScale, fontColor, lineType,
                 )
-                cv2.putText(frame_display, "Display FPS:{:.1f} [Hz]".format(measured_dps),
+                cv2.putText(frame_display, "Display target:{:.1f} [Hz]".format(displayfps),
                     textLocation1, font, fontScale, fontColor, lineType,
                 )
                 cv2.putText(frame_display, f"Mode:{configs.get('mode')}",
@@ -163,7 +148,6 @@ def main() -> None:
                 #    stop = True
 
                 last_display = current_time
-                num_frames_displayed += 1
 
     finally:
         try:

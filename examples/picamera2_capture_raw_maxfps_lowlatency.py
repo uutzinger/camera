@@ -71,8 +71,6 @@ def main() -> None:
     else:
         display_interval = 1.0 / displayfps # throttled display
 
-    dps_measure_time = 5.0
-
     window_name = "PiCamera2 RAW MaxFPS"
     font = cv2.FONT_HERSHEY_SIMPLEX
     textLocation0 = (10, 20)
@@ -106,10 +104,6 @@ def main() -> None:
     camera.start()
 
     last_display = time.perf_counter()
-    last_fps_time = time.perf_counter()
-    measured_dps = 0.0
-    num_frames_received = 0
-    num_frames_displayed = 0
 
     stop = False
     try:
@@ -119,30 +113,19 @@ def main() -> None:
             frame = None
             _frame_time = None
             if getattr(camera, "buffer", None) is not None and camera.buffer.avail() > 0:
-                frame, _frame_time = camera.buffer.pull(copy=True)
-                if frame is not None:
-                    num_frames_received += 1
-                    # Frames from piCamera2Capture are already OpenCV-friendly BGR by default.
+                # Grab the latest frame without extra copies.
+                frame, _frame_time = camera.buffer.pull(copy=False)
 
             while not camera.log.empty():
                 (level, msg) = camera.log.get_nowait()
                 logger.log(level, "%s", msg)
-
-            if (current_time - last_fps_time) >= dps_measure_time:
-                measured_fps = num_frames_received / dps_measure_time
-                logger.info("RAW:Frames received per second: %s", measured_fps)
-                num_frames_received = 0
-                measured_dps = num_frames_displayed / dps_measure_time
-                logger.info("RAW:Frames displayed per second: %s", measured_dps)
-                num_frames_displayed = 0
-                last_fps_time = current_time
 
             if (frame is not None) and ((current_time - last_display) >= display_interval):
                 frame_display = frame.copy()
                 cv2.putText(frame_display, f"Capture FPS:{camera.measured_fps:.1f} [Hz]",
                     textLocation0, font, fontScale, fontColor, lineType,
                 )
-                cv2.putText(frame_display, f"Display FPS:{measured_dps:.1f} [Hz]",
+                cv2.putText(frame_display, f"Display target:{displayfps:.1f} [Hz]",
                     textLocation1, font, fontScale, fontColor, lineType,
                 )
                 cv2.putText(frame_display, "Mode:raw Policy:maximize_fps Low-latency:True",
@@ -156,7 +139,6 @@ def main() -> None:
                     stop = True
 
                 last_display = current_time
-                num_frames_displayed += 1
 
     finally:
         try:

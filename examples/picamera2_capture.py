@@ -54,9 +54,6 @@ def main() -> None:
         'flip'            : 0,              # 0=norotation 
     }
 
-    dps_measure_time = 5.0
-
-
     # Camera
     from camera.capture.picamera2capture import piCamera2Capture
 
@@ -79,8 +76,6 @@ def main() -> None:
 
     camera.start()
 
-    last_fps_time = time.perf_counter()
-
     stop = False
     try:
         while not stop:
@@ -97,10 +92,6 @@ def main() -> None:
             while not camera.log.empty():
                 (level, msg) = camera.log.get_nowait()
                 logger.log(level, "{}".format(msg))
-
-            if (current_time - last_fps_time) >= dps_measure_time:
-                logger.info("CAPTURE:Frames captured per second: %s", camera.measured_fps)
-                last_fps_time = current_time
 
     finally:
         try:

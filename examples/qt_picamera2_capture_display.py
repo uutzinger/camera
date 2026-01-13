@@ -217,7 +217,7 @@ class MainWindow(QMainWindow):
         last = None
         try:
             while buf.avail() > 0:
-                last = buf.pull(copy=True)
+                last = buf.pull(copy=False)
         except Exception:
             last = None
 
@@ -225,6 +225,12 @@ class MainWindow(QMainWindow):
             return
 
         frame, _ts_ms = last
+
+        # Detach from the ring-buffer storage before converting/displaying.
+        try:
+            frame = frame.copy()
+        except Exception:
+            pass
 
         try:
             img = self.capture.convertQimage(frame)
