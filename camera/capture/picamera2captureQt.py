@@ -829,7 +829,24 @@ class piCamera2CaptureQt(QObject):
             if frame is None:
                 return None
             if not isinstance(frame, np.ndarray):
-                return None
+                # Be permissive: allow array-like inputs.
+                try:
+                    frame = np.asarray(frame)
+                except Exception:
+                    return None
+
+            # Some pipelines can produce (H, W, 1) or (H, W, 2). Normalize those.
+            if frame.ndim == 3 and frame.shape[2] == 1:
+                try:
+                    frame = frame[:, :, 0]
+                except Exception:
+                    return None
+            elif frame.ndim == 3 and frame.shape[2] == 2:
+                # Keep the first channel (display-only fallback).
+                try:
+                    frame = frame[:, :, 0]
+                except Exception:
+                    return None
 
             # Qt expects 8-bit pixels for the formats we use here.
             # Be permissive and downcast common dtypes.
