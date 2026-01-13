@@ -1,4 +1,4 @@
 """Return the current version"""
-VERSION = (1, 0, 1)
+VERSION = (1, 3, 0)
 
 __version__ = ".".join(map(str, VERSION))
