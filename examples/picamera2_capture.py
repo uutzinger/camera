@@ -107,9 +107,6 @@ def main() -> None:
                 measured_fps = num_frames_received / dps_measure_time
                 logger.log(logging.INFO, "MAIN:Frames received per second:{}".format(measured_fps))
                 num_frames_received = 0
-                measured_dps = num_frames_displayed / dps_measure_time
-                logger.log(logging.INFO, "MAIN:Frames displayed per second:{}".format(measured_dps))
-                num_frames_displayed = 0
                 last_fps_time = current_time
 
     finally:
