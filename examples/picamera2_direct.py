@@ -102,6 +102,9 @@ def main() -> int:
             print(modes)
         return 0
 
+    # Always pass a dict for `controls`.
+    # Some Picamera2/libcamera builds have issues when controls=None (e.g. internal
+    # dict-merge with None, or defaults that reference enums not available on older stacks).
     controls: dict[str, object] = {}
 
     # Request timing (best-effort). FrameDurationLimits is (min_us, max_us).
@@ -112,7 +115,7 @@ def main() -> int:
     # Build configuration
     cfg = picam2.create_video_configuration(
         main={"size": args.size, "format": args.format},
-        controls=controls if controls else None,
+        controls=controls,
     )
     picam2.configure(cfg)
 
