@@ -81,7 +81,7 @@ def main() -> None:
     font = cv2.FONT_HERSHEY_SIMPLEX
     textLocation0 = (10, 20)
     textLocation1 = (10, 40)
-    textLocation2 = (10, 100)
+    textLocation2 = (10, 60)
     fontScale = 0.5
     fontColor = (255, 255, 255)
     lineType = 1
@@ -145,10 +145,10 @@ def main() -> None:
             # display (at slower rate than capture)
             if (frame is not None) and ((current_time - last_display) >= display_interval):
                 frame_display = frame.copy()
-                cv2.putText(frame_display, "Capture FPS:{} [Hz]".format(camera.measured_fps),
+                cv2.putText(frame_display, "Capture FPS:{:.1f} [Hz]".format(camera.measured_fps),
                     textLocation0, font, fontScale, fontColor, lineType,
                 )
-                cv2.putText(frame_display, "Display FPS:{} [Hz]".format(measured_dps),
+                cv2.putText(frame_display, "Display FPS:{:.1f} [Hz]".format(measured_dps),
                     textLocation1, font, fontScale, fontColor, lineType,
                 )
                 cv2.putText(frame_display, f"Mode:{configs.get('mode')}",
