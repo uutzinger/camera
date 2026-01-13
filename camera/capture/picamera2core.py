@@ -809,34 +809,6 @@ class PiCamera2Core:
             except Exception:
                 pass
 
-            # Apply requested framerate as a runtime control.
-            # Some pipelines ignore the FrameRate in create_video_configuration() but
-            # accept it once the camera is running.
-            try:
-                fps_req = float(self._framerate or 0)
-                if fps_req > 0:
-                    # Only apply runtime FrameRate if it is not exceeding what the
-                    # camera advertises via sensor modes.
-                    modes = self._list_sensor_modes()
-                    max_mode_fps = 0.0
-                    for m in modes:
-                        try:
-                            mfps = float(m.get("fps", 0.0) or 0.0)
-                            if mfps > max_mode_fps:
-                                max_mode_fps = mfps
-                        except Exception:
-                            continue
-
-                    if max_mode_fps > 0.0 and fps_req > (1.01 * max_mode_fps):
-                        self._log(
-                            logging.INFO,
-                            f"PiCam2:Requested FPS {fps_req:g} exceeds sensor-mode max {max_mode_fps:g}; leaving FrameRate unset",
-                        )
-                    else:
-                        controls.setdefault("FrameRate", fps_req)
-            except Exception:
-                pass
-
             # Apply controls after start (some pipelines only accept certain controls when running).
             self.picam2.start()
             self.cam_open = True
