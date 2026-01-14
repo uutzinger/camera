@@ -89,6 +89,7 @@ import time
 import logging
 import threading
 import queue
+from queue import Queue, Empty
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -220,7 +221,7 @@ class piCamera2CaptureQt(QObject):
 
         # Core exists for the lifetime of this wrapper. The actual camera is
         # opened/configured inside the capture thread.
-        self._core_log_q: "queue.Queue[tuple[int, str]]" = queue.Queue(maxsize=32)
+        self._core_log_q: "Queue[tuple[int, str]]" = Queue(maxsize=32)
         self._core = PiCamera2Core(
             self._configs,
             camera_num=self._camera_num,
@@ -470,7 +471,7 @@ class piCamera2CaptureQt(QObject):
         while True:
             try:
                 level, msg = q.get_nowait()
-            except Exception:
+            except Empty:
                 break
             try:
                 self.log.emit(int(level), str(msg))
@@ -483,7 +484,7 @@ class piCamera2CaptureQt(QObject):
         while True:
             try:
                 d = self._ctrl_q.get_nowait()
-            except Exception:
+            except Empty:
                 break
             if isinstance(d, dict):
                 merged.update(d)
@@ -610,15 +611,32 @@ class piCamera2CaptureQt(QObject):
 
         # Allocate buffer immediately on open so consumers can poll .buffer.
         self._allocate_framebuffer()
+        fb = self.buffer
 
         last_fps_t = time.perf_counter()
         num_frames = 0
+        last_drop_warn_t = 0.0
 
         # Track capture state transitions for started/stopped signals
         capturing_prev = False
 
         # Track what we've told the core about capture state (update-on-change).
         core_capturing_state = False
+
+        # Throttle non-frame work (controls + log forwarding) so the loop can
+        # prioritize frame capture/push. Defaults to ~10 Hz.
+        #
+        # Config keys:
+        # - throttled_hz / throttle_hz: apply to BOTH controls and logs
+        try:
+            throttled_hz = float(self._configs.get("throttled_hz", self._configs.get("throttle_hz", 10.0)))
+        except Exception:
+            throttled_hz = 10.0
+
+        throttled_period_s = 0.0 if throttled_hz <= 0 else (1.0 / throttled_hz)
+        # Next scheduled time for throttled work.
+        # A period <= 0 means "unthrottled" (run every loop), represented by -1.
+        next_throttled_t = -1.0 if throttled_period_s <= 0.0 else 0.0
 
         # Local bindings (hot loop) - mirror non-Qt wrapper structure
         loop_stop_evt = self._loop_stop_evt
@@ -631,11 +649,17 @@ class piCamera2CaptureQt(QObject):
 
         try:
             while not loop_stop_evt.is_set():
-                # apply pending controls as often as possible
-                drain_controls()
+                loop_now = time.perf_counter()
 
-                # forward any core logs
-                drain_core_logs()
+                # Throttled work: 
+                # - drain controls
+                # - forward core logs
+                # --------------------
+                if loop_now >= next_throttled_t:
+                    drain_controls()
+                    drain_core_logs()
+                    if throttled_period_s > 0.0:
+                        next_throttled_t = loop_now + throttled_period_s
 
                 # Apply reconfigure request (auto-stop capture -> apply -> auto-restart)
                 # ----------------------------------------------------------------------
@@ -681,6 +705,7 @@ class piCamera2CaptureQt(QObject):
                         except Exception:
                             pass
                         self._allocate_framebuffer()
+                        fb = self.buffer
 
                         self.opened.emit()
                         drain_core_logs()
@@ -735,25 +760,15 @@ class piCamera2CaptureQt(QObject):
 
                     self.frame_time = ts_ms
 
-                    # Push into FrameBuffer without blocking.
-                    fb = self.buffer
-                    if fb is None:
-                        self._allocate_framebuffer(frame)
-                        fb = self.buffer
-                        if fb is None:
-                            try:
-                                self.log.emit(logging.CRITICAL, "PiCam2:No FrameBuffer available; stopping")
-                            except Exception:
-                                pass
-                            loop_stop_evt.set()
-                            break
-
+                    # Push into FrameBuffer without blocking
+                    # --------------------------------------
                     try:
                         ok_push = bool(fb.push(frame, ts_ms))
-                        if (not ok_push) and (not self._buffer_overwrite):
+                        if (not ok_push) and ((now - last_drop_warn_t) >= 1.0):
+                            last_drop_warn_t = now
                             try:
                                 self.log.emit(logging.WARNING, "PiCam2:FrameBuffer is full; dropping frame")
-                            except Exception:
+                            except RuntimeError:
                                 pass
                     except Exception as exc1:
                         # Most likely a shape/dtype mismatch due to reconfigure.

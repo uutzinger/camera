@@ -74,6 +74,7 @@ from __future__ import annotations
 
 import threading
 from queue import Queue, Empty
+import queue
 import logging
 import time
 from typing import TYPE_CHECKING
@@ -173,7 +174,7 @@ class piCamera2Capture:
 
         # Control updates are queued and applied in the camera loop.
         # Coalescing happens per loop iteration (last-write-wins).
-        self._ctrl_q: Queue[dict] = Queue()
+        self._ctrl_q: "queue.SimpleQueue[dict]" = queue.SimpleQueue()
 
         # Core handles picamera2/libcamera logic and logs into self.log
         self._core = PiCamera2Core(
@@ -271,14 +272,14 @@ class piCamera2Capture:
     def set_exposure_us(self, exposure_us: int) -> None:
         """Set manual exposure in microseconds (disables AE)."""
         try:
-            self._enqueue_controls({"AeEnable": False, "ExposureTime": int(exposure_us)})
+            self._ctrl_q.put({"AeEnable": False, "ExposureTime": int(exposure_us)})
         except Exception:
             pass
 
     def set_auto_exposure(self, enabled: bool) -> None:
         """Enable/disable auto-exposure."""
         try:
-            self._enqueue_controls({"AeEnable": bool(enabled)})
+            self._ctrl_q.put({"AeEnable": bool(enabled)})
         except Exception:
             pass
 
@@ -286,7 +287,7 @@ class piCamera2Capture:
         """Set AE metering mode (int or friendly string)."""
         try:
             meter_val = self._core._parse_aemeteringmode(mode)
-            self._enqueue_controls({"AeMeteringMode": int(meter_val)})
+            self._ctrl_q.put({"AeMeteringMode": int(meter_val)})
         except Exception:
             pass
 
@@ -294,14 +295,14 @@ class piCamera2Capture:
         """Set AWB mode (int or friendly string)."""
         try:
             awb_val = self._core._parse_awbmode(mode)
-            self._enqueue_controls({"AwbMode": int(awb_val)})
+            self._ctrl_q.put({"AwbMode": int(awb_val)})
         except Exception:
             pass
 
     def set_auto_wb(self, enabled: bool) -> None:
         """Enable/disable auto-white-balance."""
         try:
-            self._enqueue_controls({"AwbEnable": bool(enabled)})
+            self._ctrl_q.put({"AwbEnable": bool(enabled)})
         except Exception:
             pass
 
@@ -312,10 +313,10 @@ class piCamera2Capture:
             if fr > 0:
                 frame_us = int(round(1_000_000.0 / fr))
                 if frame_us > 0:
-                    self._enqueue_controls({"FrameDurationLimits": (frame_us, frame_us)})
+                    self._ctrl_q.put({"FrameDurationLimits": (frame_us, frame_us)})
                     return
             # Best-effort fallback
-            self._enqueue_controls({"FrameRate": float(fr)})
+            self._ctrl_q.put({"FrameRate": float(fr)})
         except Exception:
             pass
 
@@ -420,25 +421,12 @@ class piCamera2Capture:
     # Internal camera loop
     # ------------------------------------------------------------------
 
-    def _enqueue_controls(self, controls: dict) -> None:
-        if not isinstance(controls, dict) or not controls:
-            return
-        try:
-            self._ctrl_q.put_nowait(controls)
-        except Exception:
-            try:
-                self._ctrl_q.put(controls)
-            except Exception:
-                pass
-
-    def _drain_controls_apply(self) -> None:
+    def _drain_controls(self) -> None:
         merged: dict = {}
         while True:
             try:
                 d = self._ctrl_q.get_nowait()
             except Empty:
-                break
-            except Exception:
                 break
             if isinstance(d, dict):
                 merged.update(d)
@@ -549,21 +537,35 @@ class piCamera2Capture:
             self._capture_evt.clear()
             self._opened_evt.set()
             try:
-                if not self.log.full():
-                    msg = "PiCam2:Failed to open camera" if not exc_msg else f"PiCam2:Failed to open camera: {exc_msg}"
-                    self.log.put_nowait((logging.CRITICAL, msg))
-            except Exception:
+                msg = "PiCam2:Failed to open camera" if not exc_msg else f"PiCam2:Failed to open camera: {exc_msg}"
+                self.log.put_nowait((logging.CRITICAL, msg))
+            except queue.Full:
                 pass
             return
 
         # Allocate buffer immediately on open so consumers can poll .buffer.
         self._allocate_framebuffer()
+        fb = self.buffer
 
         last_fps_t = time.perf_counter()
         num_frames = 0
+        last_drop_warn_t = 0.0
 
         # Track what we've told the core about capture state (update-on-change).
         core_capturing_state = False
+
+        # Throttle non-frame work so the loop can prioritize frame capture/push.
+        # Defaults to ~10 Hz.
+        #
+        # Config keys:
+        # - throttled_hz / throttle_hz
+        try:
+            throttled_hz = float(self._configs.get("throttled_hz", self._configs.get("throttle_hz", 10.0)))
+        except Exception:
+            throttled_hz = 10.0
+
+        throttled_period_s = 0.0 if throttled_hz <= 0 else (1.0 / throttled_hz)
+        next_throttled_t = 0.0
 
         # Local bindings (hot loop)
         capture_evt = self._capture_evt
@@ -571,13 +573,21 @@ class piCamera2Capture:
         loop_stop_evt = self._loop_stop_evt
         core = self._core
         logq = self.log
+        drain_controls = self._drain_controls
+        drain_capture = self._drain_capture
+        allocate_framebuffer = self._allocate_framebuffer
 
         try:
             while not loop_stop_evt.is_set():
 
-                # Apply any queued control changes
-                # --------------------------------
-                self._drain_controls_apply()
+                loop_now = time.perf_counter()
+
+                # Apply any queued control changes (throttled)
+                # --------------------------------------------
+                if throttled_period_s <= 0.0 or loop_now >= next_throttled_t:
+                    drain_controls()
+                    if throttled_period_s > 0.0:
+                        next_throttled_t = loop_now + throttled_period_s
 
                 # Apply reconfigure request (auto-stop capture -> apply -> auto-restart)
                 # ----------------------------------------------------------------------
@@ -622,13 +632,13 @@ class piCamera2Capture:
                                 self.buffer.clear()
                         except Exception:
                             pass
-                        self._allocate_framebuffer()
+                        allocate_framebuffer()
+                        fb = self.buffer
 
                     except Exception as exc:
                         try:
-                            if not logq.full():
-                                logq.put_nowait((logging.CRITICAL, f"PiCam2:Reconfigure failed: {exc}"))
-                        except Exception:
+                            logq.put_nowait((logging.CRITICAL, f"PiCam2:Reconfigure failed: {exc}"))
+                        except queue.Full:
                             pass
                         loop_stop_evt.set()
                         break
@@ -656,7 +666,7 @@ class piCamera2Capture:
                     continue # skips to top of loop
 
                 # drain captured frames
-                frame, ts_ms = self._drain_capture()
+                frame, ts_ms = drain_capture()
                 if frame is None:
                     time.sleep(0.005)
                     continue
@@ -670,39 +680,25 @@ class piCamera2Capture:
                     # Keep sub-millisecond precision for high frame rates.
                     self.frame_time = float(ts_ms)
 
-                # Push without blocking.
-                fb = self.buffer
-                if fb is None:
-                    # If initial allocation failed, allocate from the first real frame.
-                    self._allocate_framebuffer(frame)
-                    fb = self.buffer
-                    if fb is None:
-                        try:
-                            if not logq.full():
-                                logq.put_nowait((logging.CRITICAL, "PiCam2:No FrameBuffer available; stopping"))
-                        except Exception:
-                            pass
-                        loop_stop_evt.set()
-                        break
-
+                # Push without blocking
+                # ---------------------
                 try:
                     ok_push = bool(fb.push(frame, self.frame_time))
-                    if (not ok_push) and (not self._buffer_overwrite):
+                    if (not ok_push) and ((current_time - last_drop_warn_t) >= 1.0):
+                        last_drop_warn_t = current_time
                         try:
-                            if not logq.full():
-                                logq.put_nowait((logging.WARNING, "PiCam2:FrameBuffer is full; dropping frame"))
-                        except Exception:
+                            logq.put_nowait((logging.WARNING, "PiCam2:FrameBuffer is full; dropping frame"))
+                        except queue.Full:
                             pass
                 except Exception as exc1:
                     # Most likely a shape/dtype mismatch due to a stream/reconfigure change.
                     try:
-                        if not logq.full():
-                            logq.put_nowait((logging.WARNING, f"PiCam2:FrameBuffer push failed ({exc1}); reallocating"))
-                    except Exception:
+                        logq.put_nowait((logging.WARNING, f"PiCam2:FrameBuffer push failed ({exc1}); reallocating"))
+                    except queue.Full:
                         pass
 
                     # Reallocate to match this frame and retry once.
-                    self._allocate_framebuffer(frame)
+                    allocate_framebuffer(frame)
                     fb = self.buffer
                     try:
                         if fb is None:
@@ -710,9 +706,8 @@ class piCamera2Capture:
                         ok_push = bool(fb.push(frame, self.frame_time))
                     except Exception as exc2:
                         try:
-                            if not logq.full():
-                                logq.put_nowait((logging.CRITICAL, f"PiCam2:FrameBuffer retry failed ({exc2}); stopping"))
-                        except Exception:
+                            logq.put_nowait((logging.CRITICAL, f"PiCam2:FrameBuffer retry failed ({exc2}); stopping"))
+                        except queue.Full:
                             pass
                         loop_stop_evt.set()
                         break
@@ -723,9 +718,8 @@ class piCamera2Capture:
                 if (current_time - last_fps_t) >= 5.0:
                     self.measured_fps = num_frames / max((current_time - last_fps_t), 1e-6)
                     try:
-                        if not logq.full():
-                            logq.put_nowait((logging.INFO, f"PiCam2:FPS:{self.measured_fps}"))
-                    except Exception:
+                        logq.put_nowait((logging.INFO, f"PiCam2:FPS:{self.measured_fps}"))
+                    except queue.Full:
                         pass
                     last_fps_t = current_time
                     num_frames = 0

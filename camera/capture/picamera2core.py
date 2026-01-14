@@ -197,16 +197,15 @@ class FrameBuffer:
         """How many frames are currently available to read."""
         head = self._head
         tail = self._tail
+        cap = self._cap
         if self._overwrite:
-            min_tail = head - self._cap
+            min_tail = head - cap
             if tail < min_tail:
                 tail = min_tail
         n = head - tail
-        if n < 0:
+        if n <= 0:
             return 0
-        if n > self._cap:
-            return self._cap
-        return n
+        return cap if n >= cap else n
 
     def free(self) -> int:
         """How many free slots remain (0..capacity)."""
@@ -221,29 +220,25 @@ class FrameBuffer:
         Push one frame.
         Returns True if stored, False if dropped (when full and overwrite=False).
         """
-        # Fast locals
+        # Fast locals (reduce attribute lookups in the hot path)
         head = self._head
         tail = self._tail
         cap = self._cap
-
-        used = head - tail
-        if used >= cap:
-            if not self._overwrite:
-                return False
-            # Overwrite mode:
-            # Do NOT advance tail here (producer must not write consumer-owned tail).
-            # Instead, let the consumer detect overrun and skip forward.
+        if (head - tail) >= cap and (not self._overwrite):
+            return False
 
         idx = head & self._mask
-        slot = self._buf[idx]
+        buf = self._buf
+        buf_ts = self._buf_ts_ms
 
         # Copy data into slot (avoids allocating new arrays).
         # np.copyto is usually fast and supports dtype conversion if needed.
-        np.copyto(slot, frame, casting="unsafe")
+        np.copyto(buf[idx], frame, casting="unsafe")
         try:
-            self._buf_ts_ms[idx] = float(ts_ms)
+            # Numpy will cast to float64; avoid an extra Python float() call.
+            buf_ts[idx] = ts_ms
         except Exception:
-            self._buf_ts_ms[idx] = 0.0
+            buf_ts[idx] = 0.0
 
         # Publish: increment head ONLY after copy completes
         self._head = head + 1
@@ -260,11 +255,12 @@ class FrameBuffer:
         """
         tail = self._tail
         head = self._head
+        cap = self._cap
 
         # If producer has overrun the consumer (overwrite mode), skip to the
         # oldest still-valid element.
         if self._overwrite:
-            min_tail = head - self._cap
+            min_tail = head - cap
             if tail < min_tail:
                 tail = min_tail
                 self._tail = tail
@@ -327,6 +323,7 @@ class FrameBuffer:
         cap = self._cap
         mask = self._mask
         buf = self._buf
+        buf_ts_ms = self._buf_ts_ms
 
         if out is not None:
             if out.shape[:1] != (max_items,) or out.shape[1:] != self._shape:
@@ -352,12 +349,12 @@ class FrameBuffer:
         # Copy chunk(s)
         dst0 = dst[:first]
         np.copyto(dst0, buf[start:start + first])
-        dst_ts[:first] = self._buf_ts_ms[start:start + first]
+        dst_ts[:first] = buf_ts_ms[start:start + first]
 
         if second:
             dst1 = dst[first:first + second]
             np.copyto(dst1, buf[0:second])
-            dst_ts[first:first + second] = self._buf_ts_ms[0:second]
+            dst_ts[first:first + second] = buf_ts_ms[0:second]
 
         # Advance tail after copies complete
         self._tail = tail + n
