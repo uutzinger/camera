@@ -48,8 +48,6 @@
 # - get_control(name: str) -> Any
 # - __getattr__: delegates unknown attributes/properties to the core, so most
 #   `PiCamera2Core` helpers and properties are accessible here.
-# - pull(copy: bool|None): convenience wrapper around buffer.pull(); prefer
-#   direct polling on `buffer`.
 #
 # Frame delivery model (NO queue semantics):
 # - Producers push frames into `buffer` without blocking.
@@ -576,8 +574,6 @@ class piCamera2Capture:
         try:
             while not loop_stop_evt.is_set():
 
-                current_time = time.perf_counter()
-                
                 # Apply reconfigure request (auto-stop capture -> apply -> auto-restart)
                 # ----------------------------------------------------------------------
                 if reconfigure_evt.is_set():
@@ -664,22 +660,20 @@ class piCamera2Capture:
                         continue
 
                     num_frames += 1
-                    if ts_ms is None:
-                        ts_ms = float(now * 1000.0)
-                    else:
-                        ts_ms = float(ts_ms)
-                    self.frame_time = ts_ms
-
+                    self.frame_time = float(ts_ms if ts_ms is not None else (now * 1000.0))                    
+                    
                     # Push into FrameBuffer without blocking
                     # --------------------------------------
                     try:
                         ok_push = fb.push(frame, self.frame_time)
-                        if (not ok_push) and ((now - last_drop_warn_t) >= 1.0):
-                            last_drop_warn_t = now
-                            try:
-                                logq.put_nowait((logging.WARNING, "PiCam2:FrameBuffer is full; dropping frame"))
-                            except queue.Full:
-                                pass
+                        if (not ok_push):
+                            if (now - last_drop_warn_t) >= 1.0:
+                                last_drop_warn_t = now
+                                try:
+                                    logq.put_nowait((logging.WARNING, "PiCam2:FrameBuffer is full; dropping frames"))
+                                except queue.Full:
+                                    pass
+
                     except Exception as exc1:
                         # Most likely a shape/dtype mismatch due to a stream/reconfigure change.
                         try:
@@ -702,17 +696,22 @@ class piCamera2Capture:
                             loop_stop_evt.set()
                             break
 
-                # Measure performance fps every 5seconds
-                # --------------------------------------
+                    # Measure performance fps every 5seconds
+                    # --------------------------------------
 
-                if (current_time - last_fps_t) >= 5.0:
-                    self.measured_fps = num_frames / max((current_time - last_fps_t), 1e-6)
-                    try:
-                        logq.put_nowait((logging.INFO, f"PiCam2:FPS:{self.measured_fps}"))
-                    except queue.Full:
-                        pass
-                    last_fps_t = current_time
-                    num_frames = 0
+                    if (now - last_fps_t) >= 5.0:
+                        self.measured_fps = num_frames / max((now - last_fps_t), 1e-6)
+                        try:
+                            logq.put_nowait((logging.INFO, f"PiCam2:FPS:{self.measured_fps}"))
+                        except queue.Full:
+                            pass
+                        last_fps_t = now
+                        num_frames = 0
+
+                else:
+                    self.measured_fps = 0.0
+                    time.sleep(0.01)
+
         finally:
             try:
                 core.capturing = False

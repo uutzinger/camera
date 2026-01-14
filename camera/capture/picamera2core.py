@@ -717,9 +717,17 @@ class PiCamera2Core:
 
             if self._mode == "raw":
                 self._stream_name = "raw"
-                rf = self._raw_format if self._is_raw_format(self._raw_format) else (
-                    req if self._is_raw_format(req) else "SRGGB8"
-                )
+
+                # Determine requested raw format
+                if self._is_raw_format(self._raw_format):
+                    rf = self._raw_format
+                elif self._is_raw_format(req):
+                    rf = req
+                else:
+                    # User didn't specify a valid raw format
+                    rf = "SRGGB8"  # Default fallback
+                    self._log(logging.INFO, f"PiCam2:No valid RAW format specified; defaulting to {rf}")
+        
                 try:
                     raw_w, raw_h = int(self._raw_res[0]), int(self._raw_res[1])
                     raw_size = (raw_w, raw_h)
@@ -753,7 +761,7 @@ class PiCamera2Core:
                 if mapped not in self.get_supported_main_color_formats():
                     self._log(
                         logging.INFO,
-                        f"PiCam2:Main format {mapped} not ideal; using BGR888. Supported main formats: {', '.join(self.get_supported_main_color_formats())}",
+                        f"PiCam2:Main format '{mapped}' is not in common formats list; falling back to BGR888."
                     )
                     self._log(logging.INFO, "PiCam2:For raw formats and resolutions, run examples/list_Picamera2Properties.py")
                     mapped = "BGR888"
@@ -767,12 +775,13 @@ class PiCamera2Core:
             else:
                 main_size = (self._capture_width, self._capture_height)
 
-            if self._stream_name != "raw":
-                try:
-                    raw_w, raw_h = int(self._raw_res[0]), int(self._raw_res[1])
-                    raw_size = (raw_w, raw_h)
-                except Exception:
-                    raw_size = (self._capture_width, self._capture_height)
+            # If we want both raw and preview streamw
+            # if self._stream_name != "raw":
+            #     try:
+            #         raw_w, raw_h = int(self._raw_res[0]), int(self._raw_res[1])
+            #         raw_size = (raw_w, raw_h)
+            #     except Exception:
+            #         raw_size = (self._capture_width, self._capture_height)
 
             transform = None
             if self._hw_transform and (self._flip_method != 0):
@@ -876,6 +885,7 @@ class PiCamera2Core:
                 # Default behavior prefers full-FOV crop for the processed stream.
                 # For `stream_policy=maximize_fps`, avoid forcing full-FOV because it can
                 # prevent libcamera from selecting higher-FPS windowed sensor modes.
+
                 if self._stream_policy != "maximize_fps":
                     try:
                         props = getattr(self.picam2, "camera_properties", {})
