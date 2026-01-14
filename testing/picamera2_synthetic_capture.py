@@ -54,7 +54,7 @@ def main() -> None:
         'buffersize'      : 4,              # capture queue size override (wrapper-level)
         'output_res'      : (-1, -1),       # (-1,-1): output == input; else libcamera scales main
         'flip'            : 0,              # 0=norotation 
-        'displayfps'      : 30,             # historical config entry (ignored here)
+        'displayfps'      : 0,             # historical config entry (ignored here)
         'test_pattern'    : 'gradient',     # enable synthetic frames (bypass Picamera2/libcamera)
     }
 

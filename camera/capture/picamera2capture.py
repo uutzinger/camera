@@ -702,7 +702,7 @@ class piCamera2Capture:
                     if (now - last_fps_t) >= 5.0:
                         self.measured_fps = num_frames / max((now - last_fps_t), 1e-6)
                         try:
-                            logq.put_nowait((logging.INFO, f"PiCam2:FPS:{self.measured_fps}"))
+                            logq.put_nowait((logging.INFO, f"PiCam2:FPS:{self.measured_fps:.1f}"))
                         except queue.Full:
                             pass
                         last_fps_t = now

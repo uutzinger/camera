@@ -58,7 +58,7 @@ def main() -> int:
     ap.add_argument(
         "--display-fps",
         type=float,
-        default=10.0,
+        default=0.0,
         help="Max display refresh rate (Hz). 0 = update every captured frame.",
     )
     ap.add_argument("--duration", type=float, default=15.0, help="Total run time in seconds")

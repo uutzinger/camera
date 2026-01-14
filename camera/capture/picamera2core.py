@@ -775,14 +775,6 @@ class PiCamera2Core:
             else:
                 main_size = (self._capture_width, self._capture_height)
 
-            # If we want both raw and preview streamw
-            # if self._stream_name != "raw":
-            #     try:
-            #         raw_w, raw_h = int(self._raw_res[0]), int(self._raw_res[1])
-            #         raw_size = (raw_w, raw_h)
-            #     except Exception:
-            #         raw_size = (self._capture_width, self._capture_height)
-
             transform = None
             if self._hw_transform and (self._flip_method != 0):
                 try:
