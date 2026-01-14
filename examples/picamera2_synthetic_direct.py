@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""Direct synthetic FPS probe (no Picamera2/libcamera).
+"""Direct Picamera2 main-stream FPS probe.
 
-This mirrors examples/picamera2_direct.py, but uses PiCamera2Core in synthetic
-mode (configs['test_pattern']) so we can measure loop + numpy work without
-camera I/O.
+Purpose:
+- Configure Picamera2 "main" stream directly (no project wrapper)
+- Grab frames in a tight loop
+- Print measured FPS periodically
 
-Run:
-  python3 examples/picamera2_synthetic_direct.py --fps 0
-  python3 examples/picamera2_synthetic_direct.py --fps 1000 --no-display
+Typical use:
+    python3 examples/picamera2_main_fps_direct.py
+    python3 examples/picamera2_main_fps_direct.py --size 640x480
+    python3 examples/picamera2_main_fps_direct.py --fps 30
 
 Notes:
-- `--fps 0` means unpaced (as fast as possible).
-- This is intended to help compare:
-    direct-Picamera2 vs wrapper-Picamera2 vs wrapper-synthetic
+- Requesting FPS above what the sensor mode supports may be ignored or behave poorly.
+- For forcing frame timing, libcamera often uses FrameDurationLimits (microseconds).
 """
 
 from __future__ import annotations
@@ -33,25 +34,20 @@ def _parse_size(text: str) -> tuple[int, int]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Direct synthetic FPS probe (PiCamera2Core, no camera)")
-    ap.add_argument("--size", type=_parse_size, default=(640, 480), help="Frame size WxH")
+    ap = argparse.ArgumentParser(description="Direct Picamera2 main-stream FPS probe (no wrapper)")
+    ap.add_argument("--camera", type=int, default=0, help="Camera index (default: 0)")
+    ap.add_argument("--size", type=_parse_size, default=(640, 480), help="Main stream size WxH")
     ap.add_argument(
         "--format",
         type=str,
         default="BGR888",
-        help="Synthetic main format (e.g. BGR888, RGB888, XRGB8888, XBGR8888, YUV420, YUYV)",
-    )
-    ap.add_argument(
-        "--pattern",
-        type=str,
-        default="gradient",
-        help="Pattern: gradient|checker|noise|static",
+        help="Main stream format (e.g. BGR888, RGB888, XRGB8888, XBGR8888, YUV420)",
     )
     ap.add_argument(
         "--fps",
         type=float,
         default=0.0,
-        help="Requested synthetic FPS. 0 = unpaced.",
+        help="Requested FPS. 0 = do not request. Uses FrameDurationLimits when possible.",
     )
     ap.add_argument(
         "--display",
@@ -63,14 +59,22 @@ def main() -> int:
         "--display-fps",
         type=float,
         default=10.0,
-        help="Max display refresh rate (Hz). 0 = update every generated frame.",
+        help="Max display refresh rate (Hz). 0 = update every captured frame.",
     )
     ap.add_argument("--duration", type=float, default=15.0, help="Total run time in seconds")
     ap.add_argument("--warmup", type=float, default=1.0, help="Warmup time in seconds (not counted)")
     ap.add_argument("--report", type=float, default=2.0, help="Report interval in seconds")
+    ap.add_argument("--list-modes", action="store_true", help="Print sensor modes and exit")
     args = ap.parse_args()
 
-    os.environ.setdefault("LIBCAMERA_LOG_LEVELS", "*:3")
+    # Reduce libcamera logging noise (optional)
+    os.environ.setdefault("LIBCAMERA_LOG_LEVELS", "*:3")  # 3=ERROR
+
+    try:
+        from camera.capture.picamera2core import PiCamera2Core
+    except Exception as exc:
+        print(f"ERROR: PiCamera2Core import failed: {exc}")
+        return 2
 
     cv2 = None
     if args.display:
@@ -80,34 +84,41 @@ def main() -> int:
             print(f"WARNING: OpenCV (cv2) not available; disabling display: {exc}")
             args.display = False
 
-    from queue import Queue
-    from camera.capture.picamera2core import PiCamera2Core
+    if args.list_modes:
+        print("=== sensor_modes ===")
+        print("(synthetic mode) no sensor modes")
+        return 0
 
-    log_q: Queue = Queue(maxsize=64)
+    # Always pass a dict for `controls`.
+    controls: dict[str, object] = {}
+
+    # Request timing (best-effort). FrameDurationLimits is (min_us, max_us).
+    if args.fps and args.fps > 0:
+        frame_us = int(round(1_000_000.0 / float(args.fps)))
+        controls["FrameDurationLimits"] = (frame_us, frame_us)
+
     configs = {
         "mode": "main",
         "camera_res": args.size,
         "format": args.format,
         "fps": float(args.fps),
-        "test_pattern": args.pattern,
-        "flip": 0,
-        "output_res": (-1, -1),
-        "low_latency": True,
+        "test_pattern": "gradient",
     }
 
-    core = PiCamera2Core(configs, camera_num=0, log_queue=log_q)
+    core = PiCamera2Core(configs, camera_num=args.camera)
     if not core.open_cam():
         print("ERROR: failed to open synthetic core")
-        while not log_q.empty():
-            _lvl, msg = log_q.get_nowait()
-            print(msg)
         return 2
 
-    while not log_q.empty():
-        _lvl, msg = log_q.get_nowait()
-        print(msg)
+    # Apply controls after start as well (some pipelines only accept runtime control changes)
+    if controls:
+        try:
+            core.fps = float(args.fps)
+            print(f"Controls set: {controls}")
+        except Exception as exc:
+            print(f"WARNING: set_controls({controls}) failed: {exc}")
 
-    window_name = "Synthetic direct"
+    window_name = "Picamera2 main (direct)"
     display_interval = 0.0
     if args.display:
         try:
@@ -125,13 +136,14 @@ def main() -> int:
 
     warmup_end = time.perf_counter() + float(args.warmup)
     while time.perf_counter() < warmup_end:
-        _ = core.capture_array()
+        _ = core.capture_array()[0]
 
     t0 = time.perf_counter()
     t_end = t0 + float(args.duration)
     t_report = t0 + float(args.report)
 
     last_display_time = 0.0
+    window_check_enabled = True
     frames = 0
     last_report_frames = 0
     last_report_time = t0
@@ -148,29 +160,32 @@ def main() -> int:
             if args.display and frame is not None:
                 if display_interval <= 0.0 or (now - last_display_time) >= display_interval:
                     frame_show = frame
-                    # Convert to OpenCV BGR for display if needed.
+                    # Convert to OpenCV BGR if needed.
                     fmt_u = str(args.format or "").upper()
                     try:
-                        if fmt_u in ("RGB888", "XBGR8888"):
-                            # RGB/RGBA -> BGR
-                            frame_show = cv2.cvtColor(frame_show, cv2.COLOR_RGB2BGR)
-                        elif fmt_u == "XRGB8888":
-                            # BGRA -> BGR
-                            frame_show = cv2.cvtColor(frame_show, cv2.COLOR_BGRA2BGR)
-                        elif fmt_u == "YUV420":
-                            frame_show = cv2.cvtColor(frame_show, cv2.COLOR_YUV2BGR_I420)
-                        elif fmt_u == "YUYV":
-                            frame_show = cv2.cvtColor(frame_show, cv2.COLOR_YUV2BGR_YUY2)
-                        else:
-                            # BGR888 and unknown fallbacks
-                            pass
+                        if frame_show.ndim == 3 and frame_show.shape[2] == 4:
+                            frame_show = frame_show[:, :, :3]
                     except Exception:
                         pass
-
+                    if fmt_u.startswith("RGB") or fmt_u == "XRGB8888":
+                        try:
+                            frame_show = cv2.cvtColor(frame_show, cv2.COLOR_RGB2BGR)
+                        except Exception:
+                            pass
                     cv2.imshow(window_name, frame_show)
                     key = cv2.waitKey(1) & 0xFF
                     if key == ord("q"):
                         break
+                    if window_check_enabled:
+                        try:
+                            # In some remote / headless / Wayland backends this can
+                            # report "not visible" immediately even though display works.
+                            # Treat failures as "unsupported" and keep running.
+                            v = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE)
+                            if v < 0:
+                                window_check_enabled = False
+                        except Exception:
+                            window_check_enabled = False
                     last_display_time = now
 
             if now >= t_report:
