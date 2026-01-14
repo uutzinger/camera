@@ -160,6 +160,7 @@ def main() -> int:
 
     # Display window already initialized above.
     last_display_time = 0.0
+    window_check_enabled = True
 
     frames = 0
     last_report_frames = 0
@@ -193,11 +194,16 @@ def main() -> int:
                     key = cv2.waitKey(1) & 0xFF
                     if key == ord("q"):
                         break
-                    try:
-                        if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 0:
-                            break
-                    except Exception:
-                        pass
+                    if window_check_enabled:
+                        try:
+                            # In some remote / headless / Wayland backends this can
+                            # report "not visible" immediately even though display works.
+                            # Treat failures as "unsupported" and keep running.
+                            v = cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE)
+                            if v < 0:
+                                window_check_enabled = False
+                        except Exception:
+                            window_check_enabled = False
                     last_display_time = now
 
             if now >= t_report:
