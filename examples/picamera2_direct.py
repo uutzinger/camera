@@ -130,6 +130,24 @@ def main() -> int:
         except Exception as exc:
             print(f"WARNING: set_controls({controls}) failed: {exc}")
 
+    # Display setup (optional) - create the window early so failures are visible.
+    window_name = "Picamera2 main (direct)"
+    display_interval = 0.0
+    if args.display:
+        try:
+            cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
+            # Pump the UI event loop once to ensure the window actually appears.
+            cv2.waitKey(1)
+        except Exception as exc:
+            print(f"WARNING: OpenCV window init failed; disabling display: {exc}")
+            args.display = False
+
+        try:
+            display_fps = float(args.display_fps or 0.0)
+            display_interval = 0.0 if display_fps <= 0 else (1.0 / display_fps)
+        except Exception:
+            display_interval = 0.0
+
     # Warmup
     warmup_end = time.perf_counter() + float(args.warmup)
     while time.perf_counter() < warmup_end:
@@ -140,19 +158,7 @@ def main() -> int:
     t_end = t0 + float(args.duration)
     t_report = t0 + float(args.report)
 
-    # Display setup (optional)
-    window_name = "Picamera2 main (direct)"
-    display_interval = 0.0
-    if args.display:
-        try:
-            cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
-        except Exception:
-            args.display = False
-        try:
-            display_fps = float(args.display_fps or 0.0)
-            display_interval = 0.0 if display_fps <= 0 else (1.0 / display_fps)
-        except Exception:
-            display_interval = 0.0
+    # Display window already initialized above.
     last_display_time = 0.0
 
     frames = 0
