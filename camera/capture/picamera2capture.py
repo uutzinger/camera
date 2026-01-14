@@ -456,12 +456,10 @@ class piCamera2Capture:
         OpenCV-friendly by default (mirrors Qt wrapper behavior).
         """
         try:
-            # Synthetic path: bypass Picamera2/libcamera capture entirely.
-            # This keeps the rest of the wrapper pipeline identical.
-            if self._configs.get("test_pattern"):
-                frame, ts_ms = self._core.synthetic_capture_array()
-            else:
-                frame, ts_ms = self._core.capture_array()
+            # Note: PiCamera2Core handles synthetic frames internally when
+            # configs['test_pattern'] is enabled. Wrappers always call
+            # capture_array() to keep the pipeline identical.
+            frame, ts_ms = self._core.capture_array()
         except Exception:
             return (None, None)
 

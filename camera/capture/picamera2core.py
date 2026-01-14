@@ -683,9 +683,8 @@ class PiCamera2Core:
                 if mapped not in self._supported_main_color_formats():
                     mapped = "BGR888"
 
-                # YUV420 and MJPEG are not generated synthetically (planar/compressed).
-                # Fall back to BGR888 so the synthetic generator stays simple.
-                if mapped in ("YUV420", "MJPEG", "YUYV"):
+                # MJPEG is compressed; do not attempt to synthesize it.
+                if mapped == "MJPEG":
                     mapped = "BGR888"
 
                 self._set_color_format(mapped)
@@ -1069,6 +1068,20 @@ class PiCamera2Core:
             rgb = np.ascontiguousarray(base_bgr[:, :, ::-1])
             alpha = np.full((h, w, 1), 255, dtype=np.uint8)
             frame = np.ascontiguousarray(np.concatenate((rgb, alpha), axis=2))
+        elif fmt == "YUV420":
+            # Match cv2.COLOR_YUV2*I420 expectations: (H*3/2, W) uint8
+            try:
+                frame = cv2.cvtColor(base_bgr, cv2.COLOR_BGR2YUV_I420)
+                frame = np.ascontiguousarray(frame)
+            except Exception:
+                frame = np.ascontiguousarray(base_bgr)
+        elif fmt == "YUYV":
+            # Match cv2.COLOR_YUV2*YUY2 expectations: (H, W, 2) uint8
+            try:
+                frame = cv2.cvtColor(base_bgr, cv2.COLOR_BGR2YUV_YUY2)
+                frame = np.ascontiguousarray(frame)
+            except Exception:
+                frame = np.ascontiguousarray(base_bgr)
         else:
             # Unknown/unsupported synthetic format; fall back to BGR888.
             frame = np.ascontiguousarray(base_bgr)
