@@ -693,11 +693,23 @@ class PiCamera2Core:
 
             config = None
             try:
+                # Prefer FrameDurationLimits over FrameRate.
+                # This matches Picamera2's documented way to request FPS and
+                # aligns behavior with the direct benchmark script.
                 try:
                     fr = float(self._framerate or 0.0)
                 except Exception:
                     fr = 0.0
-                cfg_controls = {"FrameRate": fr} if fr > 0.0 else {}
+
+                cfg_controls: dict[str, object] = {}
+                if fr > 0.0:
+                    try:
+                        frame_us = int(round(1_000_000.0 / fr))
+                        if frame_us > 0:
+                            cfg_controls["FrameDurationLimits"] = (frame_us, frame_us)
+                    except Exception:
+                        # Best-effort: fall back to FrameRate if limits calc fails.
+                        cfg_controls = {"FrameRate": fr}
                 if self._stream_name == "raw":
                     picam_kwargs = dict(raw={"size": raw_size, "format": picam_format}, controls=cfg_controls)
                 else:
@@ -739,6 +751,20 @@ class PiCamera2Core:
                             break
                         except Exception:
                             continue
+
+                # Final fallback: drop controls entirely if the platform rejects
+                # the requested timing control at configuration time.
+                if config is None:
+                    try:
+                        if self._stream_name == "raw":
+                            picam_kwargs = dict(raw={"size": raw_size, "format": picam_format}, controls={})
+                        else:
+                            picam_kwargs = dict(main={"size": main_size, "format": picam_format}, controls={})
+                        if transform is not None:
+                            picam_kwargs["transform"] = transform
+                        config = self.picam2.create_video_configuration(**picam_kwargs)
+                    except Exception:
+                        pass
 
             self.picam2.configure(config)
 
@@ -822,6 +848,24 @@ class PiCamera2Core:
                 ok = self._set_controls(controls)
                 if ok:
                     self._log(logging.INFO, f"PiCam2:Controls set {controls}")
+
+            # One-time informative dump to help validate actual config differences
+            # between direct vs wrapper paths.
+            try:
+                md = None
+                with self.cam_lock:
+                    md = self._capture_metadata()
+                if isinstance(md, dict):
+                    # FrameDuration is typically in microseconds.
+                    fd = md.get("FrameDuration")
+                    fdl = md.get("FrameDurationLimits")
+                    sc = md.get("ScalerCrop")
+                    self._log(
+                        logging.INFO,
+                        f"PiCam2:Open summary stream={self._stream_name} size={main_size if self._stream_name=='main' else raw_size} fmt={self._format} req_fps={self._framerate} FrameDuration={fd} FrameDurationLimits={fdl} ScalerCrop={sc}",
+                    )
+            except Exception:
+                pass
 
             self._log(logging.INFO, "PiCam2:Camera opened")
             return True
@@ -1790,17 +1834,56 @@ class PiCamera2Core:
 
     @property
     def fps(self):
+        # Prefer deriving from FrameDuration (us) when available.
+        try:
+            fd = self._get_control("FrameDuration")
+            if fd is not None:
+                fd_us = float(fd)
+                if fd_us > 0:
+                    return 1_000_000.0 / fd_us
+        except Exception:
+            pass
+
+        # Next, try FrameDurationLimits (min_us, max_us)
+        try:
+            fdl = self._get_control("FrameDurationLimits")
+            if isinstance(fdl, (list, tuple)) and len(fdl) == 2:
+                fd_us = float(fdl[0])
+                if fd_us > 0:
+                    return 1_000_000.0 / fd_us
+        except Exception:
+            pass
+
+        # Fallback: some stacks expose FrameRate
         fps = self._get_control("FrameRate")
         if fps is None:
             return float(self._framerate)
-        return fps
+        try:
+            return float(fps)
+        except Exception:
+            return float(self._framerate)
 
     @fps.setter
     def fps(self, value):
         if value is None or value == -1:
             return
-        self._framerate = float(value)
-        self._set_controls({"FrameRate": float(value)})
+        try:
+            fr = float(value)
+        except Exception:
+            return
+        self._framerate = fr
+        if fr <= 0:
+            return
+        # Prefer FrameDurationLimits for consistency with direct script.
+        try:
+            frame_us = int(round(1_000_000.0 / fr))
+            if frame_us > 0:
+                self._set_controls({"FrameDurationLimits": (frame_us, frame_us)})
+                return
+        except Exception:
+            pass
+        # Best-effort fallback.
+        self._set_controls({"FrameRate": float(fr)})
 
 
 __all__ = ["PiCamera2Core", "FrameBuffer"]

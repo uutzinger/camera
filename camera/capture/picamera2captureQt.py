@@ -346,7 +346,20 @@ class piCamera2CaptureQt(QObject):
 
     @pyqtSlot(float)
     def set_framerate(self, fps: float):
-        self._ctrl_q.put({"FrameRate": float(fps)})
+        try:
+            fr = float(fps)
+        except Exception:
+            return
+        if fr > 0:
+            try:
+                frame_us = int(round(1_000_000.0 / fr))
+                if frame_us > 0:
+                    self._ctrl_q.put({"FrameDurationLimits": (frame_us, frame_us)})
+                    return
+            except Exception:
+                pass
+        # Best-effort fallback
+        self._ctrl_q.put({"FrameRate": float(fr)})
 
     @pyqtSlot(int)
     def set_flip(self, flip: int):

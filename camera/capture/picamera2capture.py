@@ -308,7 +308,14 @@ class piCamera2Capture:
     def set_framerate(self, fps: float) -> None:
         """Set requested capture framerate (applies live)."""
         try:
-            self._enqueue_controls({"FrameRate": float(fps)})
+            fr = float(fps)
+            if fr > 0:
+                frame_us = int(round(1_000_000.0 / fr))
+                if frame_us > 0:
+                    self._enqueue_controls({"FrameDurationLimits": (frame_us, frame_us)})
+                    return
+            # Best-effort fallback
+            self._enqueue_controls({"FrameRate": float(fr)})
         except Exception:
             pass
 
