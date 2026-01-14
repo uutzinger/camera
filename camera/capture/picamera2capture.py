@@ -167,6 +167,7 @@ class piCamera2Capture:
 
         # Internal loop thread state
         self._thread: threading.Thread | None = None
+        self._control_thread: threading.Thread | None = None
         self._loop_stop_evt = threading.Event()   # stops camera loop + closes camera
         self._capture_evt   = threading.Event()   # toggles capturing on/off
         self._reconfigure_evt = threading.Event() # request reopen/reconfigure while loop runs
@@ -577,17 +578,12 @@ class piCamera2Capture:
         drain_capture = self._drain_capture
         allocate_framebuffer = self._allocate_framebuffer
 
+        # Start control thread
+        self._control_thread = threading.Thread(target=self._control_loop, daemon=True)
+        self._control_thread.start()
+
         try:
             while not loop_stop_evt.is_set():
-
-                loop_now = time.perf_counter()
-
-                # Apply any queued control changes (throttled)
-                # --------------------------------------------
-                if throttled_period_s <= 0.0 or loop_now >= next_throttled_t:
-                    drain_controls()
-                    if throttled_period_s > 0.0:
-                        next_throttled_t = loop_now + throttled_period_s
 
                 # Apply reconfigure request (auto-stop capture -> apply -> auto-restart)
                 # ----------------------------------------------------------------------
@@ -668,28 +664,17 @@ class piCamera2Capture:
                 # drain captured frames
                 frame, ts_ms = drain_capture()
                 if frame is None:
-                    time.sleep(0.005)
+                    time.sleep(0.001)
                     continue
 
                 current_time = time.perf_counter()
-
                 num_frames += 1
-                if ts_ms is None:
-                    self.frame_time = float(current_time * 1000.0)
-                else:
-                    # Keep sub-millisecond precision for high frame rates.
-                    self.frame_time = float(ts_ms)
+                self.frame_time = float(ts_ms if ts_ms is not None else (current_time * 1000.0))
 
                 # Push without blocking
                 # ---------------------
                 try:
-                    ok_push = bool(fb.push(frame, self.frame_time))
-                    if (not ok_push) and ((current_time - last_drop_warn_t) >= 1.0):
-                        last_drop_warn_t = current_time
-                        try:
-                            logq.put_nowait((logging.WARNING, "PiCam2:FrameBuffer is full; dropping frame"))
-                        except queue.Full:
-                            pass
+                    fb.push(frame, self.frame_time)
                 except Exception as exc1:
                     # Most likely a shape/dtype mismatch due to a stream/reconfigure change.
                     try:
@@ -726,16 +711,16 @@ class piCamera2Capture:
         finally:
             try:
                 core.capturing = False
-            except Exception:
-                pass
-            try:
                 capture_evt.clear()
-            except Exception:
-                pass
-            try:
                 core.close_cam()
             except Exception:
                 pass
+
+    def _control_loop(self) -> None:
+        """Separate thread for applying controls."""
+        while not self._loop_stop_evt.is_set():
+            time.sleep(0.1)  # 10 Hz control updates
+            self._drain_controls()
 
     @property
     def measured_fps(self) -> float:

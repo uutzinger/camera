@@ -203,6 +203,7 @@ class piCamera2CaptureQt(QObject):
 
         # Camera loop lifecycle (thread runs even when not capturing)
         self._thread: threading.Thread | None = None
+        self._throttled_thread: threading.Thread | None = None
         self._loop_stop_evt = threading.Event()
         self._capture_evt = threading.Event()
         self._reconfigure_evt = threading.Event()
@@ -609,6 +610,12 @@ class piCamera2CaptureQt(QObject):
 
         self._drain_core_logs()
 
+        # Start a separate throttled thread so control/log draining doesn't
+        # happen at frame rate.
+        if not (self._throttled_thread and self._throttled_thread.is_alive()):
+            self._throttled_thread = threading.Thread(target=self._throttled_loop, daemon=True)
+            self._throttled_thread.start()
+
         # Allocate buffer immediately on open so consumers can poll .buffer.
         self._allocate_framebuffer()
         fb = self.buffer
@@ -623,44 +630,15 @@ class piCamera2CaptureQt(QObject):
         # Track what we've told the core about capture state (update-on-change).
         core_capturing_state = False
 
-        # Throttle non-frame work (controls + log forwarding) so the loop can
-        # prioritize frame capture/push. Defaults to ~10 Hz.
-        #
-        # Config keys:
-        # - throttled_hz / throttle_hz: apply to BOTH controls and logs
-        try:
-            throttled_hz = float(self._configs.get("throttled_hz", self._configs.get("throttle_hz", 10.0)))
-        except Exception:
-            throttled_hz = 10.0
-
-        throttled_period_s = 0.0 if throttled_hz <= 0 else (1.0 / throttled_hz)
-        # Next scheduled time for throttled work.
-        # A period <= 0 means "unthrottled" (run every loop), represented by -1.
-        next_throttled_t = -1.0 if throttled_period_s <= 0.0 else 0.0
-
         # Local bindings (hot loop) - mirror non-Qt wrapper structure
         loop_stop_evt = self._loop_stop_evt
         capture_evt = self._capture_evt
         reconfigure_evt = self._reconfigure_evt
         core = self._core
-        drain_controls = self._drain_controls
-        drain_core_logs = self._drain_core_logs
         drain_capture = self._drain_capture
 
         try:
             while not loop_stop_evt.is_set():
-                loop_now = time.perf_counter()
-
-                # Throttled work: 
-                # - drain controls
-                # - forward core logs
-                # --------------------
-                if loop_now >= next_throttled_t:
-                    drain_controls()
-                    drain_core_logs()
-                    if throttled_period_s > 0.0:
-                        next_throttled_t = loop_now + throttled_period_s
-
                 # Apply reconfigure request (auto-stop capture -> apply -> auto-restart)
                 # ----------------------------------------------------------------------
                 if reconfigure_evt.is_set():
@@ -708,7 +686,7 @@ class piCamera2CaptureQt(QObject):
                         fb = self.buffer
 
                         self.opened.emit()
-                        drain_core_logs()
+                        self._drain_core_logs()
 
                     except Exception as exc:
                         try:
@@ -830,6 +808,34 @@ class piCamera2CaptureQt(QObject):
         if copy is None:
             copy = bool(self._buffer_copy_on_pull)
         return fb.pull(copy=bool(copy))
+
+    def _throttled_loop(self) -> None:
+        """Separate thread for throttled non-frame work.
+
+        Drains pending controls and forwards core logs at a configurable cadence
+        so the capture/push hot loop can prioritize frames.
+
+        Config keys:
+        - throttled_hz / throttle_hz (default: 10 Hz)
+        """
+        try:
+            throttled_hz = float(self._configs.get("throttled_hz", self._configs.get("throttle_hz", 10.0)))
+        except Exception:
+            throttled_hz = 10.0
+
+        period_s = 0.0 if throttled_hz <= 0 else (1.0 / throttled_hz)
+        sleep_s = 0.001 if period_s <= 0.0 else period_s
+
+        while not self._loop_stop_evt.is_set():
+            try:
+                self._drain_controls()
+            except Exception:
+                pass
+            try:
+                self._drain_core_logs()
+            except Exception:
+                pass
+            time.sleep(sleep_s)
 
     def __getattr__(self, name: str):
         """Convenience: delegate unknown attributes to the core."""
