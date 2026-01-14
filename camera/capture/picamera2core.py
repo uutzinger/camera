@@ -499,6 +499,14 @@ class PiCamera2Core:
         self._buffer_count = self._configs.get("buffer_count", None)
         self._hw_transform = bool(self._configs.get("hw_transform", 1))
 
+        # Synthetic/test pattern mode (bypasses Picamera2)
+        # - False/None: normal camera
+        # - True: enable with default pattern
+        # - str: pattern name ('gradient', 'checker', 'noise', 'static')
+        self._test_pattern = self._configs.get("test_pattern", None)
+        self._test_frame: np.ndarray | None = None
+        self._test_next_t: float = 0.0
+
         # Resolved state
         self._format: str | None = None
         self._stream_name: str = "main"
@@ -529,6 +537,25 @@ class PiCamera2Core:
                     nanoseconds since boot; this method converts it to milliseconds.
                     This is a float to preserve sub-millisecond resolution.
         """
+        # Synthetic path: generate frames without touching Picamera2.
+        if self._test_pattern:
+            try:
+                with self.cam_lock:
+                    img = self._synthetic_frame()
+                ts_ms = time.perf_counter() * 1000.0
+                self._metadata = {
+                    "SensorTimestamp": None,
+                    "Timestamp": ts_ms,
+                    "FrameDuration": None,
+                    "FrameDurationLimits": None,
+                    "ScalerCrop": None,
+                    "Synthetic": True,
+                }
+                return img, ts_ms
+            except Exception as exc:
+                self._log(logging.WARNING, f"PiCam2:Synthetic capture failed: {exc}")
+                return None, None
+
         if self.picam2 is None:
             return None, None
 
@@ -554,6 +581,29 @@ class PiCamera2Core:
 
         except Exception as exc:
             self._log(logging.WARNING, f"PiCam2:Capture failed: {exc}")
+            return None, None
+
+    def synthetic_capture_array(self) -> tuple[np.ndarray | None, float | None]:
+        """Generate a synthetic frame and timestamp.
+
+        This bypasses Picamera2/libcamera entirely and is intended for
+        profiling the wrapper camera loop + FrameBuffer without camera I/O.
+        """
+        try:
+            with self.cam_lock:
+                img = self._synthetic_frame()
+            ts_ms = time.perf_counter() * 1000.0
+            self._metadata = {
+                "SensorTimestamp": None,
+                "Timestamp": ts_ms,
+                "FrameDuration": None,
+                "FrameDurationLimits": None,
+                "ScalerCrop": None,
+                "Synthetic": True,
+            }
+            return img, ts_ms
+        except Exception as exc:
+            self._log(logging.WARNING, f"PiCam2:Synthetic capture failed: {exc}")
             return None, None
 
     def postprocess(self, frame):
@@ -610,6 +660,55 @@ class PiCamera2Core:
         transform where possible, starts the camera, and sets initial controls.
         Logging is sent to the optional queue passed as `log_queue`.
         """
+        # Synthetic/test-pattern mode: open without Picamera2 installed.
+        if self._test_pattern:
+            try:
+                self.picam2 = None
+                self.cam_open = True
+
+                # Behave like a normal main-stream capture, but without Picamera2.
+                # Critically: generate frames in the *configured main format* so
+                # wrapper-level convert() has the same shape/dtype to work with
+                # as in the real camera path.
+                self._stream_name = "main"
+
+                req = str(self._requested_format or self._fourcc or "").upper()
+                pfmt = self._main_format or req
+                mapped = self._map_fourcc_format(pfmt) or "BGR888"
+
+                # Keep synthetic output in a format we can actually represent as a numpy array
+                # and that our convert() helper knows how to handle.
+                if self._is_raw_format(mapped):
+                    mapped = "BGR888"
+                if mapped not in self._supported_main_color_formats():
+                    mapped = "BGR888"
+
+                # YUV420 and MJPEG are not generated synthetically (planar/compressed).
+                # Fall back to BGR888 so the synthetic generator stays simple.
+                if mapped in ("YUV420", "MJPEG", "YUYV"):
+                    mapped = "BGR888"
+
+                self._set_color_format(mapped)
+                self._needs_cpu_resize = False
+                # Exercise CPU flip path if requested.
+                self._needs_cpu_flip = bool(self._flip_method != 0)
+
+                # Reset pacing state
+                self._test_next_t = 0.0
+                self._test_frame = None
+
+                self._log(logging.INFO, f"PiCam2:Synthetic mode enabled pattern={self._test_pattern}")
+                self._log(
+                    logging.INFO,
+                    f"PiCam2:Open summary stream=main size={self._capture_width}x{self._capture_height} fmt={self._format} req_fps={self._framerate} Synthetic=True",
+                )
+                return True
+            except Exception as exc:
+                self.picam2 = None
+                self.cam_open = False
+                self._log(logging.CRITICAL, f"PiCam2:Failed to open synthetic camera: {exc}")
+                return False
+
         if Picamera2 is None:
             self._log(logging.CRITICAL, "PiCam2:picamera2 is not installed")
             self.cam_open = False
@@ -892,6 +991,92 @@ class PiCamera2Core:
             self.picam2 = None
             self.cam_open = False
             self._last_metadata = None
+            self._test_frame = None
+            self._test_next_t = 0.0
+
+    # ------------------------------------------------------------------
+    # Synthetic/test-pattern helpers
+    # ------------------------------------------------------------------
+
+    def _synthetic_frame(self) -> np.ndarray:
+        """Generate a synthetic frame matching the configured main-stream format.
+
+        This bypasses Picamera2 and is intended for profiling the wrapper thread
+        + FrameBuffer behavior without camera/libcamera overhead.
+        """
+        # Pace generation if a framerate was requested.
+        try:
+            fr = float(self._framerate or 0.0)
+        except Exception:
+            fr = 0.0
+
+        if fr > 0.0:
+            period = 1.0 / fr
+            now = time.perf_counter()
+            if self._test_next_t <= 0.0:
+                self._test_next_t = now
+            # Sleep until the next frame time.
+            dt = self._test_next_t - now
+            if dt > 0:
+                time.sleep(dt)
+            self._test_next_t = max(self._test_next_t + period, time.perf_counter())
+
+        h = int(self._capture_height) if int(self._capture_height) > 0 else 480
+        w = int(self._capture_width) if int(self._capture_width) > 0 else 640
+
+        pat = self._test_pattern
+        if pat is True:
+            pat = "gradient"
+        try:
+            pat_s = str(pat).strip().lower()
+        except Exception:
+            pat_s = "gradient"
+
+        # Static frame cache for non-noise patterns.
+        if self._test_frame is not None and pat_s not in ("noise",):
+            return self._test_frame
+
+        if pat_s in ("static", "gradient"):
+            # Simple horizontal gradient in B,G,R.
+            x = np.linspace(0, 255, w, dtype=np.uint8)
+            r = np.tile(x, (h, 1))
+            g = np.tile(np.uint8(255) - x, (h, 1))
+            b = np.full((h, w), 64, dtype=np.uint8)
+            base_bgr = np.dstack((b, g, r))
+        elif pat_s in ("checker", "checkerboard"):
+            yy, xx = np.indices((h, w))
+            block = 32
+            chk = (((xx // block) + (yy // block)) & 1).astype(np.uint8) * 255
+            base_bgr = np.dstack((chk, chk, chk))
+        elif pat_s in ("noise", "random"):
+            base_bgr = np.random.randint(0, 256, (h, w, 3), dtype=np.uint8)
+        else:
+            # Default: mid-gray
+            base_bgr = np.full((h, w, 3), 127, dtype=np.uint8)
+
+        fmt = (self._format or "BGR888").upper()
+
+        if fmt == "BGR888":
+            frame = np.ascontiguousarray(base_bgr)
+        elif fmt == "RGB888":
+            frame = np.ascontiguousarray(base_bgr[:, :, ::-1])
+        elif fmt == "XRGB8888":
+            # Per our convert() comment: XRGB8888 appears as BGRA in Python
+            alpha = np.full((h, w, 1), 255, dtype=np.uint8)
+            frame = np.ascontiguousarray(np.concatenate((base_bgr, alpha), axis=2))
+        elif fmt == "XBGR8888":
+            # Per our convert() comment: XBGR8888 appears as RGBA in Python
+            rgb = np.ascontiguousarray(base_bgr[:, :, ::-1])
+            alpha = np.full((h, w, 1), 255, dtype=np.uint8)
+            frame = np.ascontiguousarray(np.concatenate((rgb, alpha), axis=2))
+        else:
+            # Unknown/unsupported synthetic format; fall back to BGR888.
+            frame = np.ascontiguousarray(base_bgr)
+
+        # Cache static patterns.
+        if pat_s not in ("noise",):
+            self._test_frame = frame
+        return frame
 
     # ---------------------------------------------------------------------
     # Methods (need to fix name)
