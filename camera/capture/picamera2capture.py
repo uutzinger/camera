@@ -167,11 +167,11 @@ class piCamera2Capture:
 
         # Internal loop thread state
         self._thread: threading.Thread | None = None
-        self._control_thread: threading.Thread | None = None
-        self._loop_stop_evt = threading.Event()   # stops camera loop + closes camera
-        self._capture_evt   = threading.Event()   # toggles capturing on/off
-        self._reconfigure_evt = threading.Event() # request reopen/reconfigure while loop runs
-        self._opened_evt    = threading.Event()   # signals camera opened
+        self._throttled_thread: threading.Thread | None = None
+        self._loop_stop_evt     = threading.Event() # stops camera loop + closes camera
+        self._capture_evt       = threading.Event() # toggles capturing on/off
+        self._reconfigure_evt   = threading.Event() # request reopen/reconfigure while loop runs
+        self._open_finished_evt = threading.Event() # signals camera open attempt finished
 
         # Control updates are queued and applied in the camera loop.
         # Coalescing happens per loop iteration (last-write-wins).
@@ -247,7 +247,9 @@ class piCamera2Capture:
         if self._thread and self._thread.is_alive():
             return bool(self.cam_open)
 
-        self._opened_evt.clear()
+        self._open_finished_evt.clear()
+        self._capture_evt.clear()
+        self._reconfigure_evt.clear()
         self._loop_stop_evt.clear()
 
         self._thread = threading.Thread(target=self._camera_loop, daemon=True)
@@ -255,7 +257,7 @@ class piCamera2Capture:
 
         if timeout is not None:
             try:
-                self._opened_evt.wait(timeout=float(timeout))
+                self._open_finished_evt.wait(timeout=float(timeout))
             except Exception:
                 pass
         return bool(self.cam_open)
@@ -532,11 +534,13 @@ class piCamera2Capture:
             exc_msg = str(exc)
 
         if ok and self._core.cam_open:
-            self._opened_evt.set()
+            self._open_finished_evt.set()
         else:
             # Camera failed to open; reflect a stopped state.
             self._capture_evt.clear()
-            self._opened_evt.set()
+            self._reconfigure_evt.clear()
+            self._loop_stop_evt.set()
+            self._open_finished_evt.set()
             try:
                 msg = "PiCam2:Failed to open camera" if not exc_msg else f"PiCam2:Failed to open camera: {exc_msg}"
                 self.log.put_nowait((logging.CRITICAL, msg))
@@ -555,36 +559,25 @@ class piCamera2Capture:
         # Track what we've told the core about capture state (update-on-change).
         core_capturing_state = False
 
-        # Throttle non-frame work so the loop can prioritize frame capture/push.
-        # Defaults to ~10 Hz.
-        #
-        # Config keys:
-        # - throttled_hz / throttle_hz
-        try:
-            throttled_hz = float(self._configs.get("throttled_hz", self._configs.get("throttle_hz", 10.0)))
-        except Exception:
-            throttled_hz = 10.0
-
-        throttled_period_s = 0.0 if throttled_hz <= 0 else (1.0 / throttled_hz)
-        next_throttled_t = 0.0
-
         # Local bindings (hot loop)
-        capture_evt = self._capture_evt
+        capture_evt     = self._capture_evt
         reconfigure_evt = self._reconfigure_evt
-        loop_stop_evt = self._loop_stop_evt
-        core = self._core
-        logq = self.log
-        drain_controls = self._drain_controls
+        loop_stop_evt   = self._loop_stop_evt
+        core            = self._core
+        logq            = self.log
         drain_capture = self._drain_capture
         allocate_framebuffer = self._allocate_framebuffer
 
         # Start control thread
-        self._control_thread = threading.Thread(target=self._control_loop, daemon=True)
-        self._control_thread.start()
+        if not (self._throttled_thread and self._throttled_thread.is_alive()):
+            self._throttled_thread = threading.Thread(target=self._control_loop, daemon=True)
+            self._throttled_thread.start()
 
         try:
             while not loop_stop_evt.is_set():
 
+                current_time = time.perf_counter()
+                
                 # Apply reconfigure request (auto-stop capture -> apply -> auto-restart)
                 # ----------------------------------------------------------------------
                 if reconfigure_evt.is_set():
@@ -656,46 +649,58 @@ class piCamera2Capture:
                     except Exception:
                         pass
 
+                    if capturing_now:
+                        # reset fps window on capture start
+                        last_fps_t = time.perf_counter()
+                        num_frames = 0
+
                 # Capture only when enabled
-                if not capturing_now:
-                    time.sleep(0.01)
-                    continue # skips to top of loop
+                if capturing_now:
+                    now = time.perf_counter()
+                    # drain captured frames
+                    frame, ts_ms = drain_capture()
+                    if frame is None:
+                        time.sleep(0.001)
+                        continue
 
-                # drain captured frames
-                frame, ts_ms = drain_capture()
-                if frame is None:
-                    time.sleep(0.001)
-                    continue
+                    num_frames += 1
+                    if ts_ms is None:
+                        ts_ms = float(now * 1000.0)
+                    else:
+                        ts_ms = float(ts_ms)
+                    self.frame_time = ts_ms
 
-                current_time = time.perf_counter()
-                num_frames += 1
-                self.frame_time = float(ts_ms if ts_ms is not None else (current_time * 1000.0))
-
-                # Push without blocking
-                # ---------------------
-                try:
-                    fb.push(frame, self.frame_time)
-                except Exception as exc1:
-                    # Most likely a shape/dtype mismatch due to a stream/reconfigure change.
+                    # Push into FrameBuffer without blocking
+                    # --------------------------------------
                     try:
-                        logq.put_nowait((logging.WARNING, f"PiCam2:FrameBuffer push failed ({exc1}); reallocating"))
-                    except queue.Full:
-                        pass
-
-                    # Reallocate to match this frame and retry once.
-                    allocate_framebuffer(frame)
-                    fb = self.buffer
-                    try:
-                        if fb is None:
-                            raise RuntimeError("FrameBuffer reallocation failed")
-                        ok_push = bool(fb.push(frame, self.frame_time))
-                    except Exception as exc2:
+                        ok_push = fb.push(frame, self.frame_time)
+                        if (not ok_push) and ((now - last_drop_warn_t) >= 1.0):
+                            last_drop_warn_t = now
+                            try:
+                                logq.put_nowait((logging.WARNING, "PiCam2:FrameBuffer is full; dropping frame"))
+                            except queue.Full:
+                                pass
+                    except Exception as exc1:
+                        # Most likely a shape/dtype mismatch due to a stream/reconfigure change.
                         try:
-                            logq.put_nowait((logging.CRITICAL, f"PiCam2:FrameBuffer retry failed ({exc2}); stopping"))
+                            logq.put_nowait((logging.WARNING, f"PiCam2:FrameBuffer push failed ({exc1}); reallocating"))
                         except queue.Full:
                             pass
-                        loop_stop_evt.set()
-                        break
+
+                        # Reallocate to match this frame and retry once.
+                        allocate_framebuffer(frame)
+                        fb = self.buffer
+                        try:
+                            if fb is None:
+                                raise RuntimeError("FrameBuffer reallocation failed")
+                            ok_push = bool(fb.push(frame, self.frame_time))
+                        except Exception as exc2:
+                            try:
+                                logq.put_nowait((logging.CRITICAL, f"PiCam2:FrameBuffer retry failed ({exc2}); stopping"))
+                            except queue.Full:
+                                pass
+                            loop_stop_evt.set()
+                            break
 
                 # Measure performance fps every 5seconds
                 # --------------------------------------
@@ -711,10 +716,14 @@ class piCamera2Capture:
         finally:
             try:
                 core.capturing = False
-                capture_evt.clear()
+                self._capture_evt.clear()
+                self._reconfigure_evt.clear()
                 core.close_cam()
             except Exception:
                 pass
+            finally:
+                self._loop_stop_evt.set()
+                self._open_finished_evt.set()
 
     def _control_loop(self) -> None:
         """Separate thread for applying controls."""
@@ -736,20 +745,6 @@ class piCamera2Capture:
             self._measured_fps = float(value)
         except Exception:
             self._measured_fps = 0.0
-
-    def pull(self, copy: bool | None = None):
-        """Convenience pull from buffer.
-
-        Prefer direct buffer usage:
-            if camera.buffer and camera.buffer.avail() > 0:
-                frame, ts_ms = camera.buffer.pull(copy=False)
-        """
-        fb = self.buffer
-        if fb is None:
-            return (None, None)
-        if copy is None:
-            copy = bool(self._buffer_copy_on_pull)
-        return fb.pull(copy=bool(copy))
 
     def __getattr__(self, name: str):
         """Convenience: delegate unknown attributes to the core"""
