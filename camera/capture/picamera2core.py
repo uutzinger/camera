@@ -514,7 +514,7 @@ class PiCamera2Core:
         # - False/None: normal camera
         # - True: enable with default pattern
         # - str: pattern name ('gradient', 'checker', 'noise', 'static')
-        self._test_pattern = self._configs.get("test_pattern", None)
+        self._test_pattern = self._configs.get("test_pattern", False)
         self._test_frame: np.ndarray | None = None
         self._test_next_t: float = 0.0
 
@@ -1388,6 +1388,10 @@ class PiCamera2Core:
         - Output is sent to the log queue passed at construction time.
         - Only logs options relevant to the currently configured stream.
         """
+        if  self._test_pattern:
+            self._log(logging.INFO, "PiCam2:Test pattern mode active.")
+            return
+
         if not self.cam_open or self.picam2 is None:
             self._log(logging.WARNING, "PiCam2:Camera not open; cannot list stream options")
             return
