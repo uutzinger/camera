@@ -214,13 +214,14 @@ class piCamera2Capture:
             return False
         if self._capture_thread is None or not self._capture_thread.is_alive():
             self._loop_stop_evt.clear()
-            self._capture_evt.clear()
+            self._capture_evt.set()
             self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
             self._capture_thread.start()
         return True
 
     def stop(self, timeout: float | None = 2.0):
         """Stop the capture loop (does not close camera)."""
+        self._capture_evt.clear()
         self._loop_stop_evt.set()
         if self._capture_thread is not None and self._capture_thread.is_alive():
             self._capture_thread.join(timeout=timeout)
