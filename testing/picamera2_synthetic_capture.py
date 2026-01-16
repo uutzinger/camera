@@ -21,9 +21,6 @@ def main() -> None:
     logger = logging.getLogger("PiCamera2 Synthetic Capture")
 
     # Silence Picamera2 / libcamera logs; keep only this script's logging output
-    for _name in ("picamera2", "libcamera"):
-        logging.getLogger(_name).setLevel(logging.CRITICAL)
-    # Also silence libcamera C++ logs via environment (must be set before libcamera loads)
     os.environ.setdefault("LIBCAMERA_LOG_LEVELS", "*:3")  # 3=ERROR, 2=WARNING, 1=INFO, 0=DEBUG
 
     camera_index = 0
@@ -59,7 +56,7 @@ def main() -> None:
     }
 
     camera = piCamera2Capture(configs, camera_num=camera_index)
-    if not camera.open_cam():
+    if not camera.cam_open:
         raise RuntimeError("PiCamera2 camera failed to open")
 
     logger.info("PiCamera2 synthetic capture starting")
@@ -82,7 +79,7 @@ def main() -> None:
 
     try:
         while True:
-            if getattr(camera, "buffer", None) is not None and camera.buffer.avail() > 0:
+            if camera.buffer.avail > 0:
                 camera.buffer.pull(copy=False)
                 frames_since_report += 1
 
@@ -108,7 +105,6 @@ def main() -> None:
         try:
             camera.stop()
             camera.join(timeout=2.0)
-            camera.close_cam()
         except Exception:
             pass
 

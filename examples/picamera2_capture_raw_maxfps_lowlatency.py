@@ -29,8 +29,6 @@ def main() -> None:
     logger = logging.getLogger("PiCamera2 RAW MaxFPS")
 
     # Silence Picamera2 / libcamera logs; keep only this script's logging output
-    for _name in ("picamera2", "libcamera"):
-        logging.getLogger(_name).setLevel(logging.CRITICAL)
     os.environ.setdefault("LIBCAMERA_LOG_LEVELS", "*:3")
 
     camera_index = 0
@@ -85,7 +83,7 @@ def main() -> None:
     from camera.capture.picamera2capture import piCamera2Capture
 
     camera = piCamera2Capture(configs, camera_num=camera_index)
-    if not camera.open_cam():
+    if not camera.cam_open:
         raise RuntimeError("PiCamera2 camera failed to open in RAW mode")
 
     logger.info("Getting RAW images (mode=raw, stream_policy=maximize_fps, low_latency=True)")
@@ -110,9 +108,7 @@ def main() -> None:
         while not stop:
             current_time = time.perf_counter()
 
-            frame = None
-            _frame_time = None
-            if getattr(camera, "buffer", None) is not None and camera.buffer.avail() > 0:
+            if camera.buffer.avail > 0:
                 # Grab the latest frame without extra copies.
                 frame, _frame_time = camera.buffer.pull(copy=False)
 
@@ -135,8 +131,8 @@ def main() -> None:
 
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     stop = True
-                if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 0:
-                    stop = True
+                # if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 0:
+                #    stop = True
 
                 last_display = current_time
 
@@ -144,7 +140,7 @@ def main() -> None:
         try:
             camera.stop()
             camera.join(timeout=2.0)
-            camera.close_cam()
+            camera.close()
         except Exception:
             pass
         cv2.destroyAllWindows()

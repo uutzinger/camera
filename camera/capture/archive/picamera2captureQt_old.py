@@ -62,7 +62,7 @@
 # Frame delivery model (NO queue semantics, NO frame signal):
 # - Producers push frames into `buffer` without blocking.
 # - Consumers poll (typically via a QTimer in the GUI thread):
-#       if camera.buffer and camera.buffer.avail > 0:
+#       if camera.buffer and camera.buffer.avail() > 0:
 #           frame, ts_ms = camera.buffer.pull(copy=True)
 #
 # Reconfigure behavior:
@@ -86,8 +86,9 @@ from __future__ import annotations
 import time
 import logging
 import threading
+import queue
 from queue import Queue, Empty
-from typing import TYPE_CHECKING, Optional, Union
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
     import numpy as np
@@ -123,11 +124,6 @@ class piCamera2CaptureQt(QObject):
 
     Most camera controls and helpers are implemented by `PiCamera2Core` and are
     accessible via attribute delegation.
-
-    Thread safety: The buffer is accessed from both the capture thread and potentially the GUI thread.
-    Consumers should always use buffer.pull(copy=True) to avoid race conditions.
-
-    After any direct property change (e.g., self._core.size = ...), always update both self.buffer and self.capture to self._core.buffer.
     """
 
     stats      = pyqtSignal(float)         # measured fps
@@ -198,8 +194,18 @@ class piCamera2CaptureQt(QObject):
         self._buffer_overwrite = bool(self._configs.get("buffer_overwrite", True))
         self._buffer_copy_on_pull = bool(self._configs.get("buffer_copy", False))
 
-        self.buffer: Optional[FrameBuffer] = None
-        self.capture: Optional[FrameBuffer] = None  # alias
+        self.buffer: FrameBuffer | None = None
+        self.capture: FrameBuffer | None = None  # alias of self.buffer
+
+        # Note: keep the core as the source of truth for stream sizes.
+
+        # Camera loop lifecycle (thread runs even when not capturing)
+        self._thread: threading.Thread | None = None
+        self._throttled_thread: threading.Thread | None = None
+        self._loop_stop_evt     = threading.Event() # stops camera loop + closes camera
+        self._capture_evt       = threading.Event() # toggles capturing on/off
+        self._reconfigure_evt   = threading.Event() # request reopen/reconfigure while loop runs
+        self._open_finished_evt = threading.Event() # signals camera open attempt finished
 
         # Pending reconfigure-only changes (applied by loop)
         self._pending_camera_res: tuple[int, int] | None = None
@@ -208,6 +214,9 @@ class piCamera2CaptureQt(QObject):
         # Runtime stats
         self.frame_time: float = 0.0  # last frame timestamp in ms (float)
         self._measured_fps: float = 0.0
+
+        # Control requests from UI -> capture thread
+        self._ctrl_q: "queue.SimpleQueue[dict]" = queue.SimpleQueue()
 
         # Core exists for the lifetime of this wrapper. The actual camera is
         # opened/configured inside the capture thread.
@@ -220,21 +229,7 @@ class piCamera2CaptureQt(QObject):
             log_queue=self._core_log_q,
         )
 
-        # Camera loop lifecycle
-        self._capture_thread: threading.Thread | None = None
-        self._loop_stop_evt     = threading.Event() # stops capture loop
-        self._capture_evt       = threading.Event() # toggles capturing on/off
-        self._reconfigure_evt   = threading.Event() # request reopen/reconfigure while loop runs
-        self._open_finished_evt = threading.Event() # signals camera open attempt finished
-
-        # Open the camera immediately with the provided configs
-        self._core.open_cam()
-        self.buffer = self._core._buffer
-        self.capture = self.buffer  # alias
-
-        # Logger thread: created and started in init, runs for object lifetime
-        self._logger_thread = threading.Thread(target=self._logger_loop, daemon=True)
-        self._logger_thread.start()
+        # Latest-frame fields removed: consumers poll FrameBuffer instead.
 
 
     # ------------------------------------------------------------------
@@ -242,70 +237,77 @@ class piCamera2CaptureQt(QObject):
     # ------------------------------------------------------------------
 
     @pyqtSlot()
-    def start(self) -> bool:
-        """Start the capture loop (does not open camera)."""
-        if not self._core.cam_open:
+    def start(self):
+        """Enable capturing (camera loop remains running)."""
+        # Ensure camera loop is running
+        if not (self._thread and self._thread.is_alive()):
+            try:
+                self.open_cam()
+            except Exception as e:
+                logging.error(f"PiCam2: Failed to open camera: {e}")
+
+        if not self.cam_open:
             try:
                 self.log.emit(logging.CRITICAL, "PiCam2: Cannot start capture; camera not open")
             except Exception:
                 pass
-            return False
-        if self._capture_thread is None or not self._capture_thread.is_alive():
-            self._loop_stop_evt.clear()
-            self._capture_evt.clear()
-            self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
-            self._capture_thread.start()
-        return True
+            return
+
+        self._capture_evt.set()
+
 
     @pyqtSlot()
-    def stop(self, timeout: float | None = 2.0):
-        """Stop the capture loop (does not close camera)."""
-        self._loop_stop_evt.set()
-        if self._capture_thread is not None and self._capture_thread.is_alive():
-            self._capture_thread.join(timeout=timeout)
-        self._capture_thread = None
-
-    def pause(self):
-        """Convenience: Pause capture without stopping loop."""
+    def stop(self):
+        """Disable capturing but keep the camera open and loop running."""
         self._capture_evt.clear()
-        
-    def resume(self):
-        """Convenience: Resume capture."""
-        if self._capture_thread and self._capture_thread.is_alive():
-            self._capture_evt.set()
-   
-    @property
-    def is_capturing(self) -> bool:
-        """Check if actively capturing frames."""
-        return self._capture_evt.is_set()
-    
-    @property
-    def is_running(self) -> bool:
-        """Check if capture loop thread is running."""
-        return self._capture_thread is not None and self._capture_thread.is_alive()
 
     def join(self, timeout: float | None = None):
-        """Block until the capture and logger threads exit."""
-        if self._capture_thread is not None and self._capture_thread.is_alive():
-            self._capture_thread.join(timeout=timeout)
-        if self._logger_thread is not None and self._logger_thread.is_alive():
-            self._logger_thread.join(timeout=timeout)
+        """Block until the capture thread exits (non-Qt helper)."""
+        t = self._thread
+        if t is None:
+            return
+        t.join(timeout=timeout)
 
-    def __del__(self):
-        # Close camera and stop logger thread on object deletion
+    # ------------------------------------------------------------------
+    # Camera lifecycle
+    # ------------------------------------------------------------------
+
+    @property
+    def cam_open(self) -> bool:
         try:
-            self.close()
+            return bool(self._core.cam_open)
         except Exception:
-            pass
+            return False
 
-    def close(self):
-        """Explicitly close camera and stop threads. Use in long-running apps for deterministic cleanup."""
+    def open_cam(self, timeout: float | None = 2.0) -> bool:
+        """Open/configure the camera and start the internal camera loop.
+
+        This does not automatically start capturing; call start() to enable
+        capture.
+        """
+        if self._thread and self._thread.is_alive():
+            return bool(self.cam_open)
+
+        self._open_finished_evt.clear()
+        self._capture_evt.clear()
+        self._reconfigure_evt.clear()
+        self._loop_stop_evt.clear()
+        self._thread = threading.Thread(target=self._camera_loop, daemon=True)
+        self._thread.start()
+
+        if timeout is not None:
+            try:
+                self._open_finished_evt.wait(timeout=float(timeout))
+            except Exception:
+                pass
+
+        return bool(self.cam_open)
+
+    def close_cam(self, timeout: float | None = 2.0):
+        """Disable capturing, stop the loop thread, and close the camera."""
+        self.stop()
         self._loop_stop_evt.set()
-        if self._capture_thread is not None and self._capture_thread.is_alive():
-            self._capture_thread.join(timeout=2.0)
-        if self._logger_thread is not None and self._logger_thread.is_alive():
-            self._logger_thread.join(timeout=2.0)
-        self._core.close_cam()
+        self.join(timeout=timeout)
 
     # ------------------------------------------------------------------
     # Camera control helpers (Qt/non-Qt parity)
@@ -313,21 +315,12 @@ class piCamera2CaptureQt(QObject):
 
     @pyqtSlot(int)
     def set_exposure_us(self, exposure_us: int):
-        """Set manual exposure in microseconds (disables AE)."""
-        try:
-            self._core.set_controls({"AeEnable": False, "ExposureTime": int(exposure_us)})
-        except Exception as exc:
-            import sys
-            print(f"[LOG-ERROR] set_exposure_us signal emission failed: {exc}", file=sys.stderr)
+        # Don’t call picam2 here; just enqueue a request
+        self._ctrl_q.put({"AeEnable": False, "ExposureTime": int(exposure_us)})
 
     @pyqtSlot(bool)
     def set_auto_exposure(self, enabled: bool):
-        """Enable/disable auto-exposure."""
-        try:
-            self._core.set_controls({"AeEnable": bool(enabled)})
-        except Exception as exc:
-            import sys
-            print(f"[LOG-ERROR] set_auto_exposure signal emission failed: {exc}", file=sys.stderr)
+        self._ctrl_q.put({"AeEnable": bool(enabled)})
 
     @pyqtSlot(int)
     @pyqtSlot(str)
@@ -335,10 +328,9 @@ class piCamera2CaptureQt(QObject):
         """Set AE metering mode (int or friendly string)."""
         try:
             meter_val = self._core._parse_aemeteringmode(mode)
-            self._core.set_controls({"AeMeteringMode": int(meter_val)})
-        except Exception as exc:
-            import sys
-            print(f"[LOG-ERROR] set_aemeteringmode signal emission failed: {exc}", file=sys.stderr)
+            self._ctrl_q.put({"AeMeteringMode": int(meter_val)})
+        except Exception:
+            pass
 
     @pyqtSlot(int)
     @pyqtSlot(str)
@@ -346,33 +338,30 @@ class piCamera2CaptureQt(QObject):
         """Set AWB mode (int or friendly string)."""
         try:
             awb_val = self._core._parse_awbmode(mode)
-            self._core.set_controls({"AwbMode": int(awb_val)})
-        except Exception as exc:
-            import sys
-            print(f"[LOG-ERROR] set_awbmode signal emission failed: {exc}", file=sys.stderr)
+            self._ctrl_q.put({"AwbMode": int(awb_val)})
+        except Exception:
+            pass
 
     @pyqtSlot(bool)
     def set_auto_wb(self, enabled: bool):
-        try:
-            self._core.set_controls({"AwbEnable": bool(enabled)})
-        except Exception as exc:
-            import sys
-            print(f"[LOG-ERROR] set_auto_wb signal emission failed: {exc}", file=sys.stderr)
+        self._ctrl_q.put({"AwbEnable": bool(enabled)})
 
     @pyqtSlot(float)
     def set_framerate(self, fps: float):
         try:
             fr = float(fps)
-            if fr > 0:
+        except Exception:
+            return
+        if fr > 0:
+            try:
                 frame_us = int(round(1_000_000.0 / fr))
                 if frame_us > 0:
-                    self._core.set_controls({"FrameDurationLimits": (frame_us, frame_us)})
+                    self._ctrl_q.put({"FrameDurationLimits": (frame_us, frame_us)})
                     return
-            # Best-effort fallback
-            self._core.set_controls({"FrameRate": float(fr)})
-        except Exception as exc:
-            import sys
-            print(f"[LOG-ERROR] set_framerate signal emission failed: {exc}", file=sys.stderr)
+            except Exception:
+                pass
+        # Best-effort fallback
+        self._ctrl_q.put({"FrameRate": float(fr)})
 
     @pyqtSlot(int)
     def set_flip(self, flip: int):
@@ -380,66 +369,39 @@ class piCamera2CaptureQt(QObject):
 
         Flip changes trigger an internal reconfigure. If capture is running,
         the camera loop will temporarily pause capture, apply the new flip, and
-        resume capture automatically. If not running, the change is applied immediately.
-        After any change, both self.buffer and self.capture are updated to self._core.buffer.
+        resume capture automatically.
         """
         try:
             f = int(flip)
             self._configs["flip"] = f
-
-            # If loop is running, signal reconfigure
-            if self._capture_thread and self._capture_thread.is_alive():
-                self._pending_flip = f
-                self._reconfigure_evt.set()
-                try:
-                    self.log.emit(logging.INFO, f"PiCam2:flip set to {f}; will reconfigure")
-                except Exception:
-                    pass
-            else:
-                # Not running - just apply directly
-                try:
-                    self._core.flip = f
-                    self.buffer = self._core.buffer
-                    self.capture = self.buffer
-                    self.log.emit(logging.INFO, f"PiCam2:flip set to {f}")
-                except Exception as exc:
-                    self.log.emit(logging.ERROR, f"PiCam2:Failed to set flip: {exc}")
+            self._pending_flip = f
+            self._reconfigure_evt.set()
+            try:
+                self.log.emit(logging.INFO, f"PiCam2:flip set to {f}; will reconfigure")
+            except Exception:
+                pass
         except Exception:
             pass
 
-    @pyqtSlot(tuple)
-    def set_resolution(self, res: Union[tuple, list]):
+    def set_resolution(self, res: tuple[int, int]):
         """Record a new capture resolution.
 
         Resolution changes trigger an internal reconfigure. If capture is
         running, the camera loop will temporarily pause capture, apply the new
-        size, and resume capture automatically. If not running, the change is applied immediately.
-        After any change, both self.buffer and self.capture are updated to self._core.buffer.
+        size, and resume capture automatically.
         """
         try:
             w, h = int(res[0]), int(res[1])
             if w <= 0 or h <= 0:
                 return
 
-            #  Record request;
+            # Record request; applied by camera loop via reconfigure event.
             self._configs["camera_res"] = (w, h)
-            
-            # If loop is running, signal reconfigure
-            if self._capture_thread and self._capture_thread.is_alive():
-                self._pending_camera_res = (w, h)
-                self._reconfigure_evt.set()
-                self.log.emit(logging.INFO, f"PiCam2:resolution set to {w}x{h}; will reconfigure")
-            else:
-                # Not running - just apply directly
-                try:
-                    self._core.size = (w, h)
-                    self.buffer = self._core.buffer
-                    self.capture = self.buffer
-                    self.log.emit(logging.INFO, f"PiCam2:resolution set to {w}x{h}")
-                except Exception as exc:
-                    self.log.emit(logging.ERROR, f"PiCam2:Failed to set resolution: {exc}")
+            self._pending_camera_res = (w, h)
+            self._reconfigure_evt.set()
+            self.log.emit(logging.INFO, f"PiCam2:resolution set to {w}x{h}; will reconfigure")
         except Exception:
-            pass
+            return
 
     # ------------------------------------------------------------------
     # Read-only helpers (safe for GUI thread; best-effort)
@@ -491,6 +453,8 @@ class piCamera2CaptureQt(QObject):
             self._core.log_stream_options()
         except Exception:
             pass
+        finally:
+            self._drain_core_logs()
 
     def get_control(self, name: str):
         try:
@@ -502,14 +466,155 @@ class piCamera2CaptureQt(QObject):
     # Internal camera loop
     # ------------------------------------------------------------------
 
-    def _capture_loop(self) -> None:
+    def _drain_core_logs(self) -> None:
+        """Forward any queued core logs to the Qt `log` signal."""
+        q = self._core_log_q
+        while True:
+            try:
+                level, msg = q.get_nowait()
+            except Empty:
+                break
+            try:
+                self.log.emit(int(level), str(msg))
+            except Exception:
+                pass
 
-        # Local bindings (hot loop) - mirror non-Qt wrapper structure
-        loop_stop_evt        = self._loop_stop_evt
-        capture_evt          = self._capture_evt
-        reconfigure_evt      = self._reconfigure_evt
-        core                 = self._core
-        fb                   = self._core.buffer
+    def _drain_controls(self):
+        """Apply any pending control requests (last-write-wins)."""
+        merged: dict = {}
+        while True:
+            try:
+                d = self._ctrl_q.get_nowait()
+            except Empty:
+                break
+            if isinstance(d, dict):
+                merged.update(d)
+
+        if not merged:
+            return
+
+        try:
+            self._core.set_controls(merged)
+        except Exception:
+            pass
+
+    def _drain_capture(self) -> tuple[np.ndarray | None, float | None]:
+        """Capture and process a single frame (if available)."""
+        try:
+            # Note: PiCamera2Core handles synthetic frames internally when
+            # configs['test_pattern'] is enabled. Wrappers always call
+            # capture_array() to keep the pipeline identical.
+            frame, ts_ms = self._core.capture_array()
+        except Exception:
+            return (None, None)
+
+        if frame is None:
+            return (None, ts_ms if ts_ms is not None else None)
+
+        # Convert to OpenCV-friendly output for UI by default
+        # - main stream often is already BGR888
+        # - raw stream needs demosaic/scale-down
+        try:
+            frame = self._core.convert(frame, to="BGR888")
+        except Exception:
+            pass
+
+        try:
+            frame = self._core.postprocess(frame)
+        except Exception:
+            pass
+
+        return frame, ts_ms
+
+    def _allocate_framebuffer(self, frame=None) -> None:
+        """Allocate (or re-allocate) the FrameBuffer.
+
+        If `frame` is provided, allocate using its actual shape/dtype.
+        Otherwise, allocate using best-effort expected output shape (BGR uint8).
+        """
+
+        # Prefer allocating from the actual produced frame.
+        if frame is not None:
+            try:
+                shape = tuple(int(x) for x in frame.shape)
+                dtype = frame.dtype
+                self.buffer = FrameBuffer(
+                    self._buffer_capacity,
+                    shape,
+                    dtype=dtype,
+                    overwrite=self._buffer_overwrite,
+                )
+                self.capture = self.buffer
+                return
+            except Exception:
+                # Fall back to expected allocation.
+                pass
+
+        try:
+            out_res = self._core._configs.get("output_res", (-1, -1))
+            out_w, out_h = int(out_res[0]), int(out_res[1])
+        except Exception:
+            out_w, out_h = (-1, -1)
+
+        # Wrapper delivers OpenCV-friendly BGR by default.
+        if out_w > 0 and out_h > 0:
+            expected_shape = (out_h, out_w, 3)
+        else:
+            expected_shape = (
+                int(getattr(self._core, "height", 480)),
+                int(getattr(self._core, "width", 640)),
+                3,
+            )
+
+        try:
+            self.buffer = FrameBuffer(
+                self._buffer_capacity,
+                expected_shape,
+                dtype="uint8",
+                overwrite=self._buffer_overwrite,
+            )
+            self.capture = self.buffer
+        except Exception:
+            self.buffer = None
+            self.capture = None
+
+    def _camera_loop(self) -> None:
+
+        exc_msg = ""
+        try:
+            ok = bool(self._core.open_cam())
+        except Exception as exc:
+            ok = False
+            exc_msg = str(exc)
+
+        if ok and self._core.cam_open:
+            try:
+                self.opened.emit()
+            except Exception:
+                pass
+            self._open_finished_evt.set()
+        else:
+            # Camera failed to open; reflect a stopped state.
+            self._capture_evt.clear()
+            self._reconfigure_evt.clear()
+            self._loop_stop_evt.set()
+            self._open_finished_evt.set()
+            try:
+                self.stopped.emit()
+            except Exception:
+                pass
+            msg = "PiCam2:Failed to open camera" if not exc_msg else f"PiCam2:Failed to open camera: {exc_msg}"
+            try:
+                self.log.emit(logging.CRITICAL, msg)
+            except Exception:
+                pass
+            return
+
+        self._drain_core_logs()
+
+        # Allocate buffer immediately on open so consumers can poll .buffer.
+        self._allocate_framebuffer()
+        fb = self.buffer
 
         last_fps_t = time.perf_counter()
         num_frames = 0
@@ -521,115 +626,25 @@ class piCamera2CaptureQt(QObject):
         # Track what we've told the core about capture state (update-on-change).
         core_capturing_state = False
 
+        # Local bindings (hot loop) - mirror non-Qt wrapper structure
+        loop_stop_evt   = self._loop_stop_evt
+        capture_evt     = self._capture_evt
+        reconfigure_evt = self._reconfigure_evt
+        core            = self._core
+        drain_capture   = self._drain_capture
+        allocate_framebuffer = self._allocate_framebuffer
+
+        # Start a separate throttled thread so control/log draining doesn't
+        # happen at frame rate.
+        if not (self._throttled_thread and self._throttled_thread.is_alive()):
+            self._throttled_thread = threading.Thread(target=self._throttled_loop, daemon=True)
+            self._throttled_thread.start()
+
         try:
             while not loop_stop_evt.is_set():
 
-                # Update Capturing State
-                # ----------------------------------------------------------------------------------------
-
-                capturing_now = bool(capture_evt.is_set())
-                if capturing_now != capturing_prev:
-                    capturing_prev = capturing_now
-                    core_capturing_state = capturing_now
-                    try:
-                        core.capturing = capturing_now
-                    except Exception:
-                        pass
-
-                    if capturing_now:
-                        # reset fps window on capture start
-                        last_fps_t = time.perf_counter()
-                        num_frames = 0
-                        self.started.emit()
-                    else:
-                        self.stopped.emit()
-
-                # Capture Frame
-                # ----------------------------------------------------------------------------------------
-
-                if capturing_now:
-                    now = time.perf_counter()
-                    # drain captured frames
-                    try:
-                        frame, ts_ms = core.capture_array()
-                    except Exception:
-                        frame, ts_ms = (None, None)
-
-                    if frame is None:
-                        time.sleep(0.001)
-                        continue
-
-                    num_frames += 1
-                    self.frame_time = float(ts_ms if ts_ms is not None else (now * 1000.0))
-
-                    # Push into FrameBuffer without blocking
-                    # --------------------------------------
-                    try:
-                        ok_push = bool(fb.push(frame, ts_ms))
-                        if (not ok_push):
-                            if (now - last_drop_warn_t) >= 1.0:
-                                last_drop_warn_t = now
-                                try:
-                                    self.log.emit(logging.WARNING, "PiCam2:FrameBuffer is full; dropping frame")
-                                except RuntimeError:
-                                    pass
-
-                    except Exception as exc1:
-                        # Most likely a shape/dtype mismatch due to reconfigure.
-                        try:
-                            self.log.emit(logging.WARNING, f"PiCam2:FrameBuffer push failed ({exc1}); reallocating")
-                        except Exception:
-                            pass
-
-                        try:
-                            h, w = frame.shape[:2]
-                            c = frame.shape[2] if frame.ndim == 3 else 1
-                            new_shape = (h, w, c) if c > 1 else (h, w)
-                            
-                            from .picamera2core import FrameBuffer
-                            core._buffer = FrameBuffer(
-                                capacity=self._buffer_capacity,
-                                frame_shape=new_shape,
-                                dtype=frame.dtype,
-                                overwrite=self._buffer_overwrite
-                            )
-                            self.buffer = core.buffer
-                            self.capture = self.buffer
-                            fb = core.buffer
-                            
-                            # Retry push
-                            ok_push = fb.push(frame, ts_ms if ts_ms is not None else (now * 1000.0))
-                            if not ok_push:
-                                raise RuntimeError("FrameBuffer still full after reallocation")
-
-                        except Exception as exc2:
-                                try:
-                                    self.log.emit(logging.CRITICAL, 
-                                        f"PiCam2:FrameBuffer retry failed ({exc2}); stopping")
-                                except Exception:
-                                    pass
-                                loop_stop_evt.set()
-                                break
-
-                    # Measure performance fps every 5seconds
-                    # --------------------------------------
-
-                    if (now - last_fps_t) >= 5.0:
-                        self.measured_fps = num_frames / max((now - last_fps_t), 1e-6)
-                        self.stats.emit(self._measured_fps)
-                        last_fps_t = now
-                        num_frames = 0
-
-                else:
-                    self.measured_fps = 0.0
-                    # Idle: keep loop responsive without busy-spinning
-                    time.sleep(0.01)
-
-                # End Capture Frame ------------------------------------------------------------------------
-
-
                 # Apply reconfigure request (auto-stop capture -> apply -> auto-restart)
-                # ------------------------------------------------------------------------------------------
+                # ----------------------------------------------------------------------
                 if reconfigure_evt.is_set():
                     was_capturing = bool(capture_evt.is_set())
 
@@ -661,21 +676,18 @@ class piCamera2CaptureQt(QObject):
                             finally:
                                 self._pending_flip = None
 
-                        # Verify camera is still open
-                        if not core.cam_open:
+                        # If restart failed inside core, stop loop.
+                        if not bool(getattr(self._core, "cam_open", False)):
                             raise RuntimeError("camera not open after reconfigure")
 
                         # Reset/reallocate buffer after configuration change.
-
-                        if self.buffer is not None:
-                            try:
+                        try:
+                            if self.buffer is not None:
                                 self.buffer.clear()
-                            except Exception:
-                                pass
-                        
-                        self.buffer = core.buffer
-                        self.capture = self.buffer
-                        fb = core.buffer
+                        except Exception:
+                            pass
+                        allocate_framebuffer()
+                        fb = self.buffer
 
                         self.opened.emit()
 
@@ -687,19 +699,99 @@ class piCamera2CaptureQt(QObject):
                         loop_stop_evt.set()
                         break
 
-                    # Resume capture if it was previously running.
                     if was_capturing:
                         capture_evt.set()
                     continue
 
-                # End Apply reconfigure ---------------------------------------------------------------------
+                # Capture and push frames into buffer
+                # -----------------------------------
+
+                # Update core capturing state only when it changes.
+                capturing_now = bool(capture_evt.is_set())
+                if capturing_now != capturing_prev:
+                    capturing_prev = capturing_now
+                    core_capturing_state = capturing_now
+                    try:
+                        core.capturing = capturing_now
+                    except Exception:
+                        pass
+
+                    if capturing_now:
+                        # reset fps window on capture start
+                        last_fps_t = time.perf_counter()
+                        num_frames = 0
+                        self.started.emit()
+                    else:
+                        self.stopped.emit()
+
+                # Capture only when enabled
+                if capturing_now:
+                    now = time.perf_counter()
+                    # drain captured frames
+                    frame, ts_ms = drain_capture()
+                    if frame is None:
+                        time.sleep(0.001)
+                        continue
+
+                    num_frames += 1
+                    self.frame_time = float(ts_ms if ts_ms is not None else (now * 1000.0))
+
+                    # Push into FrameBuffer without blocking
+                    # --------------------------------------
+                    try:
+                        ok_push = bool(fb.push(frame, ts_ms))
+                        if (not ok_push):
+                            if (now - last_drop_warn_t) >= 1.0:
+                                last_drop_warn_t = now
+                                try:
+                                    self.log.emit(logging.WARNING, "PiCam2:FrameBuffer is full; dropping frame")
+                                except RuntimeError:
+                                    pass
+
+                    except Exception as exc1:
+                        # Most likely a shape/dtype mismatch due to reconfigure.
+                        try:
+                            self.log.emit(logging.WARNING, f"PiCam2:FrameBuffer push failed ({exc1}); reallocating")
+                        except Exception:
+                            pass
+
+                        allocate_framebuffer(frame)
+                        fb = self.buffer
+                        try:
+                            if fb is None:
+                                raise RuntimeError("FrameBuffer reallocation failed")
+                            ok_push = bool(fb.push(frame, ts_ms))
+                        except Exception as exc2:
+                            try:
+                                self.log.emit(logging.CRITICAL, f"PiCam2:FrameBuffer retry failed ({exc2}); stopping")
+                            except Exception:
+                                pass
+                            loop_stop_evt.set()
+                            break
+
+                    # Measure performance fps every 5seconds
+                    # --------------------------------------
+
+                    if (now - last_fps_t) >= 5.0:
+                        self.measured_fps = num_frames / max((now - last_fps_t), 1e-6)
+                        self.stats.emit(self._measured_fps)
+                        last_fps_t = now
+                        num_frames = 0
+
+                else:
+                    self.measured_fps = 0.0
+                    # Idle: keep loop responsive without busy-spinning
+                    time.sleep(0.01)
+
+
 
         finally:
             try:
-                core.capturing = False
+                self._core.capturing = False
                 self._capture_evt.clear()
                 self._reconfigure_evt.clear()
-                core.close_cam()
+                self._core.close_cam()
+                self._drain_core_logs()
             except Exception:
                 pass
             finally:
@@ -711,23 +803,33 @@ class piCamera2CaptureQt(QObject):
                     except Exception:
                         pass
 
-    def _logger_loop(self) -> None:
-        """Periodically drain logs and emit them via Qt signals."""
+    def _throttled_loop(self) -> None:
+        """Separate thread for throttled non-frame work.
+
+        Drains pending controls and forwards core logs at a configurable cadence
+        so the capture/push hot loop can prioritize frames.
+
+        Config keys:
+        - throttled_hz / throttle_hz (default: 10 Hz)
+        """
+        try:
+            throttled_hz = float(self._configs.get("throttled_hz", self._configs.get("throttle_hz", 10.0)))
+        except Exception:
+            throttled_hz = 10.0
+
+        period_s = 0.0 if throttled_hz <= 0 else (1.0 / throttled_hz)
+        sleep_s = 0.001 if period_s <= 0.0 else period_s
+
         while not self._loop_stop_evt.is_set():
             try:
-                q = self._core_log_q
-                while True:
-                    try:
-                        level, msg = q.get_nowait()
-                    except Empty:
-                        break
-                    try:
-                        self.log.emit(int(level), str(msg))
-                    except Exception:
-                        pass
+                self._drain_controls()
             except Exception:
                 pass
-            time.sleep(0.2)  # Adjust as needed for log responsiveness
+            try:
+                self._drain_core_logs()
+            except Exception:
+                pass
+            time.sleep(sleep_s)
 
     def __getattr__(self, name: str):
         """Convenience: delegate unknown attributes to the core."""

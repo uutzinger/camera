@@ -18,9 +18,6 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("PiCamera2 Capture")
 
-    # Silence Picamera2 / libcamera logs; keep only this script's logging output
-    for _name in ("picamera2", "libcamera"):
-        logging.getLogger(_name).setLevel(logging.CRITICAL)
     # Also silence libcamera C++ logs via environment (must be set before libcamera loads)
     os.environ.setdefault("LIBCAMERA_LOG_LEVELS", "*:3")  # 3=ERROR, 2=WARNING, 1=INFO, 0=DEBUG
 
@@ -58,7 +55,8 @@ def main() -> None:
     from camera.capture.picamera2capture import piCamera2Capture
 
     camera = piCamera2Capture(configs, camera_num=camera_index)
-    if not camera.open_cam():
+    # open_cam() is called in __init__, so no need to call it again
+    if not camera.cam_open:
         raise RuntimeError("PiCamera2 camera failed to open")
 
     logger.log(logging.INFO, "Getting Images")
@@ -79,14 +77,11 @@ def main() -> None:
     stop = False
     try:
         while not stop:
-            current_time = time.perf_counter()
 
-            frame = None
-            if getattr(camera, "buffer", None) is not None and camera.buffer.avail() > 0:
-                # Drain all pending frames so the consumer doesn't fall behind.
-                # Use copy=False to avoid extra memcpy overhead in the consumer.
-                while camera.buffer.avail() > 0:
-                    frame, _ts_ms = camera.buffer.pull(copy=False)
+            # Drain all pending frames so the consumer doesn't fall behind.
+            # Use copy=False to avoid extra memcpy overhead in the consumer.
+            while camera.buffer.avail > 0:
+                frame, _ts_ms = camera.buffer.pull(copy=False)
 
             # display log
             while not camera.log.empty():
@@ -97,7 +92,7 @@ def main() -> None:
         try:
             camera.stop()
             camera.join(timeout=2.0)
-            camera.close_cam()
+            camera.close()
         except Exception:
             pass
 

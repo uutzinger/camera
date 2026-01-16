@@ -7,7 +7,7 @@
 # GPT-5.2
 ###############################################################################
 
-###############################################################################
+################################################################################
 # Public API & Supported Config
 #
 # Class: PiCamera2Core
@@ -17,14 +17,14 @@
 # - the Qt wrapper `piCamera2CaptureQt`
 #
 # Public methods:
-# - open_cam()
-# - close_cam()
-# - capture_array() -> tuple[np.ndarray | None, float | None]
-# - convert(frame, to: str = 'BGR888') -> np.ndarray | None
-# - postprocess(frame) -> np.ndarray | None
-# - get_metadata() -> dict
+# - open_cam()         : Open and configure the camera, allocate frame buffer.
+# - close_cam()        : Stop and close the camera, release frame buffer.
+# - capture_array()    : tuple[np.ndarray | None, float | None]
+#                        Capture a frame and timestamp from the configured stream.
 # - get_control(name: str) -> Any
+#                        Get a single control/metadata value.
 # - set_controls(controls: dict) -> bool
+#                        Set multiple controls on the camera.
 # - get_supported_main_color_formats() -> list[str]
 # - get_supported_raw_color_formats() -> list[str]
 # - get_supported_raw_options() -> list[dict]
@@ -32,12 +32,13 @@
 # - log_stream_options() -> None
 #
 # Convenience properties:
-# - cam_open: bool (state flag)
-# - capturing: bool
-# - metadata: dict
-# - width / height / resolution / size 
-#       (note: changing size/flip while capturing is discouraged;
-#       wrappers should ensure capture is paused first)
+# - cam_open: bool         (camera open state)
+# - capturing: bool        (capture state flag)
+# - buffer: FrameBuffer    (allocated frame buffer, or None if closed)
+# - metadata: dict         (latest frame metadata)
+# - width / height / resolution / size
+#       (changing size/flip while capturing is discouraged;
+#        wrappers should ensure capture is paused first)
 # - exposure, gain, autoexposure, aemeteringmode, aeexposuremode
 # - autowb, awbmode, wbtemperature, colourgains
 # - afmode, lensposition
@@ -50,34 +51,35 @@
 # Core capture / output:
 # - camera_res: tuple[int,int]      Main stream capture size (w,h)
 # - output_res: tuple[int,int]      If >0, prefer libcamera scaling for main;
-#                                  in raw mode, this may trigger CPU resize
-# - fps: float|int                 Requested framerate
-# - displayfps: float|int          Qt wrapper legacy/ignored (emission is unthrottled)
-# - low_latency: bool              Hint to reduce buffering (core may request
-#                                  fewer libcamera buffers)
+#                                   in raw mode, may trigger CPU resize
+# - fps: float|int                  Requested framerate
+# - low_latency: bool               Hint to reduce buffering (core may request fewer libcamera buffers)
+# - buffersize: int                 FrameBuffer capacity (default: 32)
+# - buffer_overwrite: bool          If True, FrameBuffer overwrites oldest frames when full
 #
 # Stream selection:
-# - mode: str                      'main' (processed) or 'raw' (sensor Bayer)
-# - stream_policy: str             'default'|'maximize_fov'|'maximize_fps'
+# - mode: str                       'main' (processed) or 'raw' (sensor Bayer)
+# - stream_policy: str              'default'|'maximize_fov'|'maximize_fps'
 #
 # Formats:
-# - format: str                    Legacy/combined request (e.g. 'BGR3', 'YUY2', 'SRGGB8')
-# - fourcc: str                    Legacy FOURCC alternative
-# - main_format: str               Explicit main stream format override
-# - raw_format: str                Explicit raw Bayer format override
-# - raw_res: tuple[int,int]        Requested raw sensor window size (w,h)
+# - format: str                     Legacy/combined request (e.g. 'BGR3', 'YUY2', 'SRGGB8')
+# - fourcc: str                     Legacy FOURCC alternative
+# - main_format: str                Explicit main stream format override
+# - raw_format: str                 Explicit raw Bayer format override
+# - raw_res: tuple[int,int]         Requested raw sensor window size (w,h)
 #
 # Controls (applied at open, and/or via properties/set_controls):
-# - exposure: int|float            Manual exposure in microseconds; <=0 leaves AE enabled
-# - autoexposure: int              -1 leave unchanged, 0 AE off, 1 AE on
-# - aemeteringmode: int|str        0/1/2 or 'center'|'spot'|'matrix'
-# - autowb: int                    -1 leave unchanged, 0 AWB off, 1 AWB on
-# - awbmode: int|str               0..5 or 'auto'|'tungsten'|'fluorescent'|'indoor'|'daylight'|'cloudy'
+# - exposure: int|float             Manual exposure in microseconds; <=0 leaves AE enabled
+# - autoexposure: int               -1 leave unchanged, 0 AE off, 1 AE on
+# - aemeteringmode: int|str         0/1/2 or 'center'|'spot'|'matrix'
+# - autowb: int                     -1 leave unchanged, 0 AWB off, 1 AWB on
+# - awbmode: int|str                0..5 or 'auto'|'tungsten'|'fluorescent'|'indoor'|'daylight'|'cloudy'
 #
 # Low-level / advanced:
-# - buffer_count: int|None         Requested libcamera buffer_count (if supported)
-# - hw_transform: bool             Attempt libcamera hardware Transform for flip/rotation
-# - flip: int                      0..7 (same enum as cv2Capture)
+# - buffer_count: int|None          Requested libcamera buffer_count (if supported)
+# - hw_transform: bool              Attempt libcamera hardware Transform for flip/rotation
+# - flip: int                       0..7 (same enum as cv2Capture)
+# - test_pattern: bool|str          Enable synthetic frame mode (for testing)
 ###############################################################################
 
 from __future__ import annotations
@@ -118,11 +120,11 @@ class FrameBuffer:
         - pull(copy: bool = True) -> tuple[Optional[np.ndarray], Optional[float]]
         - pull_batch(max_items: int, copy: bool = True, out: Optional[np.ndarray] = None) -> tuple[np.ndarray, np.ndarray]
         - clear() -> None
-        - avail() -> int
-        - free() -> int
-        - capacity() -> int
-        - frame_shape() -> Tuple[int, ...]
-        - dtype() -> np.dtype
+        - avail -> int
+        - free -> int
+        - capacity -> int
+        - frame_shape -> Tuple[int, ...]
+        - dtype -> np.dtype
     """
 
     __slots__ = (
@@ -142,18 +144,21 @@ class FrameBuffer:
     def __init__(
         self,
         capacity: int,
-        frame_shape: Tuple[int, ...],
-        dtype: np.dtype | str = np.uint8,
+        frame_shape: 'Tuple[int, ...]',
+        dtype: 'np.dtype | str' = None,
         *,
         overwrite: bool = False,
     ) -> None:
         """
         capacity: number of frames the ring can hold (rounded up to power of two)
         frame_shape: shape of one frame, e.g. (H, W) or (H, W, C)
-        dtype: numpy dtype for storage
+        dtype: numpy dtype for storage (default: np.uint8, always 3-channel 8-bit for RGB in this implementation)
         overwrite: if True, newest data overwrites oldest when full
-        aligned: if True, attempts to allocate aligned storage (usually unnecessary)
+        Note: Only 3-channel 8-bit buffers are currently supported. For YUV/Bayer, adjust allocation accordingly.
         """
+        import numpy as np
+        if dtype is None:
+            dtype = np.uint8
         if capacity <= 0:
             raise ValueError("capacity must be > 0")
         if not frame_shape:
@@ -175,12 +180,13 @@ class FrameBuffer:
         self._tail = 0
 
         # Scratch buffer for pull_batch to return a contiguous block without realloc each time (optional use)
-        self._scratch: Optional[np.ndarray] = None
-        self._scratch_ts: Optional[np.ndarray] = None
+        self._scratch: 'Optional[np.ndarray]' = None
+        self._scratch_ts: 'Optional[np.ndarray]' = None
 
     # ----------------------------
     # Introspection / sizing
     # ----------------------------
+
     @property
     def capacity(self) -> int:
         return self._cap
@@ -193,6 +199,7 @@ class FrameBuffer:
     def dtype(self) -> np.dtype:
         return self._dtype
 
+    @property
     def avail(self) -> int:
         """How many frames are currently available to read."""
         head = self._head
@@ -207,9 +214,10 @@ class FrameBuffer:
             return 0
         return cap if n >= cap else n
 
+    @property
     def free(self) -> int:
         """How many free slots remain (0..capacity)."""
-        free = self._cap - self.avail()
+        free = self._cap - self.avail
         return 0 if free < 0 else free
 
     # ----------------------------
@@ -247,7 +255,7 @@ class FrameBuffer:
     # ----------------------------
     # Consumer side
     # ----------------------------
-    def pull(self, *, copy: bool = True) -> tuple[Optional[np.ndarray], Optional[float]]:
+    def pull(self, *, copy: bool = True) -> 'tuple[Optional[np.ndarray], Optional[float]]':
         """
         Pull one frame.
         If copy=True (default), returns a copy safe from being overwritten later.
@@ -283,8 +291,8 @@ class FrameBuffer:
         max_items: int,
         *,
         copy: bool = True,
-        out: Optional[np.ndarray] = None,
-    ) -> tuple[np.ndarray, np.ndarray]:
+        out: 'Optional[np.ndarray]' = None,
+    ) -> 'tuple[np.ndarray, np.ndarray]':
         """
         Pull up to max_items frames.
         Returns an ndarray of shape (n, *frame_shape). n may be 0.
@@ -456,8 +464,8 @@ class PiCamera2Core:
             )
             self._configs.setdefault("mode", mode)
 
-        except Exception:
-            pass
+        except (ValueError, TypeError) as exc:
+            self._log(logging.ERROR, f"Config normalization error: {exc}")
 
         # Exposure override
         if exposure is not None:
@@ -496,6 +504,12 @@ class PiCamera2Core:
         self._buffer_count = self._configs.get("buffer_count", None)
         self._hw_transform = bool(self._configs.get("hw_transform", 1))
 
+        # Frame Buffer management
+        self._buffer_capacity = int(self._configs.get("buffersize", 32))
+        self._buffer_overwrite = bool(self._configs.get("buffer_overwrite", True))
+        # not used here self._buffer_copy_on_pull = bool(self._configs.get("buffer_copy", False))
+        self._buffer = None
+
         # Synthetic/test pattern mode (bypasses Picamera2)
         # - False/None: normal camera
         # - True: enable with default pattern
@@ -518,6 +532,11 @@ class PiCamera2Core:
         self._metadata: dict | None = None
         self._last_metadata: dict | None = None
 
+        # Conversion caching
+        self._convert_format = "BGR888"  # Default target format
+        self._cv2_conversion_code = None
+        self._needs_bit_depth_conversion = False
+        self._bit_depth_shift = 0
 
     # ------------------------------------------------------------------
     # Capture
@@ -529,12 +548,14 @@ class PiCamera2Core:
         Returns (frame, ts_ms).
 
         - frame: numpy array, or None on failure.
-                - ts_ms: best-effort timestamp in milliseconds derived from Picamera2
-                    metadata. The Picamera2 manual documents `SensorTimestamp` in
-                    nanoseconds since boot; this method converts it to milliseconds.
-                    This is a float to preserve sub-millisecond resolution.
+        - ts_ms: best-effort timestamp in milliseconds derived from Picamera2
+                metadata. The Picamera2 manual documents `SensorTimestamp` in
+                nanoseconds since boot; this method converts it to milliseconds.
+                This is a float to preserve sub-millisecond resolution.
         """
-        # Synthetic path: generate frames without touching Picamera2.
+
+        # Synthetic path: generate frames without touching Picamera2
+        # ----------------------------------------------------------------------------
         if self._test_pattern:
             try:
                 with self.cam_lock:
@@ -556,95 +577,70 @@ class PiCamera2Core:
         if self.picam2 is None:
             return None, None
 
+        # Actual Picamera2 capture path
+        # --------------------------------------------------------------------------
+
         try:
+            # Capture frame and metadata
             with self.cam_lock:
                 img = self.picam2.capture_array(self._stream_name)
                 self._metadata = self._capture_metadata()
-            ts_ms = None
-            try:
-                md = self._metadata or {}
+
+            # Extract timestamp - optimized path
+            md = self._metadata
+            if md:
                 sensor_ts = md.get("SensorTimestamp")
                 if sensor_ts is not None:
-                    # Manual: nanoseconds since boot -> milliseconds
                     ts_ms = float(sensor_ts) / 1_000_000.0
                 else:
-                    # Fallback for older/alternate pipelines
-                    alt = md.get("Timestamp")
-                    if alt is not None:
-                        ts_ms = float(alt)
-            except Exception:
+                    alt_ts = md.get("Timestamp")
+                    ts_ms = float(alt_ts) if alt_ts is not None else time.perf_counter() * 1000.0
+            else:
                 ts_ms = time.perf_counter() * 1000.0
+
+            # Apply color conversion (uses cached conversion code)
+            # Single consolidated try-except for all conversions
+            code = self._cv2_conversion_code
+            if code is not None:
+                img = cv2.cvtColor(img, code)
+                
+                # Apply bit depth conversion if needed
+                if self._needs_bit_depth_conversion:
+                    shift = self._bit_depth_shift
+                    if shift > 0:
+                        img = (img >> shift).astype(np.uint8)
+
+            # Drop alpha channel if needed
+            if self._needs_drop_alpha:
+                img = img[:, :, :3]
+        
+            # CPU resize if needed
+            if self._needs_cpu_resize:
+                img = cv2.resize(img, self._output_res)
+
+            # CPU flip/rotation if needed
+            flip = self._flip_method
+            if self._needs_cpu_flip:
+                if flip == 1:  # ccw 90
+                    img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                elif flip == 2:  # rot 180
+                    img = cv2.rotate(img, cv2.ROTATE_180)
+                elif flip == 3:  # cw 90
+                    img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+                elif flip == 4:  # horizontal
+                    img = cv2.flip(img, 1)
+                elif flip == 5:  # upright diagonal
+                    img = cv2.flip(cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
+                elif flip == 6:  # vertical
+                    img = cv2.flip(img, 0)
+                elif flip == 7:  # upperleft diagonal
+                    img = cv2.transpose(img)
+
             return img, ts_ms
 
         except Exception as exc:
             self._log(logging.WARNING, f"PiCam2:Capture failed: {exc}")
             return None, None
-
-    def synthetic_capture_array(self) -> tuple[np.ndarray | None, float | None]:
-        """Generate a synthetic frame and timestamp.
-
-        This bypasses Picamera2/libcamera entirely and is intended for
-        profiling the wrapper camera loop + FrameBuffer without camera I/O.
-        """
-        try:
-            with self.cam_lock:
-                img = self._synthetic_frame()
-            ts_ms = time.perf_counter() * 1000.0
-            self._metadata = {
-                "SensorTimestamp": None,
-                "Timestamp": ts_ms,
-                "FrameDuration": None,
-                "FrameDurationLimits": None,
-                "ScalerCrop": None,
-                "Synthetic": True,
-            }
-            return img, ts_ms
-        except Exception as exc:
-            self._log(logging.WARNING, f"PiCam2:Synthetic capture failed: {exc}")
-            return None, None
-
-    def postprocess(self, frame):
-        """Apply drop-alpha, optional CPU resize, and optional CPU flip."""
-        if frame is None:
-            return None
-        img_proc = frame
-
-        # If the configured format yields 4 channels, drop alpha.
-        if self._needs_drop_alpha:
-            try:
-                if getattr(img_proc, "ndim", 0) == 3 and img_proc.shape[2] == 4:
-                    img_proc = img_proc[:, :, :3]
-            except Exception:
-                pass
-
-        # Resize only when software resize is required (raw streams with output_res)
-        if self._needs_cpu_resize:
-            try:
-                img_proc = cv2.resize(img_proc, self._output_res)
-            except Exception:
-                pass
-
-        # Apply flip/rotation if requested (same enum as cv2Capture)
-        if self._needs_cpu_flip:
-            try:
-                if self._flip_method == 1:  # ccw 90
-                    img_proc = cv2.rotate(img_proc, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                elif self._flip_method == 2:  # rot 180
-                    img_proc = cv2.rotate(img_proc, cv2.ROTATE_180)
-                elif self._flip_method == 3:  # cw 90
-                    img_proc = cv2.rotate(img_proc, cv2.ROTATE_90_CLOCKWISE)
-                elif self._flip_method == 4:  # horizontal (left-right)
-                    img_proc = cv2.flip(img_proc, 1)
-                elif self._flip_method == 5:  # upright diagonal. ccw & lr
-                    img_proc = cv2.flip(cv2.rotate(img_proc, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
-                elif self._flip_method == 6:  # vertical (up-down)
-                    img_proc = cv2.flip(img_proc, 0)
-                elif self._flip_method == 7:  # upperleft diagonal
-                    img_proc = cv2.transpose(img_proc)
-            except Exception:
-                pass
-
-        return img_proc
 
     # ------------------------------------------------------------------
     # Open / Close
@@ -657,7 +653,12 @@ class PiCamera2Core:
         transform where possible, starts the camera, and sets initial controls.
         Logging is sent to the optional queue passed as `log_queue`.
         """
+
+        # Always clear buffer before (re)opening
+        self._buffer = None
+
         # Synthetic/test-pattern mode: open without Picamera2 installed.
+        # ----------------------------------------------------------------------------
         if self._test_pattern:
             try:
                 self.picam2 = None
@@ -693,6 +694,14 @@ class PiCamera2Core:
                 self._test_next_t = 0.0
                 self._test_frame = None
 
+                # Allocate frame buffer for synthetic mode (always 3 channel 8-bit)
+                self._buffer = FrameBuffer(
+                    capacity    = self._buffer_capacity,
+                    frame_shape = (self._capture_height, self._capture_width, 3),
+                    dtype       = np.uint8,
+                    overwrite   = self._buffer_overwrite
+                )
+
                 self._log(logging.INFO, f"PiCam2:Synthetic mode enabled pattern={self._test_pattern}")
                 self._log(
                     logging.INFO,
@@ -705,16 +714,21 @@ class PiCamera2Core:
                 self._log(logging.CRITICAL, f"PiCam2:Failed to open synthetic camera: {exc}")
                 return False
 
+        # Make sure Picamera2 is installed
+        # ----------------------------------------------------------------------------
         if Picamera2 is None:
             self._log(logging.CRITICAL, "PiCam2:picamera2 is not installed")
             self.cam_open = False
             return False
 
+        # Actual Picamera2 open path
+        # ----------------------------------------------------------------------------
         try:
             self.picam2 = Picamera2(camera_num=self.camera_num)
 
             req = str(self._requested_format or self._fourcc or "").upper()
 
+            # RAW stream selection ---------------------------------------
             if self._mode == "raw":
                 self._stream_name = "raw"
 
@@ -754,6 +768,8 @@ class PiCamera2Core:
                         f"PiCam2:RAW sensor selection policy={self._stream_policy} requested={req_str} selected={sel_str} fps~{selected_raw['fps']}",
                     )
                 picam_format = rf
+
+            # Main stream selection ---------------------------------------
             else:
                 self._stream_name = "main"
                 pfmt = self._main_format or req
@@ -767,6 +783,7 @@ class PiCamera2Core:
                     mapped = "BGR888"
                 picam_format = mapped
 
+            # Set color format ------------------------------------------
             self._set_color_format(picam_format)
             picam_format = self._format or picam_format
 
@@ -775,6 +792,7 @@ class PiCamera2Core:
             else:
                 main_size = (self._capture_width, self._capture_height)
 
+            # Set up transform if requested
             transform = None
             if self._hw_transform and (self._flip_method != 0):
                 try:
@@ -787,11 +805,12 @@ class PiCamera2Core:
             transform_applied = transform is not None and self._flip_method != 0
             self._needs_cpu_flip = (self._flip_method != 0) and (not transform_applied) and (not self._is_yuv420)
 
+            # Create configuration ----------------------------------
             config = None
             try:
+
                 # Prefer FrameDurationLimits over FrameRate.
-                # This matches Picamera2's documented way to request FPS and
-                # aligns behavior with the direct benchmark script.
+
                 try:
                     fr = float(self._framerate or 0.0)
                 except Exception:
@@ -806,11 +825,61 @@ class PiCamera2Core:
                     except Exception:
                         # Best-effort: fall back to FrameRate if limits calc fails.
                         cfg_controls = {"FrameRate": fr}
+
+                # Configure sensor mode for Main/Preview
+
+                selected_main_sensor = None
+                if self._stream_name == "main":
+                    try:
+                        # Your helper already exists; previously it was never used here.
+                        selected_main_sensor = self._select_main_sensor_mode(desired_size=main_size)
+                    except Exception:
+                        selected_main_sensor = None
+
+                    if selected_main_sensor is not None:
+                        # Picamera2 (Bookworm+) expects: sensor={'output_size': (w,h), 'bit_depth': N}
+                        sensor_cfg: dict[str, object] = {"output_size": tuple(selected_main_sensor["size"])}
+
+                        # If your mode dict includes bit_depth, pass it; otherwise skip (best-effort).
+                        bd = selected_main_sensor.get("bit_depth") if isinstance(selected_main_sensor, dict) else None
+                        if bd is not None:
+                            try:
+                                sensor_cfg["bit_depth"] = int(bd)
+                            except Exception:
+                                pass
+
+                        # If your mode dict includes fps, log it (helps verify selection at runtime).
+                        fps_est = selected_main_sensor.get("fps") if isinstance(selected_main_sensor, dict) else None
+
+                        self._log(
+                            logging.INFO,
+                            f"PiCam2:MAIN sensor selection policy={self._stream_policy} "
+                            f"desired_main={main_size[0]}x{main_size[1]} "
+                            f"selected_sensor={sensor_cfg.get('output_size')} bit_depth={sensor_cfg.get('bit_depth', 'n/a')} "
+                            f"fps~{fps_est}",
+                        )
+                    else:
+                        self._log(
+                            logging.INFO,
+                            f"PiCam2:MAIN sensor selection policy={self._stream_policy} "
+                            f"desired_main={main_size[0]}x{main_size[1]} selected_sensor=None (libcamera will choose)",
+                        )
+
                 if self._stream_name == "raw":
                     picam_kwargs = dict(raw={"size": raw_size, "format": picam_format}, controls=cfg_controls)
                 else:
                     picam_kwargs = dict(main={"size": main_size, "format": picam_format}, controls=cfg_controls)
 
+                    # Apply selected main sensor
+                    if selected_main_sensor is not None:
+                        # Only add sensor config if we built one above
+                        try:
+                            sensor_cfg  # type: ignore[name-defined]
+                            picam_kwargs["sensor"] = sensor_cfg
+                        except Exception:
+                            pass
+                        
+                # Buffer count
                 buffer_count = self._buffer_count
                 if buffer_count is None and self._low_latency:
                     buffer_count = 3
@@ -819,10 +888,14 @@ class PiCamera2Core:
                         picam_kwargs["buffer_count"] = int(buffer_count)
                     except Exception:
                         pass
+
+                # Transform
                 if transform is not None:
                     picam_kwargs["transform"] = transform
 
+                # Create config <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
                 config = self.picam2.create_video_configuration(**picam_kwargs)
+
             except Exception:
                 if self._stream_name == "raw":
                     for fmt in ("SRGGB8", "SRGGB10_CSI2P"):
@@ -862,7 +935,11 @@ class PiCamera2Core:
                     except Exception:
                         pass
 
+            # Apply configuration -------------------------------------
             self.picam2.configure(config)
+
+
+            # Apply camera controls ----------------------------------
 
             self._needs_cpu_resize = (
                 (self._stream_name == "raw")
@@ -902,10 +979,11 @@ class PiCamera2Core:
                     except Exception:
                         pass
 
-            exposure = self._exposure
-            autoexp = self._autoexposure
-            autowb = self._autowb
+            exposure  = self._exposure
+            autoexp   = self._autoexposure
+            autowb    = self._autowb
 
+            # Apply exposure controls
             manual_requested = exposure is not None and exposure > 0
             if manual_requested:
                 controls["AeEnable"] = False
@@ -925,6 +1003,7 @@ class PiCamera2Core:
             except Exception:
                 pass
 
+            # Apply AWB controls
             if autowb is None or autowb == -1:
                 pass
             else:
@@ -948,6 +1027,7 @@ class PiCamera2Core:
 
             # One-time informative dump to help validate actual config differences
             # between direct vs wrapper paths.
+            # ----------------------------------------------------------------------------
             try:
                 md = None
                 with self.cam_lock:
@@ -965,6 +1045,13 @@ class PiCamera2Core:
                 pass
 
             self._log(logging.INFO, "PiCam2:Camera opened")
+            # Allocate frame buffer after stream is open and size is known (always 3 channel 8-bit)
+            self._buffer = FrameBuffer(
+                capacity    = self._buffer_capacity,
+                frame_shape = (self._capture_height, self._capture_width, 3),
+                dtype       = np.uint8,
+                overwrite   = self._buffer_overwrite
+            )
             return True
 
         except Exception as exc:
@@ -979,14 +1066,15 @@ class PiCamera2Core:
             if self.picam2 is not None:
                 try:
                     self.picam2.stop()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self._log(logging.ERROR, f"Error during camera stop: {exc}")
                 try:
                     self.picam2.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self._log(logging.ERROR, f"Error during camera close: {exc}")
         finally:
             self.picam2 = None
+            self._buffer = None
             self.cam_open = False
             self._last_metadata = None
             self._test_frame = None
@@ -1091,7 +1179,7 @@ class PiCamera2Core:
         return frame
 
     # ---------------------------------------------------------------------
-    # Methods (need to fix name)
+    # Methods
     # ---------------------------------------------------------------------
 
     def get_supported_main_options(self):
@@ -1189,68 +1277,106 @@ class PiCamera2Core:
                 continue
         return sorted(fmts)
 
-    def get_metadata(self) -> dict:
-        return self._metadata
-
     def get_control(self, name: str):
         return self._get_control(name)
 
     def set_controls(self, controls: dict) -> bool:
         return self._set_controls(controls)
 
-    def convert(self, frame, to: str = "BGR888"):
-        """Convert a captured frame to the requested OpenCV-friendly format.
+    def _set_color_format(self, fmt: str | None):
+        """Set and analyze the requested format string."""
+        try:
+            fmt_upper = (fmt or "").upper()
+        except Exception:
+            fmt_upper = str(fmt).upper() if fmt is not None else ""
 
-        Supported targets: 'BGR888' (default), 'RGB888'. For Bayer RAW
-        formats such as SRGGB10, SRGGB12, etc., this helper will demosaic
-        and normalise higher bit-depth data down to 8-bit when an 8-bit
-        packed target is requested. Returns input if conversion is
-        unnecessary or fails.
+        self._format = fmt_upper if fmt_upper else None
+        self._is_yuv420 = fmt_upper == "YUV420"
+        non_alpha = set(self._supported_main_color_formats()) - {"XBGR8888", "XRGB8888"}
+        self._needs_drop_alpha = bool(fmt_upper) and (not self._is_raw_format(fmt_upper)) and (fmt_upper not in non_alpha)
+        
+        if fmt_upper and self._needs_drop_alpha:
+            self._log(logging.INFO, f"PiCam2:Dropping alpha channel for {fmt_upper} frames")
+        
+        # Pre-compute conversion settings
+        self._update_conversion_settings()
+
+    def _update_conversion_settings(self):
+        """Pre-compute and cache color conversion settings.
+        
+        Called whenever _format or _convert_format changes.
         """
-        if frame is None:
-            return None
-        to = (to or "BGR888").upper()
-        code = self._cv2_color_conversion_code(to)
-        if code is None:
-            fmt = (self._format or "").upper()
-            try:
-                if fmt == "BGR888" and to == "RGB888" and getattr(frame, "ndim", 0) == 3:
-                    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                if fmt == "RGB888" and to == "BGR888" and getattr(frame, "ndim", 0) == 3:
-                    return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                return frame
-            except Exception:
-                return frame
-        try:
-            out = cv2.cvtColor(frame, code)
-        except Exception:
-            return frame
+        fmt = (self._format or "").upper()
+        to = (self._convert_format or "BGR888").upper()
+        
+        # Reset conversion state
+        self._cv2_conversion_code = None
+        self._needs_bit_depth_conversion = False
+        self._bit_depth_shift = 0
+        
+        if not fmt:
+            return
+        
+        # Check if no conversion needed
+        if (fmt == "BGR888" and to == "BGR888") or (fmt == "RGB888" and to == "RGB888"):
+            return
+        
+        # Simple BGR<->RGB swaps
+        if fmt == "BGR888" and to == "RGB888":
+            self._cv2_conversion_code = cv2.COLOR_BGR2RGB
+            return
+        if fmt == "RGB888" and to == "BGR888":
+            self._cv2_conversion_code = cv2.COLOR_RGB2BGR
+            return
+        
+        # 32-bit formats with alpha
+        if fmt == "XBGR8888":
+            self._cv2_conversion_code = cv2.COLOR_RGBA2BGR if to == "BGR888" else cv2.COLOR_RGBA2RGB
+            return
+        if fmt == "XRGB8888":
+            self._cv2_conversion_code = cv2.COLOR_BGRA2BGR if to == "BGR888" else cv2.COLOR_BGRA2RGB
+            return
+        
+        # YUV formats
+        if fmt == "YUV420":
+            self._cv2_conversion_code = cv2.COLOR_YUV2BGR_I420 if to == "BGR888" else cv2.COLOR_YUV2RGB_I420
+            return
+        if fmt == "YUYV":
+            self._cv2_conversion_code = cv2.COLOR_YUV2BGR_YUY2 if to == "BGR888" else cv2.COLOR_YUV2RGB_YUY2
+            return
+        
+        # Bayer/RAW formats
+        if fmt.startswith("SRGGB"):
+            self._cv2_conversion_code = cv2.COLOR_BAYER_RG2BGR if to == "BGR888" else cv2.COLOR_BAYER_RG2RGB
+            self._needs_bit_depth_conversion = self._check_bit_depth_conversion(fmt, to)
+            return
+        if fmt.startswith("SBGGR"):
+            self._cv2_conversion_code = cv2.COLOR_BAYER_BG2BGR if to == "BGR888" else cv2.COLOR_BAYER_BG2RGB
+            self._needs_bit_depth_conversion = self._check_bit_depth_conversion(fmt, to)
+            return
+        if fmt.startswith("SGBRG"):
+            self._cv2_conversion_code = cv2.COLOR_BAYER_GB2BGR if to == "BGR888" else cv2.COLOR_BAYER_GB2RGB
+            self._needs_bit_depth_conversion = self._check_bit_depth_conversion(fmt, to)
+            return
+        if fmt.startswith("SGRBG"):
+            self._cv2_conversion_code = cv2.COLOR_BAYER_GR2BGR if to == "BGR888" else cv2.COLOR_BAYER_GR2RGB
+            self._needs_bit_depth_conversion = self._check_bit_depth_conversion(fmt, to)
+            return
 
-        # If we converted from a high bit-depth RAW source (e.g. SRGGB10)
-        # but the caller requested an 8-bit packed target ('BGR888' /
-        # 'RGB888'), scale down to uint8 for display/processing.
-        try:
-            if (
-                to in ("BGR888", "RGB888")
-                and hasattr(out, "dtype")
-                and np.issubdtype(out.dtype, np.integer)
-                and out.dtype.itemsize > 1
-            ):
-                src_fmt = (self._format or "").upper()
-                bit_depth = 16
-                for cand in (16, 14, 12, 10):
-                    if str(cand) in src_fmt:
-                        bit_depth = cand
-                        break
-                shift = max(0, bit_depth - 8)
-                if shift > 0:
-                    out = (out >> shift).astype(np.uint8)
-                else:
-                    out = out.astype(np.uint8)
-        except Exception:
-            pass
-
-        return out
+    def _check_bit_depth_conversion(self, src_fmt: str, to_fmt: str) -> bool:
+        """Check if bit depth conversion is needed and compute shift value."""
+        if to_fmt not in ("BGR888", "RGB888"):
+            return False
+        
+        # Determine source bit depth from format string
+        bit_depth = 16
+        for cand in (16, 14, 12, 10):
+            if str(cand) in src_fmt:
+                bit_depth = cand
+                break
+        
+        self._bit_depth_shift = max(0, bit_depth - 8)
+        return self._bit_depth_shift > 0
 
     # ------------------------------------------------------------------
     # Optional logging helpers
@@ -1351,6 +1477,7 @@ class PiCamera2Core:
     # ---------------
 
     def _log(self, level: int, msg: str) -> None:
+        """Log a message to the log queue if available, with fallback if full."""
         q = self.log
         if q is None:
             return
@@ -1358,25 +1485,21 @@ class PiCamera2Core:
             if not q.full():
                 q.put_nowait((int(level), str(msg)))
         except Exception:
-            pass
+            # Fallback: print to stderr if log queue is full or unavailable
+            import sys
+            print(f"[LOG-{level}] {msg}", file=sys.stderr)
 
     # Control and Format helpers
     # --------------------------
 
-    def _get_control(self, name: str):
-        """Get a single control/metadata value by name."""
-        metadata = self._metadata
-        if name in metadata:
-            return metadata.get(name)
-        else:
+    def _get_control(self, name: str, force_refresh: bool = False):
+        """Get a single control/metadata value by name. If force_refresh is True, always update metadata."""
+        if force_refresh or self._metadata is None or name not in self._metadata:
             if self.picam2 is None:
-                # camera not open
                 return None
-            else:
-                # update metadata and try again
-                with self.cam_lock:
-                    self._metadata = self._capture_metadata()
-                    return (self._metadata or {}).get(name)
+            with self.cam_lock:
+                self._metadata = self._capture_metadata()
+        return (self._metadata or {}).get(name)
 
     def _set_controls(self, controls: dict) -> bool:
         """Set multiple controls on the camera."""
@@ -1479,23 +1602,13 @@ class PiCamera2Core:
         fmt_str = self._format_upper(fmt)
         return bool(self._bayer_prefix(fmt_str))
 
-    def _set_color_format(self, fmt: str | None):
-        """Set and analyze the requested format string."""
-        try:
-            fmt_upper = (fmt or "").upper()  # type: ignore[arg-type]
-        except Exception:
-            fmt_upper = str(fmt).upper() if fmt is not None else ""
+    def _list_sensor_modes(self) -> list[dict]:
+        """List all sensor modes from Picamera2, normalized.
 
-        self._format = fmt_upper if fmt_upper else None
-        self._is_yuv420 = fmt_upper == "YUV420"
-        non_alpha = set(self._supported_main_color_formats()) - {"XBGR8888", "XRGB8888"}
-        self._needs_drop_alpha = bool(fmt_upper) and (not self._is_raw_format(fmt_upper)) and (fmt_upper not in non_alpha)
-        if fmt_upper and self._needs_drop_alpha:
-            self._log(logging.INFO, f"PiCam2:Dropping alpha channel for {fmt_upper} frames")
-
-    def _list_sensor_modes(self):
-        """List all sensor modes from Picamera2."""
-        modes = []
+        Returns dicts with keys:
+        format, size=(w,h), fps, area, bit_depth, crop_limits, crop_area
+        """
+        modes: list[dict] = []
 
         if self.picam2 is None:
             return modes
@@ -1504,26 +1617,55 @@ class PiCamera2Core:
             sensor_modes = getattr(self.picam2, "sensor_modes", None)
             if not isinstance(sensor_modes, list):
                 return modes
+
             for m in sensor_modes:
                 try:
                     fmt = m.get("format")
                     size_val = m.get("size")
                     if not fmt or not isinstance(size_val, (list, tuple)) or len(size_val) != 2:
                         continue
+
                     w, h = int(size_val[0]), int(size_val[1])
+
                     fps = m.get("fps", m.get("max_fps", 0))
                     try:
                         fps = float(fps) if fps is not None else 0.0
                     except Exception:
                         fps = 0.0
-                    modes.append({"format": fmt, "size": (w, h), "fps": fps, "area": int(w) * int(h)})
+
+                    bit_depth = m.get("bit_depth", None)
+                    try:
+                        bit_depth = int(bit_depth) if bit_depth is not None else None
+                    except Exception:
+                        bit_depth = None
+
+                    crop_limits = m.get("crop_limits", None)
+                    crop_area = None
+                    if isinstance(crop_limits, (list, tuple)) and len(crop_limits) == 4:
+                        # crop_limits is (x, y, w, h)
+                        try:
+                            crop_area = int(crop_limits[2]) * int(crop_limits[3])
+                        except Exception:
+                            crop_area = None
+
+                    modes.append(
+                        {
+                            "format": str(fmt).upper(),
+                            "size": (w, h),
+                            "fps": fps,
+                            "area": w * h,
+                            "bit_depth": bit_depth,
+                            "crop_limits": crop_limits,
+                            "crop_area": crop_area,
+                        }
+                    )
                 except Exception:
                     continue
         except Exception:
             pass
 
         return modes
-
+        
     def _list_raw_sensor_modes(self) -> list[dict]:
         """List supported raw sensor modes in a normalized dict format.
 
@@ -1551,6 +1693,10 @@ class PiCamera2Core:
     def _select_sensor_mode(self, modes: list[dict], desired_size: tuple[int, int] | None = None):
         """Select the best sensor mode from a provided list.
 
+        Uses self._stream_policy to guide selection:
+        - maximize_fps: prioritize highest fps, then FOV (crop_area), then output area
+        - maximize_fov: prioritize largest FOV (crop_area), then fps, then output area
+
         Shared by raw/main selection; callers may filter `modes` beforehand.
         """
         if not modes:
@@ -1566,28 +1712,62 @@ class PiCamera2Core:
             except Exception:
                 return 0
 
+        def fov_area(m: dict) -> int:
+            """Prefer crop_area (true FOV proxy), fall back to output size area."""
+            ca = m.get("crop_area")
+            if ca is not None:
+                try:
+                    return int(ca)
+                except Exception:
+                    pass
+            return mode_area(m)
+
+        def mode_fps(m: dict) -> float:
+            try:
+                v = m.get("fps", 0.0)
+                return float(v) if v is not None else 0.0
+            except Exception:
+                return 0.0
+
         desired_w, desired_h = (None, None)
         if desired_size and len(desired_size) == 2:
-            desired_w, desired_h = int(desired_size[0]), int(desired_size[1])
+            try:
+                desired_w, desired_h = int(desired_size[0]), int(desired_size[1])
+            except Exception:
+                desired_w, desired_h = (None, None)
 
-        def score_fps_first(m):
-            return (-float(m.get("fps", 0.0) or 0.0), -mode_area(m))
+        # --- Policy scorers ---
+        def score_maximize_fps(m: dict) -> tuple:
+            # 1) highest fps
+            # 2) larger FOV (crop_area) as tie-break
+            # 3) larger sensor output size as further tie-break
+            return (-mode_fps(m), -fov_area(m), -mode_area(m))
 
-        def score_fov_first(m):
-            return (-mode_area(m), -float(m.get("fps", 0.0) or 0.0))
+        def score_maximize_fov(m: dict) -> tuple:
+            # 1) largest FOV
+            # 2) highest fps
+            # 3) larger sensor output size
+            return (-fov_area(m), -mode_fps(m), -mode_area(m))
 
+        # Sort by the chosen policy
         if self._stream_policy == "maximize_fov":
-            modes.sort(key=score_fov_first)
+            modes.sort(key=score_maximize_fov)
         else:
-            modes.sort(key=score_fps_first)
+            # default behavior == maximize_fps
+            modes.sort(key=score_maximize_fps)
 
-        if desired_w and desired_h:
+        # Optional: desired_size proximity
+        #
+        # IMPORTANT: For maximize_fps, we generally do NOT want desired_size proximity
+        # to override sensor-mode choice (it can pick a slower mode).
+        # So we only apply it for non-maximize_fps policies.
+        if desired_w and desired_h and self._stream_policy != "maximize_fps":
             desired_area = desired_w * desired_h
 
-            def add_area_penalty(m):
+            def add_area_penalty(m: dict) -> int:
                 return abs(mode_area(m) - desired_area)
 
-            # Stable sort keeps the previous ordering as a tie-breaker.
+            # Stable sort keeps previous ordering as a tie-breaker.
             modes.sort(key=add_area_penalty)
 
         return modes[0]
@@ -1598,8 +1778,7 @@ class PiCamera2Core:
 
     def _select_main_sensor_mode(self, desired_size: tuple[int, int] | None = None):
         """Select the best main sensor mode based on policy and desired size."""
-        modes = self._list_sensor_modes()
-        return self._select_sensor_mode(modes, desired_size=desired_size)
+        return self._select_sensor_mode(self._list_sensor_modes(), desired_size=desired_size)
 
     def _validate_raw_selection(self, desired_fmt: str, desired_size: tuple[int, int]):
         """Validate and adjust desired raw format and size based on supported modes."""
@@ -1677,46 +1856,14 @@ class PiCamera2Core:
             t = Transform(hflip=1, vflip=0, rotation=90)
         return t
 
-    def _cv2_color_conversion_code(self, to: str):
-        """Return OpenCV color conversion code from current format to target."""
-        fmt = (self._format or "").upper()
-        to = (to or "BGR888").upper()
-        if not fmt:
-            return None
-        if (fmt == "BGR888" and to == "BGR888") or (fmt == "RGB888" and to == "RGB888"):
-            return None
-        if fmt == "BGR888" and to == "RGB888":
-            return cv2.COLOR_BGR2RGB
-        if fmt == "RGB888" and to == "BGR888":
-            return cv2.COLOR_RGB2BGR
-        # 32-bit RGB with dummy alpha channel (manual examples)
-        # XBGR8888: pixels appear as [R, G, B, 255] in Python (RGBA order)
-        # XRGB8888: pixels appear as [B, G, R, 255] in Python (BGRA order)
-        if fmt == "XBGR8888":
-            if to == "BGR888":
-                return cv2.COLOR_RGBA2BGR
-            if to == "RGB888":
-                return cv2.COLOR_RGBA2RGB
-        if fmt == "XRGB8888":
-            if to == "BGR888":
-                return cv2.COLOR_BGRA2BGR
-            if to == "RGB888":
-                return cv2.COLOR_BGRA2RGB
-        if fmt == "YUV420":
-            return cv2.COLOR_YUV2BGR_I420 if to == "BGR888" else cv2.COLOR_YUV2RGB_I420
-        if fmt == "YUYV":
-            return cv2.COLOR_YUV2BGR_YUY2 if to == "BGR888" else cv2.COLOR_YUV2RGB_YUY2
-        if fmt.startswith("SRGGB"):
-            return cv2.COLOR_BAYER_RG2BGR if to == "BGR888" else cv2.COLOR_BAYER_RG2RGB
-        if fmt.startswith("SBGGR"):
-            return cv2.COLOR_BAYER_BG2BGR if to == "BGR888" else cv2.COLOR_BAYER_BG2RGB
-        if fmt.startswith("SGBRG"):
-            return cv2.COLOR_BAYER_GB2BGR if to == "BGR888" else cv2.COLOR_BAYER_GB2RGB
-        if fmt.startswith("SGRBG"):
-            return cv2.COLOR_BAYER_GR2BGR if to == "BGR888" else cv2.COLOR_BAYER_GR2RGB
-        return None
+    # Camera frame buffer
+    # -------------------
+    @property
+    def buffer(self):
+        return self._buffer
 
-
+    # Camera capture state
+    # --------------------
     @property
     def capturing(self)-> bool:
         return self._capturing
@@ -1770,14 +1917,18 @@ class PiCamera2Core:
 
     @size.setter
     def size(self, value):
-        if value is None:
-            return
+        """Set camera size (width, height). If camera is open and not capturing, will close and reopen. Logs this action."""
         if not isinstance(value, (tuple, list)) or len(value) != 2:
-            raise ValueError("size must be a (width, height) tuple")
-
-        width, height = int(value[0]), int(value[1])
+            self._log(logging.ERROR, "size must be a (width, height) tuple")
+            return
+        try:
+            width, height = int(value[0]), int(value[1])
+        except (ValueError, TypeError) as exc:
+            self._log(logging.ERROR, f"Invalid size values: {exc}")
+            return
         if width <= 0 or height <= 0:
-            raise ValueError("size must be positive")
+            self._log(logging.ERROR, "size must be positive")
+            return
 
         if self._capturing:
             self._log(logging.WARNING, "PiCam2:size change requires restart; stop capture first")
@@ -1788,6 +1939,7 @@ class PiCamera2Core:
         self._camera_res = (width, height)
 
         if self.cam_open:
+            self._log(20, f"Camera open and not capturing: reopening camera to apply new size {width}x{height}.")
             self.close_cam()
             self.open_cam()
 
@@ -1804,11 +1956,19 @@ class PiCamera2Core:
 
     @flip.setter
     def flip(self, value) -> None:
+        """Set camera flip/rotation. If camera is open and not capturing, will close and reopen. Logs this action."""
         if value is None:
+            self._log(logging.ERROR, "flip value cannot be None")
             return
-        f = int(value)
+
+        try:
+            f = int(value)
+        except (ValueError, TypeError) as exc:
+            self._log(logging.ERROR, f"Invalid flip value: {exc}")
+            return
         if f < 0 or f > 7:
-            raise ValueError("flip must be in range 0..7")
+            self._log(logging.ERROR, "flip must be in range 0..7")
+            return
 
         if self._capturing:
             self._log(logging.WARNING, "PiCam2:flip change requires restart; stop capture first")
@@ -1821,8 +1981,31 @@ class PiCamera2Core:
             pass
 
         if self.cam_open:
+            self._log(20, f"Camera open and not capturing: reopening camera to apply new flip {f}.")
             self.close_cam()
             self.open_cam()
+
+    # Camera color format and conversion
+    # ---------------------------------
+
+    @property
+    def convert_format(self) -> str:
+        """Target format for automatic conversion (default: BGR888)."""
+        return self._convert_format
+
+    @convert_format.setter
+    def convert_format(self, value: str):
+        """Set target conversion format and update conversion settings."""
+        if value is None:
+            return
+        try:
+            fmt = str(value).upper()
+        except Exception:
+            return
+        
+        if fmt != self._convert_format:
+            self._convert_format = fmt
+            self._update_conversion_settings()
 
     # Camera Controls
     # ---------------

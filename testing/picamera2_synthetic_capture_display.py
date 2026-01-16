@@ -28,9 +28,6 @@ def main() -> None:
     logger = logging.getLogger("PiCamera2 Capture")
 
     # Silence Picamera2 / libcamera logs; keep only this script's logging output
-    for _name in ("picamera2", "libcamera"):
-        logging.getLogger(_name).setLevel(logging.CRITICAL)
-    # Also silence libcamera C++ logs via environment (must be set before libcamera loads)
     os.environ.setdefault("LIBCAMERA_LOG_LEVELS", "*:3")  # 3=ERROR, 2=WARNING, 1=INFO, 0=DEBUG
 
     camera_index = 0
@@ -91,7 +88,7 @@ def main() -> None:
     from camera.capture.picamera2capture import piCamera2Capture
 
     camera = piCamera2Capture(configs, camera_num=camera_index)
-    if not camera.open_cam():
+    if not camera.cam_open:
         raise RuntimeError("PiCamera2 camera failed to open")
 
     logger.log(logging.INFO, "Getting Images")
@@ -118,7 +115,7 @@ def main() -> None:
 
             frame = None
             _frame_time = None
-            if getattr(camera, "buffer", None) is not None and camera.buffer.avail() > 0:
+            if camera.buffer.avail > 0:
                 # Pull latest available frame.
                 # Use copy=False to avoid extra memcpy; we copy only when displaying.
                 frame, _frame_time = camera.buffer.pull(copy=False)
@@ -154,7 +151,7 @@ def main() -> None:
         try:
             camera.stop()
             camera.join(timeout=2.0)
-            camera.close_cam()
+            camera.close()
         except Exception:
             pass
         cv2.destroyAllWindows()

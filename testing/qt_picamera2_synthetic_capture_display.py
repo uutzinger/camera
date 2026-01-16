@@ -107,11 +107,11 @@ class MainWindow(QMainWindow):
 
         from camera.capture.picamera2captureQt import piCamera2CaptureQt
 
-        self.capture = piCamera2CaptureQt(self.configs, camera_num=0)
-        self.capture.stats.connect(self.on_stats)
-        self.capture.log.connect(self.on_log)
-        self.capture.started.connect(self.on_started)
-        self.capture.stopped.connect(self.on_stopped)
+        self.camera = piCamera2CaptureQt(self.configs, camera_num=0)
+        self.camera.stats.connect(self.on_stats)
+        self.camera.log.connect(self.on_log)
+        self.camera.started.connect(self.on_started)
+        self.camera.stopped.connect(self.on_stopped)
 
         self._poll_timer = QTimer(self)
         interval_ms = 0 if self._display_interval <= 0.0 else max(1, int(self._display_interval * 1000.0))
@@ -174,16 +174,16 @@ class MainWindow(QMainWindow):
 
     def start_stream(self):
         self._set_toggle_to_stop()
-        self.capture.start()
+        self.camera.start()
 
     def stop_stream(self):
         self.btn_toggle.setEnabled(False)
-        self.capture.stop()
+        self.camera.stop()
 
     def on_started(self):
         self._logger.info('Capture started')
         try:
-            self.capture.log_stream_options()
+            self.camera.log_stream_options()
         except Exception:
             pass
         try:
@@ -216,13 +216,13 @@ class MainWindow(QMainWindow):
         self._update_statusbar()
 
     def on_poll(self):
-        buf = getattr(self.capture, "buffer", None)
+        buf = getattr(self.camera, "buffer", None)
         if buf is None:
             return
 
         last = None
         try:
-            while buf.avail() > 0:
+            while buf.avail > 0:
                 last = buf.pull(copy=False)
         except Exception:
             last = None
@@ -237,7 +237,7 @@ class MainWindow(QMainWindow):
             pass
 
         try:
-            img = self.capture.convertQimage(frame)
+            img = self.camera.convertQimage(frame)
             if img is None:
                 raise ValueError('convertQimage() returned None')
             pix = QPixmap.fromImage(img)
@@ -266,7 +266,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         # Ensure capture thread shuts down
         try:
-            self.capture.close_cam(timeout=2.0)
+            self.camera.close(timeout=2.0)
         except Exception:
             pass
         super().closeEvent(event)
