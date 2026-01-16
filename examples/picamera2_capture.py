@@ -75,6 +75,7 @@ def main() -> None:
     camera.start()
 
     stop = False
+    frame = None
     try:
         while not stop:
 

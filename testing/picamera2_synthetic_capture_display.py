@@ -109,12 +109,12 @@ def main() -> None:
     last_display = time.perf_counter()
 
     stop = False
+    frame = None
+    _frame_time = None
     try:
         while not stop:
             current_time = time.perf_counter()
 
-            frame = None
-            _frame_time = None
             if camera.buffer.avail > 0:
                 # Pull latest available frame.
                 # Use copy=False to avoid extra memcpy; we copy only when displaying.
