@@ -572,7 +572,7 @@ class piCamera2Capture:
 
                     if (now - last_fps_t) >= 5.0:
                         self.measured_fps = num_frames / max((now - last_fps_t), 1e-6)
-                        self.stats.emit(self._measured_fps)
+                        logq.put_nowait((logging.INFO, f"PiCam2:Measured capture FPS: {self.measured_fps:.1f} [Hz]"))
                         last_fps_t = now
                         num_frames = 0
 
@@ -672,7 +672,7 @@ class piCamera2Capture:
         
     @property
     def measured_fps(self) -> float:
-        # This Qt class emits fps via stats(); keep a convenience getter.
+        # convinience gett
         try:
             return float(self._measured_fps)
         except Exception:
