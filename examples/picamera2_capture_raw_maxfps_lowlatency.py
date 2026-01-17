@@ -104,7 +104,7 @@ def main() -> None:
     last_display = time.perf_counter()
 
     stop = False
-    fame = None
+    frame = None
     try:
         while not stop:
             current_time = time.perf_counter()

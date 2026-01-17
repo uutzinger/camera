@@ -105,6 +105,7 @@ def main() -> None:
     last_display = time.perf_counter()
     last_dps_time = last_display
     measured_dps = 0.0
+    num_frames_displayed = 0
 
     stop = False
     try:
