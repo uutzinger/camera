@@ -6,5 +6,6 @@
     "esbonio.sphinx.confDir": "",
     "cSpell.words": [
         "unthrottled"
-    ]
+    ],
+    "chatgpt.openOnStartup": true
 }

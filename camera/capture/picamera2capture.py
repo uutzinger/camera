@@ -478,9 +478,6 @@ class piCamera2Capture:
         # Track capture state transitions for started/stopped signals
         capturing_prev = False
 
-        # Track what we've told the core about capture state (update-on-change).
-        core_capturing_state = False
-
         try:
             while not loop_stop_evt.is_set():
 
@@ -490,11 +487,6 @@ class piCamera2Capture:
                 capturing_now = bool(capture_evt.is_set())
                 if capturing_now != capturing_prev:
                     capturing_prev = capturing_now
-                    core_capturing_state = capturing_now
-                    try:
-                        core.capturing = capturing_now
-                    except Exception:
-                        pass
 
                     if capturing_now:
                         # reset fps window on capture start
@@ -592,14 +584,6 @@ class piCamera2Capture:
                     # Force capture off so we can safely reconfigure.
                     capture_evt.clear()
 
-                    # Ensure core sees an idle transition (only on change).
-                    if core_capturing_state:
-                        core_capturing_state = False
-                        try:
-                            core.capturing = False
-                        except Exception:
-                            pass
-
                     try:
                         reconfigure_evt.clear()
 
@@ -650,7 +634,6 @@ class piCamera2Capture:
 
         finally:
             try:
-                core.capturing = False
                 self._capture_evt.clear()
                 self._reconfigure_evt.clear()
                 core.close_cam()

@@ -26,32 +26,39 @@ Quickstart (OpenCV webcam)
 
 .. code-block:: python
 
-   import cv2
+   import logging
    import time
-
+   import cv2
    from camera.capture.cv2capture import cv2Capture
 
    configs = {
        "camera_res": (640, 480),
        "fps": 30,
        "fourcc": "MJPG",
+       "displayfps": 30,
    }
 
    camera = cv2Capture(configs, 0)
    camera.start()
 
-   try:
-       cv2.namedWindow("Camera", cv2.WINDOW_AUTOSIZE)
-       while cv2.getWindowProperty("Camera", cv2.WND_PROP_VISIBLE) >= 0:
-           frame_time, frame = camera.capture.get(timeout=0.25)
-           if frame is not None:
-               cv2.imshow("Camera", frame)
+   window_name = "Camera"
+   cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
+   last_display = time.perf_counter()
+   display_interval = 1.0 / configs["displayfps"]
+   stop = False
+   while cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) >= 0 and not stop:
+       current_time = time.perf_counter()
+       frame_time, frame = camera.capture.get(block=True, timeout=None)
+       if (current_time - last_display) >= display_interval:
+           frame_display = frame.copy()
+           cv2.putText(frame_display, f"Capture FPS:{camera.measured_fps:.1f} [Hz]", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
+           cv2.imshow(window_name, frame_display)
            if cv2.waitKey(1) & 0xFF == ord("q"):
-               break
-           time.sleep(0.001)
-   finally:
-       camera.stop()
-       cv2.destroyAllWindows()
+               stop = True
+           last_display = current_time
+
+   camera.stop()
+   cv2.destroyAllWindows()
 
 Raspberry Pi (Picamera2/libcamera)
 ----------------------------------
@@ -68,7 +75,7 @@ Frame delivery model:
 
 .. code-block:: python
 
-   if camera.buffer and camera.buffer.avail() > 0:
+   if camera.buffer and camera.buffer.avail > 0:
        frame, ts_ms = camera.buffer.pull(copy=False)
 
 The Qt wrapper does not emit a per-frame signal; GUI code typically polls via a ``QTimer``.

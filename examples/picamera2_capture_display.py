@@ -61,16 +61,17 @@ def main() -> None:
         'displayfps'      : 30              # frame rate for display server
     }
 
+    display_fps  = float(configs.get('displayfps', 0) or 0)
+    capture_fps = float(configs.get('fps', 0) or 0)
 
-    displayfps  = float(configs.get("displayfps", 0) or 0)
-    capture_fps = float(configs.get("fps", 0) or 0)
-
-    if displayfps <= 0:
+    if display_fps <= 0:
         display_interval = 0.0 # no throttling
-    elif capture_fps > 0 and displayfps >= 0.8 * capture_fps:
+    elif capture_fps > 0 and display_fps >= 0.8 * capture_fps:
         display_interval = 0.0 # close to capture fps so no throttling
     else:
-        display_interval = 1.0 / displayfps # throttled display
+        display_interval = 1.0 / display_fps # throttled display
+
+    dps_measure_interval = 5.0
 
     window_name = "Camera"
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -85,7 +86,6 @@ def main() -> None:
 
     # Camera
     from camera.capture.picamera2capture import piCamera2Capture
-
     camera = piCamera2Capture(configs, camera_num=camera_index)
     if not camera.cam_open:
         raise RuntimeError("PiCamera2 camera failed to open")
@@ -99,37 +99,38 @@ def main() -> None:
         configs.get("camera_res"),
         configs.get("output_res"),
     )
-
-    # Optional show suggested main options or raw sensor modes
-    camera.log_stream_options()
-
+    camera.log_stream_options() # Optional show suggested main options or raw sensor modes
     camera.start()
 
     last_display = time.perf_counter()
+    last_dps_time = last_display
+    measured_dps = 0.0
 
     stop = False
-    frame = None
     try:
         while not stop:
             current_time = time.perf_counter()
 
+            # Pull latest available frame.
             if camera.buffer.avail > 0:
-                # Pull latest available frame.
                 # Use copy=False to avoid extra memcpy; we copy only when displaying.
                 frame, _frame_time = camera.buffer.pull(copy=False)
+            else:
+                frame = None
 
-            # display log
+            # Display log
             while not camera.log.empty():
                 (level, msg) = camera.log.get_nowait()
                 logger.log(level, "{}".format(msg))
 
-            # display (at slower rate than capture)
-            if (frame is not None) and ((current_time - last_display) >= display_interval):
+            # Display
+            delta_display = current_time - last_display
+            if (frame is not None) and (delta_display >= display_interval):
                 frame_display = frame.copy()
                 cv2.putText(frame_display, "Capture FPS:{:.1f} [Hz]".format(camera.measured_fps),
                     textLocation0, font, fontScale, fontColor, lineType,
                 )
-                cv2.putText(frame_display, "Display target:{:.1f} [Hz]".format(displayfps),
+                cv2.putText(frame_display, "Display target:{:.1f} [Hz]".format(measured_dps),
                     textLocation1, font, fontScale, fontColor, lineType,
                 )
                 cv2.putText(frame_display, f"Mode:{configs.get('mode')}",
@@ -144,6 +145,14 @@ def main() -> None:
                 #    stop = True
 
                 last_display = current_time
+                num_frames_displayed += 1
+
+            # Update display FPS measurement
+            delta_dps = current_time - last_dps_time
+            if delta_dps >= dps_measure_interval:
+                measured_dps = num_frames_displayed / delta_dps
+                num_frames_displayed = 0
+                last_dps_time = current_time
 
     finally:
         try:
