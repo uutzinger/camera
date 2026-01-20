@@ -94,7 +94,8 @@ if TYPE_CHECKING:  # pragma: no cover
 else:
     import numpy as np
 
-from .picamera2core import PiCamera2Core, FrameBuffer
+from .picamera2core import PiCamera2Core
+from .framebuffer import FrameBuffer
 
 try:
     from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot  # type: ignore

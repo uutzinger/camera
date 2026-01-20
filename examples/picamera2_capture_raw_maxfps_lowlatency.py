@@ -122,7 +122,7 @@ def main() -> None:
                 cv2.putText(frame_display, f"Capture FPS:{camera.measured_fps:.1f} [Hz]",
                     textLocation0, font, fontScale, fontColor, lineType,
                 )
-                cv2.putText(frame_display, f"Display target:{displayfps:.1f} [Hz]",
+                cv2.putText(frame_display, f"Display FPS:{displayfps:.1f} [Hz]",
                     textLocation1, font, fontScale, fontColor, lineType,
                 )
                 cv2.putText(frame_display, "Mode:raw Policy:maximize_fps Low-latency:True",

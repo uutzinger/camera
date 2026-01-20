@@ -131,7 +131,7 @@ def main() -> None:
                 cv2.putText(frame_display, "Capture FPS:{:.1f} [Hz]".format(camera.measured_fps),
                     textLocation0, font, fontScale, fontColor, lineType,
                 )
-                cv2.putText(frame_display, "Display target:{:.1f} [Hz]".format(measured_dps),
+                cv2.putText(frame_display, "Display FPS:{:.1f} [Hz]".format(measured_dps),
                     textLocation1, font, fontScale, fontColor, lineType,
                 )
                 cv2.putText(frame_display, f"Mode:{configs.get('mode')}",

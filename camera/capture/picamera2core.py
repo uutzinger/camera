@@ -82,12 +82,12 @@
 ###############################################################################
 
 from __future__ import annotations
-
 from threading import Lock
 from queue import Queue # logging
 import logging
 import time
 import cv2
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
     import numpy as np

@@ -16,6 +16,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from queue import Empty, Full
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np

@@ -80,8 +80,8 @@ import queue
 import logging
 import time
 from typing import TYPE_CHECKING, Optional, Union
-
-from .picamera2core import PiCamera2Core, FrameBuffer
+from .picamera2core import PiCamera2Core
+from .framebuffer import FrameBuffer
 
 if TYPE_CHECKING:  # pragma: no cover
     import numpy as np

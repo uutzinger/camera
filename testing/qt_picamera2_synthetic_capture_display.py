@@ -124,7 +124,7 @@ class MainWindow(QMainWindow):
 
         self.btn_toggle = QPushButton('Start')
         self.btn_toggle.clicked.connect(self.start_stream)
-
+Where is the configuration for this project defined?
         button_row = QHBoxLayout()
         button_row.addWidget(self.btn_toggle)
         button_row.addStretch(1)
