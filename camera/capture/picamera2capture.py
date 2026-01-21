@@ -80,11 +80,14 @@ import queue
 import logging
 import time
 from typing import TYPE_CHECKING, Optional, Union
-from .picamera2core import PiCamera2Core
-from .framebuffer import FrameBuffer
 
 if TYPE_CHECKING:  # pragma: no cover
     import numpy as np
+else:
+    import numpy as np
+
+from .picamera2core import PiCamera2Core
+from .framebuffer import FrameBuffer
 
 class piCamera2Capture:
     """
@@ -104,9 +107,9 @@ class piCamera2Capture:
     """
 
     def __init__(
-        self,
-        configs: dict,
-        camera_num: int = 0,
+        self, 
+        configs: dict, 
+        camera_num: int = 0, 
         res: tuple | None = None,
         exposure: float | None = None,
         queue_size: int = 32,
@@ -140,7 +143,8 @@ class piCamera2Capture:
             self._configs["exposure"] = exposure
 
         # Core configuration
-        self._fps = float(self._configs.get("fps", 30))
+        self._fps = float(self._configs.get("fps", 30.0))
+
         # Note: default is unthrottled emission. If a UI wants to display at a
         # lower rate, it should throttle in the consumer (e.g. via a QTimer).
         # Legacy/ignored: emission is unthrottled; keep for config compatibility.
@@ -172,7 +176,6 @@ class piCamera2Capture:
         self.log = Queue(maxsize=32)
 
         # Runtime stats
-        self.frame_time: float = 0.0  # last frame timestamp in ms (float)
         self._measured_fps: float = 0.0
 
 
@@ -194,9 +197,15 @@ class piCamera2Capture:
 
         # Open the camera immediately with the provided configs
         self._core.open_cam()
-        self.buffer = self._core._buffer
-        self.capture = self.buffer  # alias
 
+        if self._core.buffer is None:
+            try:
+                self.log.put_nowait((logging.ERROR, "PiCam2:Core buffer is None after open"))
+            except Exception:
+                pass
+
+        self.buffer = self._core.buffer
+        self.capture = self.buffer  # alias
 
 
     # ------------------------------------------------------------------
@@ -212,6 +221,16 @@ class piCamera2Capture:
             except Exception:
                 pass
             return False
+
+        # Check buffer exists
+        if self._core.buffer is None:
+            try:
+                if not self.log.full():
+                    self.log.put_nowait((logging.ERROR, "PiCam2:Buffer not allocated; cannot start capture"))
+            except Exception:
+                pass
+            return False
+
         if self._capture_thread is None or not self._capture_thread.is_alive():
             self._loop_stop_evt.clear()
             self._capture_evt.set()
@@ -468,15 +487,23 @@ class piCamera2Capture:
         capture_evt          = self._capture_evt
         reconfigure_evt      = self._reconfigure_evt
         core                 = self._core
-        fb                   = self._core.buffer
         logq                 = self.log
 
-        last_fps_t = time.perf_counter()
-        num_frames = 0
-        last_drop_warn_t = 0.0
+        last_drop_warn_t     = 0.0
+        fps_measurement_interval = 5.0  # Measure FPS every 5 seconds
+        fps_frame_count      = 0
+        fps_start_time       = time.perf_counter()
 
         # Track capture state transitions for started/stopped signals
         capturing_prev = False
+
+        fb                   = self._core.buffer
+        if fb is None:
+            try:
+                logq.put_nowait((logging.CRITICAL, "PiCam2:No buffer allocated"))
+            except Exception:
+                pass
+            return
 
         try:
             while not loop_stop_evt.is_set():
@@ -487,41 +514,50 @@ class piCamera2Capture:
                 capturing_now = bool(capture_evt.is_set())
                 if capturing_now != capturing_prev:
                     capturing_prev = capturing_now
-
-                    if capturing_now:
-                        # reset fps window on capture start
-                        last_fps_t = time.perf_counter()
-                        num_frames = 0
+                    # Reset FPS measurement on state change
+                    fps_frame_count = 0
+                    fps_start_time = time.perf_counter()
 
                 # Capture Frame
                 # ----------------------------------------------------------------------------------------
 
                 if capturing_now:
-                    now = time.perf_counter()
+                    loop_start = time.perf_counter()
+
                     # drain captured frames
                     try:
                         frame, ts_ms = core.capture_array()
-                    except Exception:
-                        frame, ts_ms = (None, None)
+                    except Exception as exc:
+                        try:
+                            logq.put_nowait((logging.WARNING, f"PiCam2:capture_array failed: {exc}"))
+                        except Exception:
+                            pass
+                        time.sleep(0.001)
+                        continue
 
                     if frame is None:
                         time.sleep(0.001)
                         continue
 
-                    num_frames += 1
-                    self.frame_time = float(ts_ms if ts_ms is not None else (now * 1000.0))
+                    # time stamp
+                    frame_time = float(ts_ms if ts_ms is not None else (loop_start * 1000.0))
 
                     # Push into FrameBuffer without blocking
                     # --------------------------------------
                     try:
-                        ok_push = bool(fb.push(frame, ts_ms))
+                        ok_push = bool(fb.push(frame, frame_time))
+
                         if (not ok_push):
+                            now = time.perf_counter()
                             if (now - last_drop_warn_t) >= 1.0:
                                 last_drop_warn_t = now
                                 try:
                                     logq.put_nowait((logging.WARNING, "PiCam2:FrameBuffer is full; dropping frames"))
                                 except RuntimeError:
                                     pass
+                        else:
+                            # Successful push - update FPS measurement
+                            fps_frame_count += 1
 
                     except Exception as exc1:
                         # Most likely a shape/dtype mismatch due to reconfigure.
@@ -531,25 +567,33 @@ class piCamera2Capture:
                             pass
 
                         try:
+
+                            # Determine new buffer shape from frame
                             h, w = frame.shape[:2]
                             c = frame.shape[2] if frame.ndim == 3 else 1
                             new_shape = (h, w, c) if c > 1 else (h, w)
                             
-                            from .picamera2core import FrameBuffer
+                            # Reallocate buffer with new shape
                             core._buffer = FrameBuffer(
                                 capacity=self._buffer_capacity,
                                 frame_shape=new_shape,
                                 dtype=frame.dtype,
                                 overwrite=self._buffer_overwrite
                             )
+                            
+                            # Update all references immediately
                             self.buffer = core.buffer
                             self.capture = self.buffer
                             fb = core.buffer
                             
                             # Retry push
-                            ok_push = fb.push(frame, ts_ms if ts_ms is not None else (now * 1000.0))
+                            ok_push = fb.push(frame, frame_time)
                             if not ok_push:
                                 raise RuntimeError("FrameBuffer still full after reallocation")
+
+                            # Reset FPS measurement after buffer change
+                            fps_frame_count = 0
+                            fps_start_time = time.perf_counter()
 
                         except Exception as exc2:
                                 try:
@@ -559,17 +603,16 @@ class piCamera2Capture:
                                 loop_stop_evt.set()
                                 break
 
-                    # Measure performance fps every 5seconds
-                    # --------------------------------------
-
-                    if (now - last_fps_t) >= 5.0:
-                        self.measured_fps = num_frames / max((now - last_fps_t), 1e-6)
-                        logq.put_nowait((logging.INFO, f"PiCam2:Measured capture FPS: {self.measured_fps:.1f} [Hz]"))
-                        last_fps_t = now
-                        num_frames = 0
+                    # Measure performance
+                    # -------------------
+                    elapsed = loop_start - fps_start_time
+                    if elapsed >= fps_measurement_interval:
+                        self._measured_fps = fps_frame_count / elapsed
+                        fps_start_time = loop_start
+                        fps_frame_count = 0
 
                 else:
-                    self.measured_fps = 0.0
+                    self._measured_fps = 0.0
                     # Idle: keep loop responsive without busy-spinning
                     time.sleep(0.01)
 
@@ -587,19 +630,40 @@ class piCamera2Capture:
                     try:
                         reconfigure_evt.clear()
 
-                        # Apply pending size change (core will restart camera if open).
+                        # Apply pending size change
                         if self._pending_camera_res is not None:
                             try:
-                                core.size = self._pending_camera_res
+                                w, h = self._pending_camera_res
+                                core.size = (w, h)
+                                try:
+                                    logq.put_nowait((logging.INFO, f"PiCam2:Reconfigured resolution to {w}x{h}"))
+                                except Exception:
+                                    pass
+                            except Exception as exc:
+                                try:
+                                    logq.put_nowait((logging.ERROR, f"PiCam2:Size change failed: {exc}"))
+                                except Exception:
+                                    pass
                             finally:
                                 self._pending_camera_res = None
 
-                        # Apply pending flip change (core will restart camera if open).
+                        # Apply pending flip change
                         if self._pending_flip is not None:
                             try:
-                                core.flip = self._pending_flip
+                                f = self._pending_flip
+                                core.flip = f
+                                try:
+                                    logq.put_nowait((logging.INFO, f"PiCam2:Reconfigured flip to {f}"))
+                                except Exception:
+                                    pass
+                            except Exception as exc:
+                                try:
+                                    logq.put_nowait((logging.ERROR, f"PiCam2:Flip change failed: {exc}"))
+                                except Exception:
+                                    pass
                             finally:
                                 self._pending_flip = None
+                                
 
                         # Verify camera is still open
                         if not core.cam_open:
@@ -616,6 +680,10 @@ class piCamera2Capture:
                         self.buffer = core.buffer
                         self.capture = self.buffer
                         fb = core.buffer
+
+                        # Reset FPS measurement
+                        fps_frame_count = 0
+                        fps_start_time = time.perf_counter()
 
                     except Exception as exc:
                         try:
@@ -655,7 +723,7 @@ class piCamera2Capture:
         
     @property
     def measured_fps(self) -> float:
-        # convinience gett
+        """Get measured FPS."""
         try:
             return float(self._measured_fps)
         except Exception:
@@ -663,14 +731,10 @@ class piCamera2Capture:
 
     @measured_fps.setter
     def measured_fps(self, value: float) -> None:
+        """Set measured FPS."""
         try:
             self._measured_fps = float(value)
         except Exception:
             self._measured_fps = 0.0
-
-    def __getattr__(self, name: str):
-        """Convenience: delegate unknown attributes to the core"""
-        # Only called if attribute not found on wrapper.
-        return getattr(self._core, name)
 
 __all__ = ["piCamera2Capture"]

@@ -4,7 +4,8 @@
 # Shared core used by both non-Qt threaded capture and Qt wrappers.
 #
 # Urs Utzinger
-# GPT-5.2
+# GPT-5.2 PCreation, Implementation, Testing, Documentation
+# Sonnet 4.5 Performance Optimizations
 ###############################################################################
 
 ################################################################################
@@ -260,7 +261,13 @@ class PiCamera2Core:
         self._cv2_conversion_code = None
         self._needs_bit_depth_conversion = False
         self._bit_depth_shift = 0
-
+        
+        # ADD THESE:
+        self._convert_buffer = None
+        self._bitshift_buffer = None
+        self._resize_buffer = None
+        self._flip5_buffer = None
+        
     # ------------------------------------------------------------------
     # Capture
     # ------------------------------------------------------------------
@@ -306,44 +313,61 @@ class PiCamera2Core:
         try:
             # Capture frame and metadata
             with self.cam_lock:
-                img = self.picam2.capture_array(self._stream_name)
-                self._metadata = self._capture_metadata()
+                request = self.picam2.capture_request()            
 
-            # Extract timestamp - optimized path
-            md = self._metadata
-            if md:
+            try:
+                # Single call gets both array and metadata
+                img = request.make_array(self._stream_name)
+                md = request.get_metadata()
+                
+                # Extract timestamp - optimized path
                 sensor_ts = md.get("SensorTimestamp")
-                if sensor_ts is not None:
-                    ts_ms = float(sensor_ts) / 1_000_000.0
-                else:
-                    alt_ts = md.get("Timestamp")
-                    ts_ms = float(alt_ts) if alt_ts is not None else time.perf_counter() * 1000.0
-            else:
-                ts_ms = time.perf_counter() * 1000.0
-
-            # Apply color conversion (uses cached conversion code)
-            # Single consolidated try-except for all conversions
+                ts_ms = float(sensor_ts) / 1_000_000.0 if sensor_ts else time.perf_counter() * 1000.0
+                
+                self._metadata = md
+                
+            finally:
+                # Always release the request
+                request.release()
+        
+            # CPU processing (only if ISP couldn't handle it)
+            # ------------------------------------------------
+            
+            # Color conversion (only for RAW or unsupported formats)
             code = self._cv2_conversion_code
             if code is not None:
-                img = cv2.cvtColor(img, code)
+                if self._convert_buffer is not None:
+                    # Use pre-allocated buffer
+                    cv2.cvtColor(img, code, dst=self._convert_buffer)
+                    img = self._convert_buffer
+                else:
+                    img = cv2.cvtColor(img, code)
                 
-                # Apply bit depth conversion if needed
+                # Bit depth conversion (RAW formats)
                 if self._needs_bit_depth_conversion:
                     shift = self._bit_depth_shift
                     if shift > 0:
-                        img = (img >> shift).astype(np.uint8)
-
-            # Drop alpha channel if needed
+                        if self._bitshift_buffer is not None:
+                            np.right_shift(img, shift, out=self._bitshift_buffer, casting='unsafe')
+                            img = self._bitshift_buffer
+                        else:
+                            img = (img >> shift).astype(np.uint8)
+            
+            # Drop alpha channel if needed (XRGB/XBGR formats)
             if self._needs_drop_alpha:
                 img = img[:, :, :3]
-        
-            # CPU resize if needed
-            if self._needs_cpu_resize:
-                img = cv2.resize(img, self._output_res)
 
-            # CPU flip/rotation if needed
-            flip = self._flip_method
+            # CPU resize (only if ISP couldn't scale)
+            if self._needs_cpu_resize:
+                if self._resize_buffer is not None:
+                    cv2.resize(img, self._output_res, dst=self._resize_buffer)
+                    img = self._resize_buffer
+                else:
+                    img = cv2.resize(img, self._output_res)
+            
+            # CPU flip/rotation (only if Transform wasn't applied)
             if self._needs_cpu_flip:
+                flip = self._flip_method
                 if flip == 1:  # ccw 90
                     img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
                 elif flip == 2:  # rot 180
@@ -353,32 +377,84 @@ class PiCamera2Core:
                 elif flip == 4:  # horizontal
                     img = cv2.flip(img, 1)
                 elif flip == 5:  # upright diagonal
-                    img = cv2.flip(cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
+                    if self._flip5_buffer is not None:
+                        temp = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                        cv2.flip(temp, 1, dst=self._flip5_buffer)
+                        img = self._flip5_buffer
+                    else:
+                        img = cv2.flip(cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
                 elif flip == 6:  # vertical
                     img = cv2.flip(img, 0)
                 elif flip == 7:  # upperleft diagonal
                     img = cv2.transpose(img)
-
+            
             return img, ts_ms
 
         except Exception as exc:
             self._log(logging.WARNING, f"PiCam2:Capture failed: {exc}")
             return None, None
 
+    def _allocate_processing_buffers(self):
+        """Allocate pre-sized buffers for CPU processing operations.
+        
+        Called in open_cam() after configuration is determined.
+        Avoids per-frame allocations during capture.
+        """
+        h, w = self._capture_height, self._capture_width
+        
+        # Clear any existing buffers
+        self._convert_buffer = None
+        self._bitshift_buffer = None
+        self._resize_buffer = None
+        self._flip5_buffer = None
+        
+        # Conversion buffer (for color space conversions)
+        if self._cv2_conversion_code is not None:
+            if self._is_yuv420:
+                # YUV420 is H*1.5 x W, converts to H x W x 3
+                self._convert_buffer = np.empty((h, w, 3), dtype=np.uint8)
+            elif self._format in ("YUYV",):
+                # YUYV is H x W x 2, converts to H x W x 3
+                self._convert_buffer = np.empty((h, w, 3), dtype=np.uint8)
+            else:
+                # Most formats: same spatial dimensions
+                self._convert_buffer = np.empty((h, w, 3), dtype=np.uint8)
+        
+        # Bit shift buffer (for RAW formats with >8 bit depth)
+        if self._needs_bit_depth_conversion:
+            self._bitshift_buffer = np.empty((h, w, 3), dtype=np.uint8)
+        
+        # Resize buffer (when ISP can't scale or for RAW)
+        if self._needs_cpu_resize:
+            self._resize_buffer = np.empty(
+                (self._output_height, self._output_width, 3), 
+                dtype=np.uint8
+            )
+        
+        # Flip mode 5 needs intermediate buffer
+        if self._needs_cpu_flip and self._flip_method == 5:
+            self._flip5_buffer = np.empty((w, h, 3), dtype=np.uint8)  # Note: transposed dimensions
+            
     # ------------------------------------------------------------------
     # Open / Close
     # ------------------------------------------------------------------
 
     def open_cam(self) -> bool:
-        """Open and configure the Picamera2 camera.
+        """Open and configure the Picamera2 camera with optimized ISP usage.
 
-        This method configures the requested stream (main/raw), applies
-        transform where possible, starts the camera, and sets initial controls.
-        Logging is sent to the optional queue passed as `log_queue`.
+        This method configures the requested stream (main/raw), uses ISP hardware
+        for format conversion, scaling, and transforms when possible, and only
+        falls back to CPU processing when necessary (e.g., RAW debayering).
         """
 
         # Always clear buffer before (re)opening
         self._buffer = None
+        
+        # Clear processing buffers
+        self._convert_buffer = None
+        self._bitshift_buffer = None
+        self._resize_buffer = None
+        self._flip5_buffer = None
 
         # Synthetic/test-pattern mode: open without Picamera2 installed.
         # ----------------------------------------------------------------------------
@@ -387,30 +463,21 @@ class PiCamera2Core:
                 self.picam2 = None
                 self.cam_open = True
 
-                # Behave like a normal main-stream capture, but without Picamera2.
-                # Critically: generate frames in the *configured main format* so
-                # wrapper-level convert() has the same shape/dtype to work with
-                # as in the real camera path.
                 self._stream_name = "main"
 
                 req = str(self._requested_format or self._fourcc or "").upper()
                 pfmt = self._main_format or req
                 mapped = self._map_fourcc_format(pfmt) or "BGR888"
 
-                # Keep synthetic output in a format we can actually represent as a numpy array
-                # and that our convert() helper knows how to handle.
                 if self._is_raw_format(mapped):
                     mapped = "BGR888"
                 if mapped not in self._supported_main_color_formats():
                     mapped = "BGR888"
-
-                # MJPEG is compressed; do not attempt to synthesize it.
                 if mapped == "MJPEG":
                     mapped = "BGR888"
 
                 self._set_color_format(mapped)
                 self._needs_cpu_resize = False
-                # Exercise CPU flip path if requested.
                 self._needs_cpu_flip = bool(self._flip_method != 0)
 
                 # Reset pacing state
@@ -461,7 +528,6 @@ class PiCamera2Core:
                 elif self._is_raw_format(req):
                     rf = req
                 else:
-                    # User didn't specify a valid raw format
                     rf = "SRGGB8"  # Default fallback
                     self._log(logging.INFO, f"PiCam2:No valid RAW format specified; defaulting to {rf}")
         
@@ -491,93 +557,88 @@ class PiCamera2Core:
                         f"PiCam2:RAW sensor selection policy={self._stream_policy} requested={req_str} selected={sel_str} fps~{selected_raw['fps']}",
                     )
                 picam_format = rf
+                self._set_color_format(picam_format)
 
             # Main stream selection ---------------------------------------
             else:
                 self._stream_name = "main"
-                pfmt = self._main_format or req
-                mapped = self._map_fourcc_format(pfmt) or "BGR888"
+                
+                # Determine target format - prefer convert_format if set, otherwise main_format
+                target_format = self._convert_format or self._main_format or req
+                mapped = self._map_fourcc_format(target_format) or "BGR888"
+                
                 if mapped not in self.get_supported_main_color_formats():
                     self._log(
                         logging.INFO,
                         f"PiCam2:Main format '{mapped}' is not in common formats list; falling back to BGR888."
                     )
-                    self._log(logging.INFO, "PiCam2:For raw formats and resolutions, run examples/list_Picamera2Properties.py")
                     mapped = "BGR888"
+                
                 picam_format = mapped
+                self._set_color_format(picam_format)
 
-            # Set color format ------------------------------------------
-            self._set_color_format(picam_format)
-            picam_format = self._format or picam_format
-
-            if (self._output_width > 0) and (self._output_height > 0):
-                main_size = (self._output_width, self._output_height)
+            # Determine target size for main stream
+            # ----------------------------------------------------------------------------
+            if self._stream_name == "main":
+                # For main stream, use output_res if specified, otherwise camera_res
+                if (self._output_width > 0) and (self._output_height > 0):
+                    target_size = (self._output_width, self._output_height)
+                else:
+                    target_size = (self._capture_width, self._capture_height)
             else:
-                main_size = (self._capture_width, self._capture_height)
+                # For raw stream, always use the sensor mode size
+                target_size = (self._capture_width, self._capture_height)
 
             # Set up transform if requested
+            # ----------------------------------------------------------------------------
             transform = None
+            transform_applied = False
             if self._hw_transform and (self._flip_method != 0):
                 try:
                     from libcamera import Transform  # type: ignore
-
                     transform = self._flip_to_transform(self._flip_method, Transform)
+                    if transform is not None:
+                        transform_applied = True
                 except Exception:
                     transform = None
 
-            transform_applied = transform is not None and self._flip_method != 0
-            self._needs_cpu_flip = (self._flip_method != 0) and (not transform_applied) and (not self._is_yuv420)
-
-            # Create configuration ----------------------------------
-            config = None
+            # Prepare frame duration controls
+            # ----------------------------------------------------------------------------
             try:
+                fr = float(self._framerate or 0.0)
+            except Exception:
+                fr = 0.0
 
-                # Prefer FrameDurationLimits over FrameRate.
-
+            cfg_controls: dict[str, object] = {}
+            if fr > 0.0:
                 try:
-                    fr = float(self._framerate or 0.0)
+                    frame_us = int(round(1_000_000.0 / fr))
+                    if frame_us > 0:
+                        cfg_controls["FrameDurationLimits"] = (frame_us, frame_us)
                 except Exception:
-                    fr = 0.0
+                    cfg_controls = {"FrameRate": fr}
 
-                cfg_controls: dict[str, object] = {}
-                if fr > 0.0:
-                    try:
-                        frame_us = int(round(1_000_000.0 / fr))
-                        if frame_us > 0:
-                            cfg_controls["FrameDurationLimits"] = (frame_us, frame_us)
-                    except Exception:
-                        # Best-effort: fall back to FrameRate if limits calc fails.
-                        cfg_controls = {"FrameRate": fr}
-
-                # Configure sensor mode for Main/Preview
-
-                selected_main_sensor = None
-                if self._stream_name == "main":
-                    try:
-                        # Your helper already exists; previously it was never used here.
-                        selected_main_sensor = self._select_main_sensor_mode(desired_size=main_size)
-                    except Exception:
-                        selected_main_sensor = None
-
+            # Sensor mode selection for main stream
+            # ----------------------------------------------------------------------------
+            sensor_cfg = None
+            if self._stream_name == "main":
+                try:
+                    selected_main_sensor = self._select_main_sensor_mode(desired_size=target_size)
                     if selected_main_sensor is not None:
-                        # Picamera2 (Bookworm+) expects: sensor={'output_size': (w,h), 'bit_depth': N}
-                        sensor_cfg: dict[str, object] = {"output_size": tuple(selected_main_sensor["size"])}
-
-                        # If your mode dict includes bit_depth, pass it; otherwise skip (best-effort).
-                        bd = selected_main_sensor.get("bit_depth") if isinstance(selected_main_sensor, dict) else None
+                        sensor_cfg = {"output_size": tuple(selected_main_sensor["size"])}
+                        
+                        bd = selected_main_sensor.get("bit_depth")
                         if bd is not None:
                             try:
                                 sensor_cfg["bit_depth"] = int(bd)
                             except Exception:
                                 pass
-
-                        # If your mode dict includes fps, log it (helps verify selection at runtime).
-                        fps_est = selected_main_sensor.get("fps") if isinstance(selected_main_sensor, dict) else None
-
+                        
+                        fps_est = selected_main_sensor.get("fps")
                         self._log(
                             logging.INFO,
                             f"PiCam2:MAIN sensor selection policy={self._stream_policy} "
-                            f"desired_main={main_size[0]}x{main_size[1]} "
+                            f"desired_main={target_size[0]}x{target_size[1]} "
                             f"selected_sensor={sensor_cfg.get('output_size')} bit_depth={sensor_cfg.get('bit_depth', 'n/a')} "
                             f"fps~{fps_est}",
                         )
@@ -585,139 +646,195 @@ class PiCamera2Core:
                         self._log(
                             logging.INFO,
                             f"PiCam2:MAIN sensor selection policy={self._stream_policy} "
-                            f"desired_main={main_size[0]}x{main_size[1]} selected_sensor=None (libcamera will choose)",
+                            f"desired_main={target_size[0]}x{target_size[1]} selected_sensor=None (libcamera will choose)",
                         )
+                except Exception:
+                    sensor_cfg = None
 
-                if self._stream_name == "raw":
-                    picam_kwargs = dict(raw={"size": raw_size, "format": picam_format}, controls=cfg_controls)
-                else:
-                    picam_kwargs = dict(main={"size": main_size, "format": picam_format}, controls=cfg_controls)
-
-                    # Apply selected main sensor
-                    if selected_main_sensor is not None:
-                        # Only add sensor config if we built one above
-                        try:
-                            sensor_cfg  # type: ignore[name-defined]
-                            picam_kwargs["sensor"] = sensor_cfg
-                        except Exception:
-                            pass
-                        
-                # Buffer count
-                buffer_count = self._buffer_count
-                if buffer_count is None and self._low_latency:
-                    buffer_count = 3
-                if buffer_count is not None:
-                    try:
+            # Buffer count
+            # ----------------------------------------------------------------------------
+            buffer_count = self._buffer_count
+            if buffer_count is None and self._low_latency:
+                buffer_count = 3
+            
+            # Create configuration
+            # ----------------------------------------------------------------------------
+            config = None
+            
+            # TRY 1: Optimal configuration - let ISP do all the work
+            # ----------------------------------------------------------------------------
+            if self._stream_name == "main":
+                try:
+                    picam_kwargs = {
+                        "main": {"size": target_size, "format": picam_format},
+                        "controls": cfg_controls
+                    }
+                    
+                    if buffer_count is not None:
                         picam_kwargs["buffer_count"] = int(buffer_count)
-                    except Exception:
-                        pass
-
-                # Transform
-                if transform is not None:
-                    picam_kwargs["transform"] = transform
-
-                # Create config <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-                config = self.picam2.create_video_configuration(**picam_kwargs)
-
-            except Exception:
-                if self._stream_name == "raw":
+                    
+                    if transform is not None:
+                        picam_kwargs["transform"] = transform
+                    
+                    if sensor_cfg is not None:
+                        picam_kwargs["sensor"] = sensor_cfg
+                    
+                    config = self.picam2.create_video_configuration(**picam_kwargs)
+                    
+                    # SUCCESS: ISP will handle format, scaling, and transform!
+                    self._needs_cpu_resize = False
+                    self._needs_cpu_flip = False
+                    self._cv2_conversion_code = None
+                    self._needs_drop_alpha = False
+                    self._needs_bit_depth_conversion = False
+                    
+                    # Update actual capture dimensions to match ISP output
+                    self._capture_width = target_size[0]
+                    self._capture_height = target_size[1]
+                    
+                    self._log(
+                        logging.INFO,
+                        f"PiCam2:ISP configuration successful - hardware will handle format={picam_format}, "
+                        f"size={target_size}, transform={transform_applied}"
+                    )
+                    
+                except Exception as exc:
+                    self._log(logging.WARNING, f"PiCam2:ISP optimal config failed: {exc}, trying fallback")
+                    config = None
+            
+            # RAW stream configuration
+            # ----------------------------------------------------------------------------
+            elif self._stream_name == "raw":
+                try:
+                    picam_kwargs = {
+                        "raw": {"size": raw_size, "format": picam_format},
+                        "controls": cfg_controls
+                    }
+                    
+                    if buffer_count is not None:
+                        picam_kwargs["buffer_count"] = int(buffer_count)
+                    
+                    if transform is not None:
+                        picam_kwargs["transform"] = transform
+                    
+                    config = self.picam2.create_video_configuration(**picam_kwargs)
+                    
+                    # RAW always needs CPU processing for debayering
+                    self._needs_cpu_resize = (self._output_width > 0 and self._output_height > 0)
+                    self._needs_cpu_flip = (self._flip_method != 0) and (not transform_applied)
+                    
+                    # Update conversion settings for RAW
+                    self._update_conversion_settings()
+                    
+                except Exception:
+                    # Fallback for RAW
                     for fmt in ("SRGGB8", "SRGGB10_CSI2P"):
                         try:
-                            picam_kwargs = dict(raw={"size": raw_size, "format": fmt}, controls=cfg_controls)
+                            picam_kwargs = {"raw": {"size": raw_size, "format": fmt}, "controls": cfg_controls}
                             if transform is not None:
                                 picam_kwargs["transform"] = transform
                             config = self.picam2.create_video_configuration(**picam_kwargs)
                             self._set_color_format(fmt)
-                            break
-                        except Exception:
-                            continue
-                if config is None:
-                    for fmt in ("BGR888", "RGB888"):
-                        try:
-                            picam_kwargs = dict(main={"size": main_size, "format": fmt}, controls=cfg_controls)
-                            if transform is not None:
-                                picam_kwargs["transform"] = transform
-                            config = self.picam2.create_video_configuration(**picam_kwargs)
-                            self._set_color_format(fmt)
-                            self._stream_name = "main"
+                            self._update_conversion_settings()
                             break
                         except Exception:
                             continue
 
-                # Final fallback: drop controls entirely if the platform rejects
-                # the requested timing control at configuration time.
-                if config is None:
+            # FALLBACK 1: Try common main formats if initial config failed
+            # ----------------------------------------------------------------------------
+            if config is None and self._stream_name == "main":
+                for fmt in ("BGR888", "RGB888"):
                     try:
-                        if self._stream_name == "raw":
-                            picam_kwargs = dict(raw={"size": raw_size, "format": picam_format}, controls={})
-                        else:
-                            picam_kwargs = dict(main={"size": main_size, "format": picam_format}, controls={})
+                        picam_kwargs = {
+                            "main": {"size": target_size, "format": fmt},
+                            "controls": cfg_controls
+                        }
                         if transform is not None:
                             picam_kwargs["transform"] = transform
+                        if buffer_count is not None:
+                            picam_kwargs["buffer_count"] = int(buffer_count)
+                        
                         config = self.picam2.create_video_configuration(**picam_kwargs)
+                        
+                        self._set_color_format(fmt)
+                        self._needs_cpu_resize = False
+                        self._needs_cpu_flip = False
+                        self._cv2_conversion_code = None
+                        self._needs_drop_alpha = False
+                        self._needs_bit_depth_conversion = False
+                        
+                        self._capture_width = target_size[0]
+                        self._capture_height = target_size[1]
+                        
+                        self._log(logging.INFO, f"PiCam2:Fallback to {fmt} successful")
+                        break
                     except Exception:
-                        pass
+                        continue
 
-            # Apply configuration -------------------------------------
+            # FALLBACK 2: Drop controls entirely if platform rejects timing controls
+            # ----------------------------------------------------------------------------
+            if config is None:
+                try:
+                    if self._stream_name == "raw":
+                        picam_kwargs = {"raw": {"size": raw_size, "format": picam_format}, "controls": {}}
+                    else:
+                        picam_kwargs = {"main": {"size": target_size, "format": picam_format}, "controls": {}}
+                    
+                    if transform is not None:
+                        picam_kwargs["transform"] = transform
+                    if buffer_count is not None:
+                        picam_kwargs["buffer_count"] = int(buffer_count)
+                    
+                    config = self.picam2.create_video_configuration(**picam_kwargs)
+                    
+                    self._log(logging.WARNING, "PiCam2:Had to drop timing controls to create configuration")
+                except Exception as exc:
+                    self._log(logging.CRITICAL, f"PiCam2:All configuration attempts failed: {exc}")
+                    self.picam2 = None
+                    self.cam_open = False
+                    return False
+
+            # Apply configuration
+            # ----------------------------------------------------------------------------
             self.picam2.configure(config)
 
-
-            # Apply camera controls ----------------------------------
-
-            self._needs_cpu_resize = (
-                (self._stream_name == "raw")
-                and (self._output_width > 0)
-                and (self._output_height > 0)
-                and (not self._is_yuv420)
-            )
-
+            # Build camera controls
+            # ----------------------------------------------------------------------------
             controls = {}
 
-            if self._stream_name == "main":
-                # Default behavior prefers full-FOV crop for the processed stream.
-                # For `stream_policy=maximize_fps`, avoid forcing full-FOV because it can
-                # prevent libcamera from selecting higher-FPS windowed sensor modes.
+            # ScalerCrop for main stream (maximize FOV unless policy is maximize_fps)
+            if self._stream_name == "main" and self._stream_policy != "maximize_fps":
+                try:
+                    props = getattr(self.picam2, "camera_properties", {})
+                    crop_rect = None
+                    paa = None
+                    if isinstance(props, dict):
+                        paa = props.get("PixelArrayActiveAreas") or props.get("ActiveArea")
+                    if paa:
+                        rect = paa[0] if isinstance(paa, (list, tuple)) and len(paa) > 0 else paa
+                        if isinstance(rect, (list, tuple)) and len(rect) == 4:
+                            crop_rect = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+                    if crop_rect is None:
+                        pas = props.get("PixelArraySize") if isinstance(props, dict) else None
+                        if isinstance(pas, (list, tuple)) and len(pas) == 2:
+                            crop_rect = (0, 0, int(pas[0]), int(pas[1]))
+                    if crop_rect is not None:
+                        controls["ScalerCrop"] = crop_rect
+                except Exception:
+                    pass
 
-                if self._stream_policy != "maximize_fps":
-                    try:
-                        props = getattr(self.picam2, "camera_properties", {})
-                        crop_rect = None
-                        paa = None
-                        if isinstance(props, dict):
-                            paa = props.get("PixelArrayActiveAreas") or props.get("ActiveArea")
-                        if paa:
-                            rect = None
-                            if isinstance(paa, (list, tuple)):
-                                rect = paa[0] if len(paa) > 0 else None
-                            else:
-                                rect = paa
-                            if isinstance(rect, (list, tuple)) and len(rect) == 4:
-                                crop_rect = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
-                        if crop_rect is None:
-                            pas = props.get("PixelArraySize") if isinstance(props, dict) else None
-                            if isinstance(pas, (list, tuple)) and len(pas) == 2:
-                                crop_rect = (0, 0, int(pas[0]), int(pas[1]))
-                        if crop_rect is not None:
-                            controls["ScalerCrop"] = crop_rect
-                    except Exception:
-                        pass
-
+            # Exposure controls
             exposure  = self._exposure
             autoexp   = self._autoexposure
             autowb    = self._autowb
 
-            # Apply exposure controls
             manual_requested = exposure is not None and exposure > 0
             if manual_requested:
                 controls["AeEnable"] = False
                 controls["ExposureTime"] = int(exposure)
             else:
-                if autoexp is None or autoexp == -1:
-                    pass
-                elif autoexp > 0:
-                    controls["AeEnable"] = True
-                else:
-                    controls["AeEnable"] = False
+                if autoexp is not None and autoexp != -1:
+                    controls["AeEnable"] = bool(autoexp)
 
             try:
                 cfg_meter = self._configs.get("aemeteringmode", 0)
@@ -726,10 +843,8 @@ class PiCamera2Core:
             except Exception:
                 pass
 
-            # Apply AWB controls
-            if autowb is None or autowb == -1:
-                pass
-            else:
+            # AWB controls
+            if autowb is not None and autowb != -1:
                 controls["AwbEnable"] = bool(autowb)
 
             try:
@@ -739,7 +854,8 @@ class PiCamera2Core:
             except Exception:
                 pass
 
-            # Apply controls after start (some pipelines only accept certain controls when running).
+            # Start camera and apply controls
+            # ----------------------------------------------------------------------------
             self.picam2.start()
             self.cam_open = True
 
@@ -748,33 +864,46 @@ class PiCamera2Core:
                 if ok:
                     self._log(logging.INFO, f"PiCam2:Controls set {controls}")
 
-            # One-time informative dump to help validate actual config differences
-            # between direct vs wrapper paths.
+            # Allocate processing buffers based on what CPU processing is needed
+            # ----------------------------------------------------------------------------
+            self._allocate_processing_buffers()
+
+            # Log final configuration summary
             # ----------------------------------------------------------------------------
             try:
                 md = None
                 with self.cam_lock:
                     md = self._capture_metadata()
                 if isinstance(md, dict):
-                    # FrameDuration is typically in microseconds.
                     fd = md.get("FrameDuration")
                     fdl = md.get("FrameDurationLimits")
                     sc = md.get("ScalerCrop")
+                    # Use target_size for both, or check if raw_size exists
+                    if self._stream_name == 'main':
+                        actual_size = target_size
+                    else:
+                        actual_size = (self._capture_width, self._capture_height)  # or raw_size if defined
                     self._log(
                         logging.INFO,
-                        f"PiCam2:Open summary stream={self._stream_name} size={main_size if self._stream_name=='main' else raw_size} fmt={self._format} req_fps={self._framerate} FrameDuration={fd} FrameDurationLimits={fdl} ScalerCrop={sc}",
+                        f"PiCam2:Open summary stream={self._stream_name} size={actual_size} "
+                        f"fmt={self._format} req_fps={self._framerate} "
+                        f"FrameDuration={fd} FrameDurationLimits={fdl} ScalerCrop={sc} "
+                        f"cpu_resize={self._needs_cpu_resize} cpu_flip={self._needs_cpu_flip} "
+                        f"cpu_convert={self._cv2_conversion_code is not None}"
                     )
             except Exception:
                 pass
 
             self._log(logging.INFO, "PiCam2:Camera opened")
-            # Allocate frame buffer after stream is open and size is known (always 3 channel 8-bit)
+            
+            # Allocate frame buffer after stream is open and size is known
             self._buffer = FrameBuffer(
                 capacity    = self._buffer_capacity,
                 frame_shape = (self._capture_height, self._capture_width, 3),
                 dtype       = np.uint8,
                 overwrite   = self._buffer_overwrite
             )
+            
             return True
 
         except Exception as exc:

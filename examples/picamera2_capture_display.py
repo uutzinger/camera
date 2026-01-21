@@ -1,9 +1,9 @@
 ##########################################################################
-# Picamera2 capture + OpenCV display (Raspberry Pi)
+# Picamera2 Capture + Display (Raspberry Pi)
 #
-# Dedicated Picamera2/libcamera demo:
 # - Uses the Picamera2 threaded wrapper
-# - Throttles display rate
+# - Displays frames via OpenCV (no analysis)
+# - Throttles display rate in THIS demo (consumer-side)
 ##########################################################################
 
 from __future__ import annotations
@@ -14,20 +14,37 @@ import time
 
 import cv2
 
+from camera.capture.picamera2capture import piCamera2Capture
 
-def main() -> None:
-    # Optimize OpenCV performance on small CPUs
+
+def setup_opencv() -> None:
+    """Small performance tweaks for OpenCV on low-power devices."""
     cv2.setUseOptimized(True)
     try:
         cv2.setNumThreads(2)
     except Exception:
         pass
 
+
+def display_interval_from_config(configs: dict) -> float:
+    display_fps = float(configs.get("dism:playfps", 0) or 0)
+    capture_fps = float(configs.get("fps", 0) or 0)
+
+    if display_fps <= 0:
+        return 0.0  # no throttling
+    if capture_fps > 0 and display_fps >= 0.8 * capture_fps:
+        return 0.0  # close to capture fps so no throttling
+    return 1.0 / display_fps  # throttled display
+
+
+def main() -> None:
+    setup_opencv()
+
     # Setting up logging
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("PiCamera2 Capture")
 
-    # Silence Picamera2 / libcamera logs; keep only this script's logging output
+    # Silence Picamera2
     os.environ.setdefault("LIBCAMERA_LOG_LEVELS", "*:3")  # 3=ERROR, 2=WARNING, 1=INFO, 0=DEBUG
 
     camera_index = 0
@@ -61,17 +78,11 @@ def main() -> None:
         'displayfps'      : 30              # frame rate for display server
     }
 
-    display_fps  = float(configs.get('displayfps', 0) or 0)
-    capture_fps = float(configs.get('fps', 0) or 0)
-
-    if display_fps <= 0:
-        display_interval = 0.0 # no throttling
-    elif capture_fps > 0 and display_fps >= 0.8 * capture_fps:
-        display_interval = 0.0 # close to capture fps so no throttling
-    else:
-        display_interval = 1.0 / display_fps # throttled display
+    display_interval = display_interval_from_config(configs)
 
     dps_measure_interval = 5.0
+
+    # Display Window Setup
 
     window_name = "Camera"
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -84,11 +95,13 @@ def main() -> None:
 
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
-    # Camera
-    from camera.capture.picamera2capture import piCamera2Capture
+    # Camera Setup
+
     camera = piCamera2Capture(configs, camera_num=camera_index)
     if not camera.cam_open:
         raise RuntimeError("PiCamera2 camera failed to open")
+
+    # Logging Setup
 
     logger.log(logging.INFO, "Getting Images")
     logger.log(
@@ -101,6 +114,8 @@ def main() -> None:
     )
     camera.log_stream_options() # Optional show suggested main options or raw sensor modes
     camera.start()
+
+    # Initialize variables for main loop
 
     last_display = time.perf_counter()
     last_dps_time = last_display
@@ -163,7 +178,6 @@ def main() -> None:
         except Exception:
             pass
         cv2.destroyAllWindows()
-
 
 if __name__ == "__main__":
     main()
