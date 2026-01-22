@@ -136,6 +136,7 @@ def main() -> None:
                 frame, _frame_time = camera.buffer.pull(copy=False)
             else:
                 frame = None
+                time.sleep(0.001)
 
             # Display log
             while not camera.log.empty():
