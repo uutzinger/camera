@@ -96,7 +96,6 @@ else:
     import numpy as np
 
 from .framebuffer import FrameBuffer
-from .picamera2core import PiCamera2Core
 
 try:
     from picamera2 import Picamera2
