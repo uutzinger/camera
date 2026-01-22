@@ -81,16 +81,17 @@ class MainWindow(QMainWindow):
             'camera_res'      : (640, 480),     # requested main stream size (w, h)
             'exposure'        : 0,              # microseconds, 0/-1 for auto
             'fps'             : 60,             # requested capture frame rate
-            'autoexposure'    : 1,              # -1 leave unchanged, 0 AE off, 1 AE on
-            'aemeteringmode'  : 'center',       # int or 'center'|'spot'|'matrix'
-            'autowb'          : 1,              # -1 leave unchanged, 0 AWB off, 1 AWB on
-            'awbmode'         : 'auto',         # int or friendly string
+            'autoexposure'    : -1,             # -1 leave unchanged
+            'aemeteringmode'  : -1,             # -1 leave unchanged
+            'autowb'          : -1,             # -1 leave unchanged
+            'awbmode'         : -1,             # -1 leave unchanged
             # Main stream formats: BGR3 (BGR888), RGB3 (RGB888), YU12 (YUV420), YUY2 (YUYV)
             # Raw stream formats:  SRGGB8, SRGGB10_CSI2P, (see properties script)
-            'format'          : 'BGR3',
+            'format'          : 'BGR888',
             'stream_policy'   : 'default',      # 'default', 'maximize_fps_no_crop', 'maximize_fps_with_crop', 'maximize_fov'
             'low_latency'     : True,           # low_latency=True prefers size-1 buffer (latest frame)
-            'buffersize'      : 4,              # FrameBuffer capacity override (wrapper-level)
+            'buffersize'      : 1,              # FrameBuffer capacity override (wrapper-level)
+            'buffer_overwrite': True,           # overwrite old frames if buffer full
             'output_res'      : (-1, -1),       # (-1,-1): output == input; else libcamera scales main
             'flip'            : 0,              # 0=norotation
             'displayfps'      : 30              # consumer-side display throttle
