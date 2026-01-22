@@ -103,7 +103,77 @@ def _print_camera_config_and_controls(picam2, args, controls) -> None:
     try:
         cam_ctrls = _safe_get(picam2, "camera_controls")
         if isinstance(cam_ctrls, dict) and cam_ctrls:
-            wanted = ["AeEnable", "AeMeteringMode", "AwbEnable", "AwbMode", "ExposureTime", "AnalogueGain"]
+            wanted = [
+                "AeEnable", 
+                "AeMeteringMode", 
+                "AwbEnable", 
+                "AwbMode", 
+                "ExposureTime", 
+                "AnalogueGain"
+                "AeEnable", #
+                "AeExposureMode", #
+                "AeFlickerPeriod",
+                "AeMeteringMode", #
+                "AfMode", #
+                "AnalogueGain", #
+                "AwbEnable", #
+                "AwbMode", #
+                "Brightness", #
+                "ColourGains", #
+                "ColourTemperature", #
+                "Contrast", #
+                "ExposureTime", #
+                "FrameDurationLimits", #
+                "LensPosition", #
+                "NoiseReductionMode", #
+                "Saturation", #
+                "ScalerCrop", #
+                "Sharpness", #
+            ]
+            # # Picamera2 manual Appendix C (controls list).
+            # wanted = [
+            #     "AeConstraintMode", 
+            #     "AeEnable", #
+            #     "AeExposureMode", #
+            #     "AeFlickerMode",
+            #     "AeFlickerPeriod",
+            #     "AeMeteringMode", #
+            #     "AfMetering",
+            #     "AfMode", #
+            #     "AfPause",
+            #     "AfRange",
+            #     "AfSpeed",
+            #     "AfTrigger",
+            #     "AfWindows",
+            #     "AnalogueGain", #
+            #     "AwbEnable", #
+            #     "AwbMode", #
+            #     "Brightness", #
+            #     "ColourCorrectionMatrix",
+            #     "ColourGains", #
+            #     "ColourTemperature", #
+            #     "Contrast", #
+            #     "DigitalGain",
+            #     "ExposureTime", #
+            #     "ExposureValue",
+            #     "FrameDuration",
+            #     "FrameDurationLimits", #
+            #     "HdrChannel",
+            #     "HdrMode",
+            #     "LensPosition", #
+            #     "Lux",
+            #     "NoiseReductionMode", #
+            #     "Saturation", #
+            #     "ScalerCrop", #
+            #     "SensorBlackLevels",
+            #     "SensorSensitivity",
+            #     "SensorTimestamp",
+            #     "Sharpness", #
+            #     "SyncFrames",
+            #     "SyncMode",
+            #     "SyncReady",
+            #     "SyncTimer",
+            # ]
             defaults = {}
             for k in wanted:
                 v = cam_ctrls.get(k)
@@ -352,12 +422,15 @@ Controls set: {'FrameDurationLimits': (16667, 16667)}
 === camera configuration ===
 Requested: mode=main size=(640, 480) format=BGR888 fps=60.0 stream_policy=default low_latency=False flip=0
 Requested controls: {'FrameDurationLimits': (16667, 16667)}
+last set controls: {'FrameDurationLimits': (16667, 16667)}
 camera_configuration: {'use_case': 'video', 'transform': <libcamera.Transform 'identity'>, 'colour_space': <libcamera.ColorSpace 'SMPTE170M'>, 'buffer_count': 6, 'queue': True, 'main': {'format': 'BGR888', 'size': (640, 480), 'preserve_ar': True, 'stride': 1920, 'framesize': 921600}, 'lores': None, 'raw': {'format': 'GBRG_PISP_COMP1', 'size': (640, 480), 'stride': 640, 'framesize': 307200}, 'controls': {'NoiseReductionMode': <NoiseReductionModeEnum.Fast: 1>, 'FrameDurationLimits': (16667, 16667)}, 'sensor': {'bit_depth': 10, 'output_size': (640, 480)}, 'display': 'main', 'encode': 'main'}
+configured controls: {'NoiseReductionMode': <NoiseReductionModeEnum.Fast: 1>, 'FrameDurationLimits': (16667, 16667)}
 camera_properties: {'Model': 'ov5647', 'UnitCellSize': (1400, 1400), 'Location': 2, 'Rotation': 0, 'ColorFilterArrangement': 2, 'PixelArraySize': (2592, 1944), 'PixelArrayActiveAreas': [(16, 6, 2592, 1944)], 'ScalerCropMaximum': (16, 0, 2560, 1920), 'SystemDevices': (20752, 20753, 20754, 20755, 20756, 20757, 20758, 20739, 20740, 20741, 20742), 'SensorSensitivity': 1.0}
-metadata: FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920) AeEnable=None ExposureTime=16836
-FPS (last 2.00s): 67.96 | frames=136
-FPS (last 2.01s): 67.51 | frames=272
-FPS (last 2.00s): 67.49 | frames=407
-FPS (last 2.01s): 67.53 | frames=543
-Total: 645 frames in 9.56s => 67.48 FPS
+camera_controls defaults (subset): {'AeEnable': (False, True, True), 'AeMeteringMode': (0, 3, 0), 'AwbEnable': (False, True, None), 'AwbMode': (0, 7, 0), 'ExposureTime': (134, 4879289, 20000), 'AnalogueGain': (1.0, 63.9375, 1.0)}
+metadata: FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920) AeEnable=None ExposureTime=16836 AwbEnable=None AwbMode=None AeMeteringMode=None AnalogueGain=8.0
+FPS (last 2.00s): 67.95 | frames=136
+FPS (last 2.00s): 67.41 | frames=271
+FPS (last 2.01s): 67.57 | frames=407
+FPS (last 2.00s): 67.45 | frames=542
+Total: 617 frames in 9.15s => 67.46 FPS
 """
