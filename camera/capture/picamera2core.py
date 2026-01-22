@@ -1409,12 +1409,13 @@ class PiCamera2Core:
                 exp = md.get("ExposureTime", None)
                 self._log(
                     logging.INFO,
-                    "PiCam2:metadata FrameDuration=%s FrameDurationLimits=%s ScalerCrop=%s AeEnable=%s ExposureTime=%s",
-                    fd,
-                    fdl,
-                    sc,
-                    ae,
-                    exp,
+                    "PiCam2:metadata FrameDuration={} FrameDurationLimits={} ScalerCrop={} AeEnable={} ExposureTime={}".format(
+                        fd,
+                        fdl,
+                        sc,
+                        ae,
+                        exp,
+                    ),
                 )
         except Exception as exc:
             self._log(logging.INFO, f"PiCam2:capture_metadata unavailable ({exc})")
