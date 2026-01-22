@@ -87,8 +87,13 @@ def main() -> None:
 
             # Drain all pending frames so the consumer doesn't fall behind.
             # Use copy=False to avoid extra memcpy overhead in the consumer.
-            while camera.buffer.avail > 0:
-                frame, _ts_ms = camera.buffer.pull(copy=False)
+            if camera.buffer.avail > 0:
+                # Use copy=False to avoid extra memcpy; we copy only when displaying.
+                frame, _frame_time = camera.buffer.pull(copy=False)
+            else:
+                frame = None
+                time.sleep(0.001)
+
 
             # display log
             while not camera.log.empty():
