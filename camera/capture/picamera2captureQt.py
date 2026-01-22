@@ -790,6 +790,20 @@ class piCamera2CaptureQt(QObject):
                 pass
             time.sleep(0.2)  # Adjust as needed for log responsiveness
 
+    def log_camera_config_and_controls(self) -> None:
+        """Log current camera configuration and key timing/AE controls."""
+        try:
+            fn = getattr(self._core, "log_camera_config_and_controls", None)
+            if callable(fn):
+                fn()
+                return
+        except Exception:
+            pass
+        try:
+            self.log.emit(logging.WARNING, "PiCam2:log_camera_config_and_controls not available")
+        except Exception:
+            pass
+
     def __getattr__(self, name: str):
         """Convenience: delegate unknown attributes to the core."""
         return getattr(self._core, name)

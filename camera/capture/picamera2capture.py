@@ -471,6 +471,21 @@ class piCamera2Capture:
             pass
 
     def log_camera_config_and_controls(self) -> None:
+        """Log current camera configuration and key timing/AE controls."""
+        try:
+            fn = getattr(self._core, "log_camera_config_and_controls", None)
+            if callable(fn):
+                fn()
+                return
+        except Exception:
+            pass
+        try:
+            if not self.log.full():
+                self.log.put_nowait((logging.WARNING, "PiCam2:log_camera_config_and_controls not available"))
+        except Exception:
+            pass
+
+    def log_camera_config_and_controls(self) -> None:
         """Emit current camera configuration and controls via the `log` queue."""
         try:
             self._core.log_camera_config_and_controls()
