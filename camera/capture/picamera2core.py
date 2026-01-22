@@ -1345,6 +1345,79 @@ class PiCamera2Core:
             import sys
             print(f"[LOG-{level}] {msg}", file=sys.stderr)
 
+    def log_camera_config_and_controls(self) -> None:
+        """Log current camera configuration and key timing/AE controls."""
+        self._log(logging.INFO, "PiCam2:=== camera configuration ===")
+        try:
+            self._log(
+                logging.INFO,
+                "PiCam2:Requested mode=%s camera_res=%s output_res=%s format=%s fps=%s stream_policy=%s low_latency=%s flip=%s",
+                self._mode,
+                self._camera_res,
+                self._output_res,
+                self._requested_format or self._main_format,
+                self._framerate,
+                self._stream_policy,
+                self._low_latency,
+                self._flip_method,
+            )
+        except Exception:
+            pass
+        try:
+            self._log(
+                logging.INFO,
+                "PiCam2:Requested controls exposure=%s autoexposure=%s aemeteringmode=%s autowb=%s awbmode=%s",
+                self._exposure,
+                self._autoexposure,
+                self._configs.get("aemeteringmode", None),
+                self._autowb,
+                self._configs.get("awbmode", None),
+            )
+        except Exception:
+            pass
+
+        # Camera configuration / properties (best-effort)
+        try:
+            if self.picam2 is not None:
+                cfg_fn = getattr(self.picam2, "camera_configuration", None)
+                if callable(cfg_fn):
+                    cfg_now = cfg_fn()
+                    self._log(logging.INFO, f"PiCam2:camera_configuration={cfg_now}")
+        except Exception as exc:
+            self._log(logging.INFO, f"PiCam2:camera_configuration unavailable ({exc})")
+
+        try:
+            if self.picam2 is not None:
+                props = getattr(self.picam2, "camera_properties", None)
+                if props is not None:
+                    self._log(logging.INFO, f"PiCam2:camera_properties={props}")
+        except Exception:
+            pass
+
+        # Timing-related metadata
+        try:
+            md = {}
+            if self.picam2 is not None:
+                with self.cam_lock:
+                    md = self._capture_metadata()
+            if isinstance(md, dict) and md:
+                fd = md.get("FrameDuration")
+                fdl = md.get("FrameDurationLimits")
+                sc = md.get("ScalerCrop")
+                ae = md.get("AeEnable", None)
+                exp = md.get("ExposureTime", None)
+                self._log(
+                    logging.INFO,
+                    "PiCam2:metadata FrameDuration=%s FrameDurationLimits=%s ScalerCrop=%s AeEnable=%s ExposureTime=%s",
+                    fd,
+                    fdl,
+                    sc,
+                    ae,
+                    exp,
+                )
+        except Exception as exc:
+            self._log(logging.INFO, f"PiCam2:capture_metadata unavailable ({exc})")
+
     # Control and Format helpers
     # --------------------------
 

@@ -470,6 +470,13 @@ class piCamera2Capture:
         except Exception:
             pass
 
+    def log_camera_config_and_controls(self) -> None:
+        """Emit current camera configuration and controls via the `log` queue."""
+        try:
+            self._core.log_camera_config_and_controls()
+        except Exception:
+            pass
+
     def get_control(self, name: str):
         try:
             return self._core.get_control(name)

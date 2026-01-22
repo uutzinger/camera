@@ -27,7 +27,7 @@ def setup_opencv() -> None:
 
 
 def display_interval_from_config(configs: dict) -> float:
-    display_fps = float(configs.get("dism:playfps", 0) or 0)
+    display_fps = float(configs.get("displayfps", 0) or 0)
     capture_fps = float(configs.get("fps", 0) or 0)
 
     if display_fps <= 0:
@@ -70,8 +70,8 @@ def main() -> None:
         # Main stream formats: BGR3 (BGR888), RGB3 (RGB888), YU12 (YUV420), YUY2 (YUYV)
         # Raw stream formats:  SRGGB8, SRGGB10_CSI2P, (see properties script)
         'format'          : 'BGR3',
-        "stream_policy"   : "default",      # 'maximize_fov', 'maximize_fps', 'default'
-        'low_latency'     : True,           # low_latency=True prefers size-1 buffer (latest frame)
+        "stream_policy"   : "maximize_fps", # 'maximize_fov', 'maximize_fps', 'default'
+        'low_latency'     : False,          # low_latency=True prefers size-1 buffer (latest frame)
         'buffersize'      : 4,              # capture queue size override (wrapper-level)
         'output_res'      : (-1, -1),       # (-1,-1): output == input; else libcamera scales main
         'flip'            : 0,              # 0=norotation 
@@ -114,6 +114,10 @@ def main() -> None:
     )
     camera.log_stream_options() # Optional show suggested main options or raw sensor modes
     camera.start()
+    try:
+        camera.log_camera_config_and_controls()
+    except Exception:
+        pass
 
     # Initialize variables for main loop
 
@@ -121,6 +125,7 @@ def main() -> None:
     last_dps_time = last_display
     measured_dps = 0.0
     num_frames_displayed = 0
+    logged_camera_controls = False
 
     stop = False
     try:
@@ -143,6 +148,21 @@ def main() -> None:
             delta_display = current_time - last_display
             if (frame is not None) and (delta_display >= display_interval):
                 frame_display = frame.copy()
+                if not logged_camera_controls:
+                    try:
+                        fd = camera.get_control("FrameDuration")
+                        fdl = camera.get_control("FrameDurationLimits")
+                        sc = camera.get_control("ScalerCrop")
+                        logger.log(
+                            logging.INFO,
+                            "Camera controls: FrameDuration=%s FrameDurationLimits=%s ScalerCrop=%s",
+                            fd,
+                            fdl,
+                            sc,
+                        )
+                    except Exception:
+                        pass
+                    logged_camera_controls = True
                 cv2.putText(frame_display, "Capture FPS:{:.1f} [Hz]".format(camera.measured_fps),
                     textLocation0, font, fontScale, fontColor, lineType,
                 )
