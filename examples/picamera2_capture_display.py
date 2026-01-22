@@ -232,8 +232,9 @@ INFO:PiCamera2 Capture:PiCam2:=== camera configuration ===
 INFO:PiCamera2 Capture:PiCam2:Requested mode=main camera_res=(640, 480) output_res=(-1, -1) format=BGR3 fps=60 stream_policy=maximize_fps low_latency=False flip=0
 INFO:PiCamera2 Capture:PiCam2:Requested controls exposure=0 autoexposure=1 aemeteringmode=center autowb=1 awbmode=auto
 INFO:PiCamera2 Capture:PiCam2:camera_configuration={'use_case': 'video', 'transform': <libcamera.Transform 'identity'>, 'colour_space': <libcamera.ColorSpace 'SMPTE170M'>, 'buffer_count': 6, 'queue': True, 'main': {'format': 'BGR888', 'size': (640, 480), 'preserve_ar': True, 'stride': 1920, 'framesize': 921600}, 'lores': None, 'raw': {'format': 'GBRG_PISP_COMP1', 'size': (640, 480), 'stride': 640, 'framesize': 307200}, 'controls': {'NoiseReductionMode': <NoiseReductionModeEnum.Fast: 1>, 'FrameDurationLimits': (16667, 16667)}, 'sensor': {'bit_depth': 10, 'output_size': (640, 480)}, 'display': 'main', 'encode': 'main'}
+INFO:PiCamera2 Capture:PiCam2:configured controls={'NoiseReductionMode': <NoiseReductionModeEnum.Fast: 1>, 'FrameDurationLimits': (16667, 16667)}
 INFO:PiCamera2 Capture:PiCam2:camera_properties={'Model': 'ov5647', 'UnitCellSize': (1400, 1400), 'Location': 2, 'Rotation': 0, 'ColorFilterArrangement': 2, 'PixelArraySize': (2592, 1944), 'PixelArrayActiveAreas': [(16, 6, 2592, 1944)], 'ScalerCropMaximum': (16, 0, 2560, 1920), 'SystemDevices': (20752, 20753, 20754, 20755, 20756, 20757, 20758, 20739, 20740, 20741, 20742), 'SensorSensitivity': 1.0}
-INFO:PiCamera2 Capture:PiCam2:metadata FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920) AeEnable=None ExposureTime=16836
+INFO:PiCamera2 Capture:PiCam2:metadata FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920) AeEnable=None ExposureTime=16836 AwbEnable=None AwbMode=None AeMeteringMode=None AnalogueGain=7.5
 INFO:PiCamera2 Capture:Camera controls: FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920)
 INFO:picamera2.picamera2:Camera stopped
 INFO:picamera2.picamera2:Camera closed successfully.

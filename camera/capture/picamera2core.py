@@ -254,6 +254,7 @@ class PiCamera2Core:
         self.cam_open = False
         self._metadata: dict | None = None
         self._last_metadata: dict | None = None
+        self._last_set_controls: dict | None = None
 
         # Conversion caching
         self._convert_format = "BGR888"  # Default target format
@@ -1394,6 +1395,41 @@ class PiCamera2Core:
             self._log(logging.INFO, f"PiCam2:camera_configuration unavailable ({exc})")
 
         try:
+            if self._last_set_controls:
+                self._log(logging.INFO, f"PiCam2:last set_controls={self._last_set_controls}")
+        except Exception:
+            pass
+
+        # Best-effort readback of current controls (if supported by Picamera2 build)
+        try:
+            if self.picam2 is not None:
+                get_controls = getattr(self.picam2, "get_controls", None)
+                cam_ctrls = getattr(self.picam2, "camera_controls", None)
+                if callable(get_controls):
+                    if isinstance(cam_ctrls, dict) and cam_ctrls:
+                        names = list(cam_ctrls.keys())
+                    else:
+                        names = [
+                            "FrameDuration",
+                            "FrameDurationLimits",
+                            "ScalerCrop",
+                            "AeEnable",
+                            "AeMeteringMode",
+                            "ExposureTime",
+                            "AnalogueGain",
+                            "AwbEnable",
+                            "AwbMode",
+                        ]
+                    try:
+                        current = get_controls(names)
+                    except Exception:
+                        current = get_controls()
+                    if isinstance(current, dict) and current:
+                        self._log(logging.INFO, f"PiCam2:readback controls={current}")
+        except Exception:
+            pass
+
+        try:
             if self.picam2 is not None:
                 props = getattr(self.picam2, "camera_properties", None)
                 if props is not None:
@@ -1455,6 +1491,10 @@ class PiCamera2Core:
         try:
             with self.cam_lock:
                 self.picam2.set_controls(controls)
+            try:
+                self._last_set_controls = dict(controls)
+            except Exception:
+                self._last_set_controls = None
             return True
         except Exception as exc:
             self._log(logging.WARNING, f"PiCam2:Failed to set controls {controls}: {exc}")

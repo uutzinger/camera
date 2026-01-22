@@ -53,6 +53,11 @@ def _print_camera_config_and_controls(picam2, args, controls) -> None:
     except Exception:
         pass
     try:
+        if controls:
+            print(f"last set controls: {controls}")
+    except Exception:
+        pass
+    try:
         cfg_now = picam2.camera_configuration()
         print(f"camera_configuration: {cfg_now}")
         try:
@@ -63,6 +68,32 @@ def _print_camera_config_and_controls(picam2, args, controls) -> None:
             pass
     except Exception as exc:
         print(f"camera_configuration unavailable ({exc})")
+    try:
+        get_controls = getattr(picam2, "get_controls", None)
+        cam_ctrls = getattr(picam2, "camera_controls", None)
+        if callable(get_controls):
+            if isinstance(cam_ctrls, dict) and cam_ctrls:
+                names = list(cam_ctrls.keys())
+            else:
+                names = [
+                    "FrameDuration",
+                    "FrameDurationLimits",
+                    "ScalerCrop",
+                    "AeEnable",
+                    "AeMeteringMode",
+                    "ExposureTime",
+                    "AnalogueGain",
+                    "AwbEnable",
+                    "AwbMode",
+                ]
+            try:
+                current = get_controls(names)
+            except Exception:
+                current = get_controls()
+            if isinstance(current, dict) and current:
+                print(f"readback controls: {current}")
+    except Exception:
+        pass
     try:
         props = _safe_get(picam2, "camera_properties")
         if props is not None:
