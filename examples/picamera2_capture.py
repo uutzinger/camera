@@ -82,18 +82,18 @@ def main() -> None:
     stop = False
     frame = None
     last_fps_log_time = time.perf_counter()
+    loop_interval = 1./(2.*configs.get("fps", 30))
+
     try:
         while not stop:
 
-            # Drain all pending frames so the consumer doesn't fall behind.
-            # Use copy=False to avoid extra memcpy overhead in the consumer.
+            now = time.perf_counter()
+
             if camera.buffer.avail > 0:
-                # Use copy=False to avoid extra memcpy; we copy only when displaying.
-                frame, _frame_time = camera.buffer.pull(copy=False)
+                while camera.buffer.avail > 0:
+                    frame, _frame_time = camera.buffer.pull(copy=False)
             else:
                 frame = None
-                time.sleep(0.001)
-
 
             # display log
             while not camera.log.empty():
@@ -101,12 +101,15 @@ def main() -> None:
                 logger.log(level, "{}".format(msg))
 
             # display fps periodically
-            now = time.perf_counter()
             if now- last_fps_log_time > 5.0:
                 fps = camera.measured_fps
                 if fps is not None:
                     logger.log(logging.INFO, "FPS: %.1f", fps)
                 last_fps_log_time = now
+
+            loop_remaining_time = loop_interval - (time.perf_counter() - now)
+            if loop_remaining_time > 0.:
+                time.sleep(loop_remaining_time)
 
     finally:
         try:

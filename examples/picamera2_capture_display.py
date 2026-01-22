@@ -126,6 +126,8 @@ def main() -> None:
     logged_camera_controls = False
 
     stop = False
+    loop_interval = 1./(2.*configs.get("fps", 30))
+
     try:
         while not stop:
             current_time = time.perf_counter()
@@ -136,7 +138,6 @@ def main() -> None:
                 frame, _frame_time = camera.buffer.pull(copy=False)
             else:
                 frame = None
-                time.sleep(0.001)
 
             # Display log
             while not camera.log.empty():
@@ -188,6 +189,10 @@ def main() -> None:
                 measured_dps = num_frames_displayed / delta_dps
                 num_frames_displayed = 0
                 last_dps_time = current_time
+
+            loop_remaining_time = loop_interval - (time.perf_counter() - current_time)
+            if loop_remaining_time > 0.:
+                time.sleep(loop_remaining_time)
 
     finally:
         try:
