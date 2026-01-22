@@ -1426,6 +1426,14 @@ class PiCamera2Core:
                         current = get_controls()
                     if isinstance(current, dict) and current:
                         self._log(logging.INFO, f"PiCam2:readback controls={current}")
+                else:
+                    self._log(logging.INFO, "PiCam2:readback controls unavailable (get_controls missing)")
+                try:
+                    if isinstance(cam_ctrls, dict) and cam_ctrls:
+                        keys = sorted([str(k) for k in cam_ctrls.keys()])
+                        self._log(logging.INFO, f"PiCam2:available controls ({len(keys)}): {keys}")
+                except Exception:
+                    pass
         except Exception:
             pass
 

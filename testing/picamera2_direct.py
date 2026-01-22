@@ -100,6 +100,18 @@ def _print_camera_config_and_controls(picam2, args, controls) -> None:
             print(f"camera_properties: {props}")
     except Exception:
         pass
+    try:
+        cam_ctrls = _safe_get(picam2, "camera_controls")
+        if isinstance(cam_ctrls, dict) and cam_ctrls:
+            wanted = ["AeEnable", "AeMeteringMode", "AwbEnable", "AwbMode", "ExposureTime", "AnalogueGain"]
+            defaults = {}
+            for k in wanted:
+                v = cam_ctrls.get(k)
+                if v is not None:
+                    defaults[k] = v
+            print(f"camera_controls defaults (subset): {defaults}")
+    except Exception:
+        pass
 
     # Read back timing-related controls/metadata (best-effort)
     try:
