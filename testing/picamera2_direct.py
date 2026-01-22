@@ -55,6 +55,12 @@ def _print_camera_config_and_controls(picam2, args, controls) -> None:
     try:
         cfg_now = picam2.camera_configuration()
         print(f"camera_configuration: {cfg_now}")
+        try:
+            cfg_controls = cfg_now.get("controls") if isinstance(cfg_now, dict) else None
+            if cfg_controls:
+                print(f"configured controls: {cfg_controls}")
+        except Exception:
+            pass
     except Exception as exc:
         print(f"camera_configuration unavailable ({exc})")
     try:
@@ -73,9 +79,14 @@ def _print_camera_config_and_controls(picam2, args, controls) -> None:
             sc = md.get("ScalerCrop")
             ae = md.get("AeEnable", None)
             exp = md.get("ExposureTime", None)
+            awb_en = md.get("AwbEnable", None)
+            awb_mode = md.get("AwbMode", None)
+            ae_meter = md.get("AeMeteringMode", None)
+            gain = md.get("AnalogueGain", None)
             print(
-                "metadata: FrameDuration={} FrameDurationLimits={} ScalerCrop={} AeEnable={} ExposureTime={}".format(
+                "metadata: FrameDuration={} FrameDurationLimits={} ScalerCrop={} AeEnable={} ExposureTime={} AwbEnable={} AwbMode={} AeMeteringMode={} AnalogueGain={}".format(
                     fd, fdl, sc, ae, exp
+                    , awb_en, awb_mode, ae_meter, gain
                 )
             )
     except Exception as exc:

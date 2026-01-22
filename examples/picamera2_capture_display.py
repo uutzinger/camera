@@ -217,8 +217,9 @@ INFO:picamera2.picamera2:Camera started
 INFO:PiCamera2 Capture:Getting Images
 INFO:PiCamera2 Capture:Config: mode=main format=BGR3 camera_res=(640, 480) output_res=(-1, -1)
 INFO:PiCamera2 Capture:PiCam2:MAIN sensor selection policy=maximize_fps desired_main=640x480 selected_sensor=(640, 480) bit_depth=10 fps~58.92
+INFO:PiCamera2 Capture:PiCam2:ISP configuration successful - hardware will handle format=BGR888, size=(640, 480), transform=False
 INFO:PiCamera2 Capture:PiCam2:Controls set {'AeEnable': True, 'AeMeteringMode': 0, 'AwbEnable': True, 'AwbMode': 0}
-INFO:PiCamera2 Capture:PiCam2:Open summary stream=main size=(640, 480) fmt=BGR888 req_fps=60 FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920)
+INFO:PiCamera2 Capture:PiCam2:Open summary stream=main size=(640, 480) fmt=BGR888 req_fps=60 FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920) cpu_resize=False cpu_flip=False cpu_convert=False
 INFO:PiCamera2 Capture:PiCam2:Camera opened
 INFO:PiCamera2 Capture:PiCam2:Main Stream mode 640x480 format=BGR888. Supported main formats: XBGR8888, XRGB8888, RGB888, BGR888, YUV420, YUYV, MJPEG
 INFO:PiCamera2 Capture:PiCam2:Main Stream can scale to arbitrary resolutions; non-native aspect ratios may crop. For raw modes list, run examples/list_Picamera2Properties.py.
@@ -227,9 +228,22 @@ INFO:PiCamera2 Capture:PiCam2:  640x480 -> 640x480 fmt=BGR888 max_fps~58.9 full_
 INFO:PiCamera2 Capture:PiCam2:  1296x972 -> 1296x972 fmt=BGR888 max_fps~46.3 full_fov=False
 INFO:PiCamera2 Capture:PiCam2:  1920x1080 -> 1920x1080 fmt=BGR888 max_fps~32.8 full_fov=False
 INFO:PiCamera2 Capture:PiCam2:  2592x1944 -> 2592x1944 fmt=BGR888 max_fps~15.6 full_fov=True
+INFO:PiCamera2 Capture:PiCam2:=== camera configuration ===
+INFO:PiCamera2 Capture:PiCam2:Requested mode=main camera_res=(640, 480) output_res=(-1, -1) format=BGR3 fps=60 stream_policy=maximize_fps low_latency=False flip=0
+INFO:PiCamera2 Capture:PiCam2:Requested controls exposure=0 autoexposure=1 aemeteringmode=center autowb=1 awbmode=auto
+INFO:PiCamera2 Capture:PiCam2:camera_configuration={'use_case': 'video', 'transform': <libcamera.Transform 'identity'>, 'colour_space': <libcamera.ColorSpace 'SMPTE170M'>, 'buffer_count': 6, 'queue': True, 'main': {'format': 'BGR888', 'size': (640, 480), 'preserve_ar': True, 'stride': 1920, 'framesize': 921600}, 'lores': None, 'raw': {'format': 'GBRG_PISP_COMP1', 'size': (640, 480), 'stride': 640, 'framesize': 307200}, 'controls': {'NoiseReductionMode': <NoiseReductionModeEnum.Fast: 1>, 'FrameDurationLimits': (16667, 16667)}, 'sensor': {'bit_depth': 10, 'output_size': (640, 480)}, 'display': 'main', 'encode': 'main'}
+INFO:PiCamera2 Capture:PiCam2:camera_properties={'Model': 'ov5647', 'UnitCellSize': (1400, 1400), 'Location': 2, 'Rotation': 0, 'ColorFilterArrangement': 2, 'PixelArraySize': (2592, 1944), 'PixelArrayActiveAreas': [(16, 6, 2592, 1944)], 'ScalerCropMaximum': (16, 0, 2560, 1920), 'SystemDevices': (20752, 20753, 20754, 20755, 20756, 20757, 20758, 20739, 20740, 20741, 20742), 'SensorSensitivity': 1.0}
+INFO:PiCamera2 Capture:PiCam2:metadata FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920) AeEnable=None ExposureTime=16836
 INFO:PiCamera2 Capture:Camera controls: FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920)
-INFO:PiCamera2 Capture:PiCam2:Measured capture FPS: 9.9 [Hz]
-INFO:PiCamera2 Capture:PiCam2:Measured capture FPS: 10.8 [Hz]
 INFO:picamera2.picamera2:Camera stopped
 INFO:picamera2.picamera2:Camera closed successfully.
+
+
+=== camera configuration ===
+Requested: mode=main size=(640, 480) format=BGR888 fps=60.0 stream_policy=default low_latency=False flip=0
+Requested controls: {'FrameDurationLimits': (16667, 16667)}
+camera_configuration: {'use_case': 'video', 'transform': <libcamera.Transform 'identity'>, 'colour_space': <libcamera.ColorSpace 'SMPTE170M'>, 'buffer_count': 6, 'queue': True, 'main': {'format': 'BGR888', 'size': (640, 480), 'preserve_ar': True, 'stride': 1920, 'framesize': 921600}, 'lores': None, 'raw': {'format': 'GBRG_PISP_COMP1', 'size': (640, 480), 'stride': 640, 'framesize': 307200}, 'controls': {'NoiseReductionMode': <NoiseReductionModeEnum.Fast: 1>, 'FrameDurationLimits': (16667, 16667)}, 'sensor': {'bit_depth': 10, 'output_size': (640, 480)}, 'display': 'main', 'encode': 'main'}
+camera_properties: {'Model': 'ov5647', 'UnitCellSize': (1400, 1400), 'Location': 2, 'Rotation': 0, 'ColorFilterArrangement': 2, 'PixelArraySize': (2592, 1944), 'PixelArrayActiveAreas': [(16, 6, 2592, 1944)], 'ScalerCropMaximum': (16, 0, 2560, 1920), 'SystemDevices': (20752, 20753, 20754, 20755, 20756, 20757, 20758, 20739, 20740, 20741, 20742), 'SensorSensitivity': 1.0}
+metadata: FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920) AeEnable=None ExposureTime=16836
+
 """

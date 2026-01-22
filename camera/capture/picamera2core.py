@@ -1384,6 +1384,12 @@ class PiCamera2Core:
                 if callable(cfg_fn):
                     cfg_now = cfg_fn()
                     self._log(logging.INFO, f"PiCam2:camera_configuration={cfg_now}")
+                    try:
+                        cfg_controls = cfg_now.get("controls") if isinstance(cfg_now, dict) else None
+                        if cfg_controls:
+                            self._log(logging.INFO, f"PiCam2:configured controls={cfg_controls}")
+                    except Exception:
+                        pass
         except Exception as exc:
             self._log(logging.INFO, f"PiCam2:camera_configuration unavailable ({exc})")
 
@@ -1407,14 +1413,22 @@ class PiCamera2Core:
                 sc = md.get("ScalerCrop")
                 ae = md.get("AeEnable", None)
                 exp = md.get("ExposureTime", None)
+                awb_en = md.get("AwbEnable", None)
+                awb_mode = md.get("AwbMode", None)
+                ae_meter = md.get("AeMeteringMode", None)
+                gain = md.get("AnalogueGain", None)
                 self._log(
                     logging.INFO,
-                    "PiCam2:metadata FrameDuration={} FrameDurationLimits={} ScalerCrop={} AeEnable={} ExposureTime={}".format(
+                    "PiCam2:metadata FrameDuration={} FrameDurationLimits={} ScalerCrop={} AeEnable={} ExposureTime={} AwbEnable={} AwbMode={} AeMeteringMode={} AnalogueGain={}".format(
                         fd,
                         fdl,
                         sc,
                         ae,
                         exp,
+                        awb_en,
+                        awb_mode,
+                        ae_meter,
+                        gain,
                     ),
                 )
         except Exception as exc:
