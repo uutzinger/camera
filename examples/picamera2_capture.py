@@ -81,6 +81,7 @@ def main() -> None:
 
     stop = False
     frame = None
+    last_fps_log_time = time.perf_counter()
     try:
         while not stop:
 
@@ -93,6 +94,14 @@ def main() -> None:
             while not camera.log.empty():
                 (level, msg) = camera.log.get_nowait()
                 logger.log(level, "{}".format(msg))
+
+            # display fps periodically
+            now = time.perf_counter()
+            if now- last_fps_log_time > 5.0:
+                fps = camera.measured_fps
+                if fps is not None:
+                    logger.log(logging.INFO, "FPS: %.1f", fps)
+                last_fps_log_time = now
 
     finally:
         try:
