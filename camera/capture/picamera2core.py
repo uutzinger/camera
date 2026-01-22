@@ -1410,16 +1410,34 @@ class PiCamera2Core:
                         names = list(cam_ctrls.keys())
                     else:
                         names = [
-                            "FrameDuration",
-                            "FrameDurationLimits",
-                            "ScalerCrop",
-                            "AeEnable",
-                            "AeMeteringMode",
-                            "ExposureTime",
-                            "AnalogueGain",
-                            "AwbEnable",
-                            "AwbMode",
+                            "AeEnable", 
+                            "AeMeteringMode", 
+                            "AwbEnable", 
+                            "AwbMode", 
+                            "ExposureTime", 
+                            "AnalogueGain"
+                            "AeEnable", #
+                            "AeExposureMode", #
+                            "AeFlickerPeriod",
+                            "AeMeteringMode", #
+                            "AfMode", #
+                            "AnalogueGain", #
+                            "AwbEnable", #
+                            "AwbMode", #
+                            "Brightness", #
+                            "ColourGains", #
+                            "ColourTemperature", #
+                            "Contrast", #
+                            "ExposureTime", #
+                            "FrameDuration", #
+                            "FrameDurationLimits", #
+                            "LensPosition", #
+                            "NoiseReductionMode", #
+                            "Saturation", #
+                            "ScalerCrop", #
+                            "Sharpness", #
                         ]
+
                     try:
                         current = get_controls(names)
                     except Exception:
