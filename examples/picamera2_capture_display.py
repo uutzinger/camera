@@ -114,10 +114,7 @@ def main() -> None:
     )
     camera.log_stream_options() # Optional show suggested main options or raw sensor modes
     camera.start()
-    try:
-        camera.log_camera_config_and_controls()
-    except Exception:
-        pass
+    camera.log_camera_config_and_controls()
 
     # Initialize variables for main loop
 
@@ -231,8 +228,8 @@ INFO:PiCamera2 Capture:PiCam2:  1296x972 -> 1296x972 fmt=BGR888 max_fps~46.3 ful
 INFO:PiCamera2 Capture:PiCam2:  1920x1080 -> 1920x1080 fmt=BGR888 max_fps~32.8 full_fov=False
 INFO:PiCamera2 Capture:PiCam2:  2592x1944 -> 2592x1944 fmt=BGR888 max_fps~15.6 full_fov=True
 INFO:PiCamera2 Capture:Camera controls: FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920)
-INFO:PiCamera2 Capture:PiCam2:Measured capture FPS: 10.9 [Hz]
-INFO:PiCamera2 Capture:PiCam2:Measured capture FPS: 11.0 [Hz]
+INFO:PiCamera2 Capture:PiCam2:Measured capture FPS: 9.9 [Hz]
+INFO:PiCamera2 Capture:PiCam2:Measured capture FPS: 10.8 [Hz]
 INFO:picamera2.picamera2:Camera stopped
 INFO:picamera2.picamera2:Camera closed successfully.
 """
