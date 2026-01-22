@@ -1351,27 +1351,29 @@ class PiCamera2Core:
         try:
             self._log(
                 logging.INFO,
-                "PiCam2:Requested mode=%s camera_res=%s output_res=%s format=%s fps=%s stream_policy=%s low_latency=%s flip=%s",
-                self._mode,
-                self._camera_res,
-                self._output_res,
-                self._requested_format or self._main_format,
-                self._framerate,
-                self._stream_policy,
-                self._low_latency,
-                self._flip_method,
+                "PiCam2:Requested mode={} camera_res={} output_res={} format={} fps={} stream_policy={} low_latency={} flip={}".format(
+                    self._mode,
+                    self._camera_res,
+                    self._output_res,
+                    self._requested_format or self._main_format,
+                    self._framerate,
+                    self._stream_policy,
+                    self._low_latency,
+                    self._flip_method,
+                ),
             )
         except Exception:
             pass
         try:
             self._log(
                 logging.INFO,
-                "PiCam2:Requested controls exposure=%s autoexposure=%s aemeteringmode=%s autowb=%s awbmode=%s",
-                self._exposure,
-                self._autoexposure,
-                self._configs.get("aemeteringmode", None),
-                self._autowb,
-                self._configs.get("awbmode", None),
+                "PiCam2:Requested controls exposure={} autoexposure={} aemeteringmode={} autowb={} awbmode={}".format(
+                    self._exposure,
+                    self._autoexposure,
+                    self._configs.get("aemeteringmode", None),
+                    self._autowb,
+                    self._configs.get("awbmode", None),
+                ),
             )
         except Exception:
             pass

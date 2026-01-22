@@ -201,3 +201,38 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+""""
+(env) uutzinger@urspi:~/pythonBME210/camera $ python3 examples/picamera2_capture_display.py 
+INFO:picamera2.picamera2:Initialization successful.
+INFO:picamera2.picamera2:Camera now open.
+INFO:picamera2.picamera2:Camera configuration has been adjusted!
+INFO:picamera2.picamera2:Configuration successful!
+INFO:picamera2.picamera2:Camera configuration has been adjusted!
+INFO:picamera2.picamera2:Configuration successful!
+INFO:picamera2.picamera2:Camera configuration has been adjusted!
+INFO:picamera2.picamera2:Configuration successful!
+INFO:picamera2.picamera2:Camera configuration has been adjusted!
+INFO:picamera2.picamera2:Configuration successful!
+INFO:picamera2.picamera2:Camera configuration has been adjusted!
+INFO:picamera2.picamera2:Configuration successful!
+INFO:picamera2.picamera2:Camera started
+INFO:PiCamera2 Capture:Getting Images
+INFO:PiCamera2 Capture:Config: mode=main format=BGR3 camera_res=(640, 480) output_res=(-1, -1)
+INFO:PiCamera2 Capture:PiCam2:MAIN sensor selection policy=maximize_fps desired_main=640x480 selected_sensor=(640, 480) bit_depth=10 fps~58.92
+INFO:PiCamera2 Capture:PiCam2:Controls set {'AeEnable': True, 'AeMeteringMode': 0, 'AwbEnable': True, 'AwbMode': 0}
+INFO:PiCamera2 Capture:PiCam2:Open summary stream=main size=(640, 480) fmt=BGR888 req_fps=60 FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920)
+INFO:PiCamera2 Capture:PiCam2:Camera opened
+INFO:PiCamera2 Capture:PiCam2:Main Stream mode 640x480 format=BGR888. Supported main formats: XBGR8888, XRGB8888, RGB888, BGR888, YUV420, YUYV, MJPEG
+INFO:PiCamera2 Capture:PiCam2:Main Stream can scale to arbitrary resolutions; non-native aspect ratios may crop. For raw modes list, run examples/list_Picamera2Properties.py.
+INFO:PiCamera2 Capture:PiCam2:Suggested Main Stream options (camera_res/output_res, max_fps, full_fov):
+INFO:PiCamera2 Capture:PiCam2:  640x480 -> 640x480 fmt=BGR888 max_fps~58.9 full_fov=False
+INFO:PiCamera2 Capture:PiCam2:  1296x972 -> 1296x972 fmt=BGR888 max_fps~46.3 full_fov=False
+INFO:PiCamera2 Capture:PiCam2:  1920x1080 -> 1920x1080 fmt=BGR888 max_fps~32.8 full_fov=False
+INFO:PiCamera2 Capture:PiCam2:  2592x1944 -> 2592x1944 fmt=BGR888 max_fps~15.6 full_fov=True
+INFO:PiCamera2 Capture:Camera controls: FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920)
+INFO:PiCamera2 Capture:PiCam2:Measured capture FPS: 10.9 [Hz]
+INFO:PiCamera2 Capture:PiCam2:Measured capture FPS: 11.0 [Hz]
+INFO:picamera2.picamera2:Camera stopped
+INFO:picamera2.picamera2:Camera closed successfully.
+"""

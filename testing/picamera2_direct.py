@@ -291,3 +291,19 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+"""
+(env) uutzinger@urspi:~/pythonBME210/camera $ python3 testing/picamera2_direct.py --fps 60
+Controls set: {'FrameDurationLimits': (16667, 16667)}
+=== camera configuration ===
+Requested: mode=main size=(640, 480) format=BGR888 fps=60.0 stream_policy=default low_latency=False flip=0
+Requested controls: {'FrameDurationLimits': (16667, 16667)}
+camera_configuration: {'use_case': 'video', 'transform': <libcamera.Transform 'identity'>, 'colour_space': <libcamera.ColorSpace 'SMPTE170M'>, 'buffer_count': 6, 'queue': True, 'main': {'format': 'BGR888', 'size': (640, 480), 'preserve_ar': True, 'stride': 1920, 'framesize': 921600}, 'lores': None, 'raw': {'format': 'GBRG_PISP_COMP1', 'size': (640, 480), 'stride': 640, 'framesize': 307200}, 'controls': {'NoiseReductionMode': <NoiseReductionModeEnum.Fast: 1>, 'FrameDurationLimits': (16667, 16667)}, 'sensor': {'bit_depth': 10, 'output_size': (640, 480)}, 'display': 'main', 'encode': 'main'}
+camera_properties: {'Model': 'ov5647', 'UnitCellSize': (1400, 1400), 'Location': 2, 'Rotation': 0, 'ColorFilterArrangement': 2, 'PixelArraySize': (2592, 1944), 'PixelArrayActiveAreas': [(16, 6, 2592, 1944)], 'ScalerCropMaximum': (16, 0, 2560, 1920), 'SystemDevices': (20752, 20753, 20754, 20755, 20756, 20757, 20758, 20739, 20740, 20741, 20742), 'SensorSensitivity': 1.0}
+metadata: FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920) AeEnable=None ExposureTime=16836
+FPS (last 2.00s): 67.96 | frames=136
+FPS (last 2.01s): 67.51 | frames=272
+FPS (last 2.00s): 67.49 | frames=407
+FPS (last 2.01s): 67.53 | frames=543
+Total: 645 frames in 9.56s => 67.48 FPS
+"""
