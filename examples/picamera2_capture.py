@@ -36,17 +36,18 @@ def main() -> None:
         'mode'            : 'main',
         'camera_res'      : (640, 480),     # requested main stream size (w, h)
         'exposure'        : 0,              # microseconds, 0/-1 for auto
-        'fps'             : 0,              # 0: do not request; matches picamera2_direct defaults
-        'autoexposure'    : 1,              # -1 leave unchanged, 0 AE off, 1 AE on
-        'aemeteringmode'  : 'center',       # int or 'center'|'spot'|'matrix'
-        'autowb'          : 1,              # -1 leave unchanged, 0 AWB off, 1 AWB on
-        'awbmode'         : 'auto',         # int or friendly string
+        'fps'             : 60,             # requested capture frame rate
+        'autoexposure'    : -1,             # -1 leave unchanged (match picamera2_direct)
+        'aemeteringmode'  : -1,             # -1 leave unchanged
+        'autowb'          : -1,             # -1 leave unchanged
+        'awbmode'         : -1,             # -1 leave unchanged
         # Main stream formats: BGR3 (BGR888), RGB3 (RGB888), YU12 (YUV420), YUY2 (YUYV)
         # Raw stream formats:  SRGGB8, SRGGB10_CSI2P, (see properties script)
-        'format'          : 'BGR3',
-        "stream_policy"   : "maximize_fps_no_crop", # match picamera2_direct defaults
+        'format'          : 'BGR888',
+        "stream_policy"   : "default",      # default maps to maximize_fps_no_crop
         'low_latency'     : False,          # match picamera2_direct defaults
         'buffersize'      : 4,              # wrapper buffer depth (not in direct script)
+        'buffer_overwrite': True,           # overwrite old frames if buffer full
         'output_res'      : (-1, -1),       # (-1,-1): output == input; else libcamera scales main
         'flip'            : 0,              # 0=norotation 
     }

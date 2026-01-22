@@ -846,9 +846,11 @@ class PiCamera2Core:
                     controls["AeEnable"] = bool(autoexp)
 
             try:
-                cfg_meter = self._configs.get("aemeteringmode", 0)
-                meter_val = self._parse_aemeteringmode(cfg_meter)
-                controls.setdefault("AeMeteringMode", meter_val)
+                if "aemeteringmode" in self._configs:
+                    cfg_meter = self._configs.get("aemeteringmode", None)
+                    if cfg_meter is not None and cfg_meter != -1:
+                        meter_val = self._parse_aemeteringmode(cfg_meter)
+                        controls.setdefault("AeMeteringMode", meter_val)
             except Exception:
                 pass
 
@@ -857,9 +859,11 @@ class PiCamera2Core:
                 controls["AwbEnable"] = bool(autowb)
 
             try:
-                cfg_awbmode = self._configs.get("awbmode", 0)
-                awbmode_val = self._parse_awbmode(cfg_awbmode)
-                controls.setdefault("AwbMode", awbmode_val)
+                if "awbmode" in self._configs:
+                    cfg_awbmode = self._configs.get("awbmode", None)
+                    if cfg_awbmode is not None and cfg_awbmode != -1:
+                        awbmode_val = self._parse_awbmode(cfg_awbmode)
+                        controls.setdefault("AwbMode", awbmode_val)
             except Exception:
                 pass
 
