@@ -38,9 +38,9 @@ def main() -> None:
         'exposure'        : 0,              # microseconds, 0/-1 for auto
         'fps'             : 60,             # requested capture frame rate
         'autoexposure'    : -1,             # -1 leave unchanged (match picamera2_direct)
-        'aemeteringmode'  : -1,             # -1 leave unchanged
+        # 'aemeteringmode'  : -1,             # -1 leave unchanged
         'autowb'          : -1,             # -1 leave unchanged
-        'awbmode'         : -1,             # -1 leave unchanged
+        #'awbmode'         : -1,             # -1 leave unchanged
         # Main stream formats: BGR3 (BGR888), RGB3 (RGB888), YU12 (YUV420), YUY2 (YUYV)
         # Raw stream formats:  SRGGB8, SRGGB10_CSI2P, (see properties script)
         'format'          : 'BGR888',

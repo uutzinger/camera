@@ -64,9 +64,9 @@ def main() -> None:
         'exposure'        : 0,              # microseconds, 0/-1 for auto
         'fps'             : 60,             # requested capture frame rate
         'autoexposure'    : -1,             # -1 leave unchanged, 0 AE off, 1 AE on
-        'aemeteringmode'  : -1,             # int or 'center'|'spot'|'matrix'
+        #'aemeteringmode'  : -1,             # int or 'center'|'spot'|'matrix' 
         'autowb'          : -1,             # -1 leave unchanged, 0 AWB off, 1 AWB on
-        'awbmode'         : -1,             # int or friendly string 'auto'|'incandescent'|'fluorescent'|'warm-fluorescent'|'daylight'|'cloudy-daylight'|'twilight'|'shade'
+        #'awbmode'         : -1,             # int or friendly string 'auto'|'incandescent'|'fluorescent'|'warm-fluorescent'|'daylight'|'cloudy-daylight'|'twilight'|'shade'
         # Main stream formats: BGR3 (BGR888), RGB3 (RGB888), YU12 (YUV420), YUY2 (YUYV)
         # Raw stream formats:  SRGGB8, SRGGB10_CSI2P, (see properties script)
         'format'          : 'BGR888',
