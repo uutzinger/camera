@@ -32,54 +32,54 @@ def _parse_size(text: str) -> tuple[int, int]:
         raise argparse.ArgumentTypeError("Size must be positive")
     return (w, h)
 
-def _safe_get(attr_name: str):
+def _safe_get(obj, attr_name: str):
     try:
-        return getattr(picam2, attr_name)
+        return getattr(obj, attr_name)
     except Exception:
         return None
 
-    def _print_camera_config_and_controls() -> None:
-        print("=== camera configuration ===")
-        try:
+def _print_camera_config_and_controls(picam2, args, controls) -> None:
+    print("=== camera configuration ===")
+    try:
+        print(
+            "Requested: mode=main size={} format={} fps={} stream_policy=default low_latency=False flip=0".format(
+                args.size, args.format, args.fps
+            )
+        )
+    except Exception:
+        pass
+    try:
+        print(f"Requested controls: {controls}")
+    except Exception:
+        pass
+    try:
+        cfg_now = picam2.camera_configuration()
+        print(f"camera_configuration: {cfg_now}")
+    except Exception as exc:
+        print(f"camera_configuration unavailable ({exc})")
+    try:
+        props = _safe_get(picam2, "camera_properties")
+        if props is not None:
+            print(f"camera_properties: {props}")
+    except Exception:
+        pass
+
+    # Read back timing-related controls/metadata (best-effort)
+    try:
+        md = picam2.capture_metadata()
+        if isinstance(md, dict):
+            fd = md.get("FrameDuration")
+            fdl = md.get("FrameDurationLimits")
+            sc = md.get("ScalerCrop")
+            ae = md.get("AeEnable", None)
+            exp = md.get("ExposureTime", None)
             print(
-                "Requested: mode=main size={} format={} fps={} stream_policy=default low_latency=False flip=0".format(
-                    args.size, args.format, args.fps
+                "metadata: FrameDuration={} FrameDurationLimits={} ScalerCrop={} AeEnable={} ExposureTime={}".format(
+                    fd, fdl, sc, ae, exp
                 )
             )
-        except Exception:
-            pass
-        try:
-            print(f"Requested controls: {controls}")
-        except Exception:
-            pass
-        try:
-            cfg_now = picam2.camera_configuration()
-            print(f"camera_configuration: {cfg_now}")
-        except Exception as exc:
-            print(f"camera_configuration unavailable ({exc})")
-        try:
-            props = _safe_get("camera_properties")
-            if props is not None:
-                print(f"camera_properties: {props}")
-        except Exception:
-            pass
-
-        # Read back timing-related controls/metadata (best-effort)
-        try:
-            md = picam2.capture_metadata()
-            if isinstance(md, dict):
-                fd = md.get("FrameDuration")
-                fdl = md.get("FrameDurationLimits")
-                sc = md.get("ScalerCrop")
-                ae = md.get("AeEnable", None)
-                exp = md.get("ExposureTime", None)
-                print(
-                    "metadata: FrameDuration={} FrameDurationLimits={} ScalerCrop={} AeEnable={} ExposureTime={}".format(
-                        fd, fdl, sc, ae, exp
-                    )
-                )
-        except Exception as exc:
-            print(f"capture_metadata unavailable ({exc})")
+    except Exception as exc:
+        print(f"capture_metadata unavailable ({exc})")
 
 
 def main() -> int:
@@ -202,7 +202,7 @@ def main() -> int:
     while time.perf_counter() < warmup_end:
         _ = picam2.capture_array("main")
 
-    _print_camera_config_and_controls()
+    _print_camera_config_and_controls(picam2, args, controls)
 
     # Measurement loop
     t0 = time.perf_counter()
