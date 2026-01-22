@@ -7,12 +7,12 @@
 ###############################################################################
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Optional, Tuple
+
 if TYPE_CHECKING:  # pragma: no cover
     import numpy as np
 else:
     import numpy as np
-
-from typing import Optional, Tuple
 
 class FrameBuffer:
     """
