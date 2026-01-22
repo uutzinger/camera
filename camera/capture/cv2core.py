@@ -66,7 +66,7 @@
 #
 # Stream selection:
 # - mode: str                       'main' (processed) or 'raw' (sensor Bayer)
-# - stream_policy: str              'default'|'maximize_fov'|'maximize_fps'
+# - stream_policy: str              'default'|'maximize_fps_no_crop'|'maximize_fps_with_crop'|'maximize_fov'
 #
 # Formats:
 # - format: str                     Legacy/combined request (e.g. 'BGR3', 'YUY2', 'SRGGB8')

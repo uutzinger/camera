@@ -54,7 +54,7 @@ def main() -> None:
         'awbmode'         : 'auto',         # int or friendly string
         # RAW stream formats: SRGGB8, SGRBG10_CSI2P, ... (see properties script)
         'raw_format'      : 'SGRBG',        # Bayer pattern/format hint
-        'stream_policy'   : 'maximize_fps', # 'maximize_fps', 'maximize_fov', 'default'
+        'stream_policy'   : 'maximize_fps_no_crop', # 'default', 'maximize_fps_no_crop', 'maximize_fps_with_crop', 'maximize_fov'
         'low_latency'     : True,           # size-1 queue (latest frame)
         'flip'            : 0,              # 0=norotation
         'displayfps'      : 15,             # consumer-side display throttle (0 disables)
@@ -86,7 +86,7 @@ def main() -> None:
     if not camera.cam_open:
         raise RuntimeError("PiCamera2 camera failed to open in RAW mode")
 
-    logger.info("Getting RAW images (mode=raw, stream_policy=maximize_fps, low_latency=True)")
+    logger.info("Getting RAW images (mode=raw, stream_policy=maximize_fps_no_crop, low_latency=True)")
     logger.info(
         'Config: mode=%s raw_format=%s camera_res=%s output_res=%s fps=%s',
         configs.get('mode'),
@@ -125,7 +125,7 @@ def main() -> None:
                 cv2.putText(frame_display, f"Display FPS:{displayfps:.1f} [Hz]",
                     textLocation1, font, fontScale, fontColor, lineType,
                 )
-                cv2.putText(frame_display, "Mode:raw Policy:maximize_fps Low-latency:True",
+                cv2.putText(frame_display, "Mode:raw Policy:maximize_fps_no_crop Low-latency:True",
                     textLocation2, font, fontScale, fontColor, lineType,
                 )
                 cv2.imshow(window_name, frame_display)

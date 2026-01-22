@@ -44,7 +44,7 @@ def main() -> None:
         # Main stream formats: BGR3 (BGR888), RGB3 (RGB888), YU12 (YUV420), YUY2 (YUYV)
         # Raw stream formats:  SRGGB8, SRGGB10_CSI2P, (see properties script)
         'format'          : 'BGR3',
-        "stream_policy"   : "maximize_fps", # match picamera2_direct defaults
+        "stream_policy"   : "maximize_fps_no_crop", # match picamera2_direct defaults
         'low_latency'     : False,          # match picamera2_direct defaults
         'buffersize'      : 4,              # wrapper buffer depth (not in direct script)
         'output_res'      : (-1, -1),       # (-1,-1): output == input; else libcamera scales main

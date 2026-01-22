@@ -46,7 +46,7 @@ def main() -> None:
         # Main stream formats: BGR3 (BGR888), RGB3 (RGB888), YU12 (YUV420), YUY2 (YUYV)
         # Raw stream formats:  SRGGB8, SRGGB10_CSI2P, (see properties script)
         'format'          : 'BGR3',
-        "stream_policy"   : "default",      # 'maximize_fov', 'maximize_fps', 'default'
+        "stream_policy"   : "default",      # 'default', 'maximize_fps_no_crop', 'maximize_fps_with_crop', 'maximize_fov'
         'low_latency'     : True,           # low_latency=True prefers size-1 buffer (latest frame)
         'buffersize'      : 4,              # capture queue size override (wrapper-level)
         'output_res'      : (-1, -1),       # (-1,-1): output == input; else libcamera scales main

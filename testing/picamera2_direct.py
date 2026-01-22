@@ -427,9 +427,8 @@ camera_configuration: {'use_case': 'video', 'transform': <libcamera.Transform 'i
 configured controls: {'NoiseReductionMode': <NoiseReductionModeEnum.Fast: 1>, 'FrameDurationLimits': (16667, 16667)}
 camera_properties: {'Model': 'ov5647', 'UnitCellSize': (1400, 1400), 'Location': 2, 'Rotation': 0, 'ColorFilterArrangement': 2, 'PixelArraySize': (2592, 1944), 'PixelArrayActiveAreas': [(16, 6, 2592, 1944)], 'ScalerCropMaximum': (16, 0, 2560, 1920), 'SystemDevices': (20752, 20753, 20754, 20755, 20756, 20757, 20758, 20739, 20740, 20741, 20742), 'SensorSensitivity': 1.0}
 camera_controls defaults (subset): {'AeEnable': (False, True, True), 'AeMeteringMode': (0, 3, 0), 'AwbEnable': (False, True, None), 'AwbMode': (0, 7, 0), 'ExposureTime': (134, 4879289, 20000), 'AeExposureMode': (0, 3, 0), 'AeFlickerPeriod': (100, 1000000, None), 'AnalogueGain': (1.0, 63.9375, 1.0), 'Brightness': (-1.0, 1.0, 0.0), 'ColourGains': (0.0, 32.0, None), 'ColourTemperature': (100, 100000, None), 'Contrast': (0.0, 32.0, 1.0), 'FrameDurationLimits': (16971, 4879899, 33333), 'NoiseReductionMode': (0, 4, 0), 'Saturation': (0.0, 32.0, 1.0), 'ScalerCrop': ((16, 0, 164, 128), (16, 0, 2560, 1920), (16, 0, 2560, 1920)), 'Sharpness': (0.0, 16.0, 1.0)}
-metadata: FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920) AeEnable=None ExposureTime=16836 AwbEnable=None AwbMode=None AeMeteringMode=None AnalogueGain=6.5625
+metadata: FrameDuration=16971 FrameDurationLimits=None ScalerCrop=(16, 0, 2560, 1920) AeEnable=None ExposureTime=16836 AwbEnable=None AwbMode=None AeMeteringMode=None AnalogueGain=4.5625
 FPS (last 2.00s): 67.98 | frames=136
-FPS (last 2.00s): 67.49 | frames=271
-FPS (last 2.00s): 67.49 | frames=406
-Total: 457 frames in 6.78s => 67.45 FPS
+FPS (last 2.00s): 67.50 | frames=271
+Total: 330 frames in 4.89s => 67.44 FPS
 """

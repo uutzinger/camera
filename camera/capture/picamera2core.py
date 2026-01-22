@@ -59,7 +59,7 @@
 #
 # Stream selection:
 # - mode: str                       'main' (processed) or 'raw' (sensor Bayer)
-# - stream_policy: str              'default'|'maximize_fov'|'maximize_fps'
+# - stream_policy: str              'default'|'maximize_fps_no_crop'|'maximize_fps_with_crop'|'maximize_fov'
 #
 # Formats:
 # - format: str                     Legacy/combined request (e.g. 'BGR3', 'YUY2', 'SRGGB8')
@@ -219,7 +219,16 @@ class PiCamera2Core:
         self._requested_format = str(self._configs.get("format", ""))
         self._fourcc = str(self._configs.get("fourcc", ""))
         self._mode = str(self._configs.get("mode", "main")).lower()
-        self._stream_policy = str(self._configs.get("stream_policy", "default")).lower()
+        policy_raw = str(self._configs.get("stream_policy", "default")).lower()
+        if policy_raw in ("default", "maximize_fps_no_crop", "max_fps_no_crop", "maximize_fps_nocrop"):
+            self._stream_policy = "maximize_fps_no_crop"
+        elif policy_raw in ("maximize_fps_with_crop", "max_fps_with_crop", "maximize_fps_crop"):
+            self._stream_policy = "maximize_fps_with_crop"
+        elif policy_raw in ("maximize_fov", "max_fov"):
+            self._stream_policy = "maximize_fov"
+        else:
+            self._stream_policy = "maximize_fps_no_crop"
+            self._log(logging.WARNING, f"PiCam2:Unknown stream_policy '{policy_raw}', using default maximize_fps_no_crop")
         self._main_format = str(self._configs.get("main_format", self._requested_format))
         self._raw_format = str(self._configs.get("raw_format", self._requested_format))
         self._raw_res = self._configs.get("raw_res", (self._capture_width, self._capture_height))
@@ -802,8 +811,8 @@ class PiCamera2Core:
             # ----------------------------------------------------------------------------
             controls = {}
 
-            # ScalerCrop for main stream (maximize FOV unless policy is maximize_fps)
-            if self._stream_name == "main" and self._stream_policy != "maximize_fps":
+            # ScalerCrop for main stream (maximize_fov and maximize_fps_with_crop only)
+            if self._stream_name == "main" and self._stream_policy in ("maximize_fov", "maximize_fps_with_crop"):
                 try:
                     props = getattr(self.picam2, "camera_properties", {})
                     crop_rect = None
@@ -1059,7 +1068,7 @@ class PiCamera2Core:
 
         seen_sizes = set()
 
-        if self._stream_policy == "maximize_fps":
+        if self._stream_policy in ("maximize_fps_no_crop", "maximize_fps_with_crop"):
             modes.sort(key=lambda m: (-float(m.get("fps", 0.0) or 0.0), -mode_area(m)))
         else:
             modes.sort(key=lambda m: (-mode_area(m), -float(m.get("fps", 0.0) or 0.0)))
@@ -1705,7 +1714,7 @@ class PiCamera2Core:
         """Select the best sensor mode from a provided list.
 
         Uses self._stream_policy to guide selection:
-        - maximize_fps: prioritize highest fps, then FOV (crop_area), then output area
+        - maximize_fps_no_crop / maximize_fps_with_crop: prioritize highest fps, then FOV (crop_area), then output area
         - maximize_fov: prioritize largest FOV (crop_area), then fps, then output area
 
         Shared by raw/main selection; callers may filter `modes` beforehand.
@@ -1764,15 +1773,15 @@ class PiCamera2Core:
         if self._stream_policy == "maximize_fov":
             modes.sort(key=score_maximize_fov)
         else:
-            # default behavior == maximize_fps
+            # default behavior == maximize_fps policies
             modes.sort(key=score_maximize_fps)
 
         # Optional: desired_size proximity
         #
-        # IMPORTANT: For maximize_fps, we generally do NOT want desired_size proximity
+        # IMPORTANT: For maximize_fps policies, we generally do NOT want desired_size proximity
         # to override sensor-mode choice (it can pick a slower mode).
         # So we only apply it for non-maximize_fps policies.
-        if desired_w and desired_h and self._stream_policy != "maximize_fps":
+        if desired_w and desired_h and self._stream_policy not in ("maximize_fps_no_crop", "maximize_fps_with_crop"):
             desired_area = desired_w * desired_h
 
             def add_area_penalty(m: dict) -> int:
