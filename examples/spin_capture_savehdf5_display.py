@@ -1,5 +1,5 @@
 ##########################################################################
-# Blackfly capture + display + store cubes to HDF5
+# Spinnaker capture + display + store cubes to HDF5
 #
 # Notes
 # - Collects 14 frames into a cube and writes the cube to HDF5.
@@ -15,7 +15,6 @@ import platform
 import time
 from datetime import datetime
 from pathlib import Path
-from queue import Empty
 
 import cv2
 import numpy as np
@@ -30,12 +29,21 @@ def _default_output_dir() -> Path:
 def main() -> None:
 
     # Camera configuration file
-    from configs.blackfly_configs import configs
+    from configs.spin_configs import configs
 
-    display_interval = 0.0 if configs['displayfps'] >= configs['fps'] else (1.0 / configs['displayfps'])
+    displayfps = float(configs.get("displayfps", 0) or 0)
+    capture_fps = float(configs.get("fps", 0) or 0)
+    if displayfps <= 0:
+        display_interval = 0.0
+    elif capture_fps > 0 and displayfps >= 0.8 * capture_fps:
+        display_interval = 0.0
+    else:
+        display_interval = 1.0 / displayfps
+    loop_interval = 1.0 / (2.0 * (capture_fps if capture_fps > 0 else 30.0))
     dps_measure_time = 5.0
 
-    data_cube = np.zeros((14, 540, 720), dtype=np.uint8)
+    depth = 14
+    data_cube = None
 
     window_name = 'Camera'
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -46,7 +54,7 @@ def main() -> None:
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
     logging.basicConfig(level=logging.DEBUG)
-    logger = logging.getLogger('BlackflyHDF5Display')
+    logger = logging.getLogger('SpinnakerHDF5Display')
 
     from camera.streamer.h5storageserver import h5Server
 
@@ -58,43 +66,51 @@ def main() -> None:
     logger.info('Starting Storage Server: %s', output_dir / filename)
     hdf5.start()
 
-    from camera.capture.blackflycapture import blackflyCapture
+    from camera.capture.spincapture import spinCapture
 
     logger.info('Starting Capture')
-    camera = blackflyCapture(configs)
+    camera = spinCapture(configs)
     camera.start()
 
     frame_idx = 0
     num_cubes_sent = 0
     num_cubes_generated = 0
-    last_stats = time.time()
-    last_display = time.time()
+    last_stats = time.perf_counter()
+    last_display = last_stats
     num_frames_displayed = 0
 
     frame = None
 
     stop = False
     try:
-        while not stop:
-            current_time = time.time()
+        while not stop and cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) >= 0:
+            current_time = time.perf_counter()
 
-            while not camera.log.empty():
-                (level, msg) = camera.log.get_nowait()
-                logger.log(level, '%s', msg)
-            while not hdf5.log.empty():
-                (level, msg) = hdf5.log.get_nowait()
-                logger.log(level, '%s', msg)
-
-            try:
-                (frame_time, frame) = camera.capture.get(block=True, timeout=1.0)
-            except Empty:
+            # Pull frame (non-blocking)
+            if camera.buffer and camera.buffer.avail > 0:
+                frame, frame_time = camera.buffer.pull(copy=False)
+            else:
                 frame = None
+                frame_time = None
+
+            # Drain logs
+            try:
+                while not camera.log.empty():
+                    level, msg = camera.log.get_nowait()
+                    logger.log(level, "%s", msg)
+                while not hdf5.log.empty():
+                    level, msg = hdf5.log.get_nowait()
+                    logger.log(level, "%s", msg)
+            except Exception:
+                pass
 
             if frame is not None:
-                data_cube[frame_idx, :, :] = frame
+                if data_cube is None:
+                    data_cube = np.zeros((depth, *frame.shape), dtype=frame.dtype)
+                data_cube[frame_idx, ...] = frame
                 frame_idx += 1
 
-            if frame_idx >= 14:
+            if frame_idx >= depth and data_cube is not None:
                 frame_idx = 0
                 num_cubes_generated += 1
 
@@ -106,7 +122,7 @@ def main() -> None:
 
             if frame is not None and (current_time - last_display) >= display_interval:
                 display_frame = frame.copy()
-                cv2.putText(display_frame, f'Capture FPS:{getattr(camera, "measured_fps", float("nan"))} [Hz]', textLocation0, font, 1, fontColor, lineType)
+                cv2.putText(display_frame, f'Capture FPS:{getattr(camera, "measured_fps", float("nan")):.1f} [Hz]', textLocation0, font, 1, fontColor, lineType)
                 cv2.imshow(window_name, display_frame)
 
                 key = cv2.waitKey(1)
@@ -127,10 +143,16 @@ def main() -> None:
                 num_frames_displayed = 0
                 last_stats = current_time
 
+            remaining = loop_interval - (time.perf_counter() - current_time)
+            if remaining > 0:
+                time.sleep(remaining)
+
     finally:
         try:
             camera.stop()
             camera.join(timeout=2.0)
+            if hasattr(camera, "close"):
+                camera.close()
         except Exception:
             pass
         try:

@@ -7,11 +7,6 @@ except Exception:  # pragma: no cover
 	piCapture = None  # type: ignore
 
 try:
-	from .archive.picamera2capture import piCamera2Capture
-except Exception:  # pragma: no cover
-	piCamera2Capture = None  # type: ignore
-
-try:
 	from .picamera2core import PiCamera2Core
 except Exception:  # pragma: no cover
 	PiCamera2Core = None  # type: ignore

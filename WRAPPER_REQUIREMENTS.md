@@ -3,7 +3,7 @@
 Scope: This document captures functional requirements for an example
 camera wrapper based on the Picamera2 wrappers and defines cross-wrapper
 requirements to guide refactoring of other wrapper such as
-`cv2capture` and `blackflycapture`. Sources: `camera/capture/picamera2core.py`,
+`cv2capture` and `spincapture`. Sources: `camera/capture/picamera2core.py`,
 `camera/capture/picamera2capture.py`, `camera/capture/picamera2captureQt.py`.
 
 ## Cross-Wrapper Requirements (Common Interface and Behavior)
@@ -203,8 +203,8 @@ requirements to guide refactoring of other wrapper such as
    - Expose the same control helpers and property accessors as the non-Qt wrapper
      to minimize consumer changes.
 
-## BlackFly Core Requirements (blackflyCore)
+## Spinnaker Core Requirements (SpinCore)
 
-## BlackFly Threaded Wrapper Requirement (blackflyCapture)
+## Spinnaker Threaded Wrapper Requirement (spinCapture)
 
-## BlackFly Qt Wrapper Requirements (blackflyCaptureQt)
+## Spinnaker Qt Wrapper Requirements (spinCaptureQt)

@@ -12,7 +12,7 @@
 ###############################################################################
 # Public API & Supported Config
 #
-# Class: piCamera2Capture()
+# Class: piCamera2Capture
 #
 # Threaded capture wrapper around `PiCamera2Core`.
 #
@@ -31,7 +31,7 @@
 # - start() / stop(): enable/disable capturing (loop keeps running)
 # - join(): wait for camera loop thread exit
 # - close(): stop camera loop thread and close camera
-# - log_stream_options(max_options: int = 8): delegated to core
+# - log_stream_options(): delegated to core
 # - set_exposure_us(exposure_us: int)
 # - set_auto_exposure(enabled: bool)
 # - set_framerate(fps: float)
@@ -61,10 +61,15 @@
 #
 # Convenience properties:
 # - cam_open: bool
+# - measured_fps: float
 #
 # Supported Config Parameters (configs dict)
 # ------------------------------------------
 # See picamera2core.py for full list.
+#
+# Note:
+# - Camera is opened in __init__ with the provided configs. start()/stop() only
+#   control frame capture, not camera open/close.
 #
 ###############################################################################
 
@@ -99,6 +104,12 @@ class piCamera2Capture:
 
     Most camera controls and helpers are implemented by `PiCamera2Core` and are
     accessible via attribute delegation.
+
+    Public properties:
+    - cam_open: bool
+        Indicates if the camera is open.
+    - measured_fps: float
+        Returns the measured frames per second.
 
     Thread safety: The buffer is accessed from both the capture thread and potentially the consumer thread.
     Consumers should always use buffer.pull(copy=True) to avoid race conditions.

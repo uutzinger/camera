@@ -1,13 +1,57 @@
 # RTSP & RTP with GStreamer
 
+## camera-util wrappers (current)
+
+This repository provides thread-based sender/receiver wrappers and examples:
+
+- RTP sender: `camera/streamer/rtpserver.py` (`rtpServer`)
+- RTSP server: `camera/streamer/rtspserver.py` (`rtspServer`)
+- RTP receiver: `camera/capture/rtpcapture.py` and `camera/capture/rtpcaptureQt.py`
+- RTSP receiver: `camera/capture/rtspcapture.py` and `camera/capture/rtspcaptureQt.py`
+
+### Queue payload format (sender wrappers)
+
+Both sender wrappers accept queue items as either:
+
+- `frame`
+- `(ts_ms, frame)`
+
+Recommended format is `(ts_ms, frame)` where `ts_ms` is a float timestamp in milliseconds.
+
+- `rtpServer`: timestamp is accepted but currently not used for packet timestamps.
+- `rtspServer` (GI backend): timestamp is used for `PTS/DTS`.
+
+`rtspServer` supports `timestamp_unit`:
+
+- `timestamp_unit='auto'` (default)
+- `timestamp_unit='ms'` (recommended for capture-wrapper timestamps)
+- `timestamp_unit='s'`
+- `timestamp_unit='ns'`
+
+Examples in this repo follow this contract:
+
+- `examples/rtsp_server.py` pushes `(time.perf_counter() * 1000.0, frame)` and sets `timestamp_unit='ms'`.
+- `examples/cv2_capture_display_send2rtp.py` forwards capture timestamps to `rtpServer`.
+- `examples/gcapture_display_send2rtp.py` forwards capture timestamps to `rtpServer`.
+- `examples/cv2_capture_display_send2rtp_process.py` is a legacy multiprocessing path (`rtpServerProc`) with the same tuple format.
+
+### Interop with capture wrappers
+
+- FrameBuffer-based wrappers (for example `cv2Capture`, `rtpCapture`, `rtspCapture`):
+  - pull with `frame, ts_ms = camera.buffer.pull(copy=False)`
+  - then send with `rtp.queue.put_nowait((ts_ms, frame))` or `server.queue.put_nowait((ts_ms, frame))`
+- Queue-based wrappers (legacy, for example `nanoCapture`, current `gCapture`):
+  - pull with `ts_ms, frame = camera.capture.get(...)`
+  - forward the same tuple to sender wrappers
+
 ## **RTSP**
 
 To create an RTSP network stream one needs an rtsp server. It handles connections from different network clients. A single point to point conenction can be established with RTP not needing an RTSP server.
 
-- On Windows: [aler9/rtsp-simple-server](https://github.com/aler9/rtsp-simple-server)
-- On Unix: GStreamer RTSP server
-
-Gstreamer rtsp server can be started through python un Unix. On Windows its more involved to start RTSP with python, but you can use RTP.
+- In this repo, `rtspServer` provides the RTSP server in Python.
+- Backend selection:
+  - Preferred: GI + GStreamer RTSPServer
+  - Fallback: FFmpeg listen-mode (`imageio-ffmpeg`) for environments without GI
 
 ### **RTSP Clients**
 

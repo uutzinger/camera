@@ -31,6 +31,7 @@ def main():
         host=host,
         port=port,
         stream_uri=uri,
+        timestamp_unit='ms',
     )
 
     logger.info("Starting RTSP server")
@@ -49,7 +50,7 @@ def main():
             frame[:, t : t + 10, :] = 255
 
             if not server.queue.full():
-                server.queue.put_nowait((time.time(), frame))
+                server.queue.put_nowait((time.perf_counter() * 1000.0, frame))
 
             while not server.log.empty():
                 level, msg = server.log.get_nowait()

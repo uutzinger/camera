@@ -51,8 +51,11 @@ from camera.capture.gcapture import gCapture
 
 camera = gCapture(configs, camera_num=camera_index)
 if not getattr(camera, 'cam_open', False):
-    # still start so it can emit logs, but we likely won't receive frames
-    logger.log(logging.WARNING, "gCapture did not open the camera (check logs/pipeline)")
+    logger.log(logging.ERROR, "gCapture did not open the camera (check logs/pipeline)")
+    while not camera.log.empty():
+        (level, msg) = camera.log.get_nowait()
+        logger.log(level, "{}".format(msg))
+    raise SystemExit("Failed to open gCapture stream")
 
 logger.log(logging.INFO, "Getting Images")
 camera.start()

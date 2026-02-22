@@ -32,14 +32,13 @@
 # - log(level: int, message: str)
 #     Logging/event messages (uses Python logging levels).
 # - opened()
-#     Emitted when the camera has been opened/configured (also after reconfigure).
+#     Reserved for camera-open notifications (currently not emitted).
 # - started()
 # - stopped()
 #
 # Public methods:
-# - open_cam(timeout: float | None = 2.0) -> bool: start camera loop thread and open/configure camera
-# - close_cam(timeout: float | None = 2.0) -> None: stop camera loop thread and close camera
 # - start() / stop(): enable/disable capturing (loop keeps running)
+# - close(timeout: float | None = 2.0) -> None: stop loop and close camera
 # - join(timeout: float | None = None) -> None: wait for camera loop thread exit
 # - log_stream_options(): emits stream options via `log` signal (delegated to core)
 # - set_exposure_us(exposure_us: int)
@@ -59,19 +58,28 @@
 #   `PiCamera2Core` helpers and properties are accessible here.
 # - convertQimage(frame: np.ndarray) -> QImage | None   (expects OpenCV BGR order)
 #
+# Note:
+# - Camera is opened in __init__ with the provided configs. start()/stop() only
+#   control frame capture, not camera open/close.
+#
 # Frame delivery model (NO queue semantics, NO frame signal):
 # - Producers push frames into `buffer` without blocking.
 # - Consumers poll (typically via a QTimer in the GUI thread):
 #       if camera.buffer and camera.buffer.avail > 0:
 #           frame, ts_ms = camera.buffer.pull(copy=True)
 #
+# Convenience properties:
+# - cam_open: bool
+# - measured_fps: float
+#
+# Supported Config Parameters (configs dict)
+# ------------------------------------------
+# See picamera2core.py for full list.
+#
 # Reconfigure behavior:
 # - `set_flip()` and `set_resolution()` request a reconfigure handled inside the camera loop.
 # - If capture is running, the loop will temporarily pause capture, apply changes, then resume.
 # - Callers do not need to manually stop/start.
-#
-# Convenience properties:
-# - cam_open: bool
 #
 # Supported Config Parameters (configs dict)
 # ------------------------------------------
@@ -117,7 +125,8 @@ else:
     _QIMAGE_FMT_RGB888 = QImage.Format_RGB888
 
 class piCamera2CaptureQt(QObject):
-    """Qt/threading wrapper around PiCamera2Core.
+    """
+    Qt/threading wrapper around PiCamera2Core.
 
     - Captures into a SPSC ring buffer: self.buffer (alias: self.capture)
     - Emits Qt signals for stats, log, started, stopped.

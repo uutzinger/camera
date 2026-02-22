@@ -67,9 +67,10 @@ class FrameBuffer:
         """
         capacity: number of frames the ring can hold (rounded up to power of two)
         frame_shape: shape of one frame, e.g. (H, W) or (H, W, C)
-        dtype: numpy dtype for storage (default: np.uint8, always 3-channel 8-bit for RGB in this implementation)
+        dtype: numpy dtype for storage (default: np.uint8)
         overwrite: if True, newest data overwrites oldest when full
-        Note: Only 3-channel 8-bit buffers are currently supported. For YUV/Bayer, adjust allocation accordingly.
+        Note: Supports arbitrary fixed shapes and dtypes, including mono (H, W)
+        and color (H, W, C) frames.
         """
         if dtype is None:
             dtype = np.uint8

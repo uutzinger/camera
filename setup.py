@@ -25,7 +25,7 @@ setup(
     # http://packaging.python.org/en/latest/tutorial.html#version
     version='1.3.3',
 
-    description=("Python wrapper for USB, blackfly, Raspi, Jetson Nano cameras. "  
+    description=("Python wrapper for USB, spin, Raspi, Jetson Nano cameras. "  
                  "Works on Windows, Raspian (inlc Bullseye), JetsonNano, MacOS"   ),
 
     # The project's main homepage.
@@ -75,7 +75,7 @@ setup(
     ],
 
     # What does your project relate to?
-    keywords='camera, driver, opencv, blackfly',
+    keywords='camera, driver, opencv, spin',
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().

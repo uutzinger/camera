@@ -5,17 +5,23 @@ configs = {
     # auto exposure 0 or 1
     ##############################################
     'camera_res'      : (720, 540),     # image width & height, can read ROI
+    'stream_policy'   : 'max_fps',      # 'default'|'max_fps'|'auto'
     'exposure'        : 1750,           # in microseconds, -1 = autoexposure
     'autoexposure'    : 0,              # 0,1
     'fps'             : 500,            # 
     'binning'         : (1,1),          # 1,2 or 4
     'offset'          : (0,0),          #
     'adc'             : 8,              # 8,10,12,14 bit
+    'pixel_format'    : '',             # optional override, e.g. 'Mono8', 'Mono16', 'BayerRG8'
+    'convert_format'  : 'native',       # 'native' preserves bit depth; use 'Mono8'/'BGR8' for display-friendly output
     'trigout'         : 2,              # -1 no trigger output, 
                                         # line 1 has opto isolator but requires pullup to 3V
                                         # line 2 has not isolation and takes 4-10us for a transition
     'ttlinv'          : True,           # inverted logic levels are best
     'trigin'          : -1,             # -1 use software, otherwise hardware
+    'capture_timeout_ms': 100,          # GetNextImage timeout in ms
+    'buffersize'      : 8,              # FrameBuffer capacity
+    'buffer_overwrite': True,           # overwrite old frames if buffer full
     ##############################################
     # Target Display
     ##############################################

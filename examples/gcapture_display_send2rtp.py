@@ -59,11 +59,18 @@ rtp.start()
 from camera.capture.gcapture import gCapture
 
 camera = gCapture(configs, camera_num=camera_index)
+if not getattr(camera, 'cam_open', False):
+    logger.log(logging.ERROR, "gCapture did not open the camera (check logs/pipeline)")
+    while not camera.log.empty():
+        (level, msg) = camera.log.get_nowait()
+        logger.log(level, msg)
+    raise SystemExit("Failed to open gCapture stream")
 logger.log(logging.INFO, "Getting Images")
 while not camera.log.empty():
     (level, msg) = camera.log.get_nowait()
     logger.log(level, msg)
 camera.start()
+use_framebuffer = bool(getattr(camera, "buffer", None) is not None)
 
 
 last_rtp = time.time()
@@ -71,10 +78,18 @@ stop = False
 frame = None
 
 while not stop:
-    try:
-        (frame_time, frame) = camera.capture.get(timeout=0.25)
-    except Empty:
-        frame_time = None
+    frame_time = None
+    frame = None
+    if use_framebuffer:
+        if camera.buffer is not None and camera.buffer.avail > 0:
+            frame, frame_time = camera.buffer.pull(copy=False)
+        else:
+            time.sleep(0.001)
+    else:
+        try:
+            (frame_time, frame) = camera.capture.get(timeout=0.25)
+        except Empty:
+            frame = None
 
     while not camera.log.empty():
         (level, msg) = camera.log.get_nowait()
@@ -87,6 +102,9 @@ while not stop:
 
         frame_rtp = frame.copy()
         cv2.putText(frame_rtp, "Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation, font, fontScale, fontColor, lineType)
+
+        if not isinstance(frame_time, (int, float)):
+            frame_time = time.perf_counter() * 1000.0
 
         if not rtp.queue.full():
             rtp.queue.put_nowait((frame_time, frame_rtp))
@@ -107,6 +125,11 @@ while not stop:
 camera.stop()
 try:
     camera.join(timeout=2.0)
+except Exception:
+    pass
+try:
+    if hasattr(camera, "close"):
+        camera.close(timeout=2.0)
 except Exception:
     pass
 try:

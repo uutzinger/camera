@@ -194,9 +194,15 @@ while(not stop):
     if not processor_h.input.full():   processor_h.input.put_nowait((frame_time, frame_filt))
     else:                              logger.log(logging.WARNING, "Proc H:Input Queue is full!")
 
-    if not processor_l.output.empty(): (data_time, data_highpass_l, data_lowpass_l) = processor_l.output.get()
+    if not processor_l.output_highpass.empty():
+        (data_time, data_highpass_l) = processor_l.output_highpass.get()
+    if not processor_l.output_lowpass.empty():
+        (data_time, data_lowpass_l) = processor_l.output_lowpass.get()
 
-    if not processor_h.output.empty(): (data_time, data_highpass_h, data_lowpass_h) = processor_h.output.get()
+    if not processor_h.output_highpass.empty():
+        (data_time, data_highpass_h) = processor_h.output_highpass.get()
+    if not processor_h.output_lowpass.empty():
+        (data_time, data_lowpass_h) = processor_h.output_lowpass.get()
 
     while not processor_l.log.empty():  
         (level, msg) = processor_l.log.get_nowait()

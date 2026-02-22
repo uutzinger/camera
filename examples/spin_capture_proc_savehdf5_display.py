@@ -1,5 +1,5 @@
 ##########################################################################
-# Blackfly capture + process + display + store corrected cubes to HDF5
+# Spinnaker capture + process + display + store corrected cubes to HDF5
 #
 # Notes
 # - Collects 14 frames into a cube.
@@ -17,7 +17,6 @@ import platform
 import time
 from datetime import datetime
 from pathlib import Path
-from queue import Empty
 
 import cv2
 import numpy as np
@@ -43,24 +42,31 @@ def calibrate(pixel: np.uint8, background: np.uint8, flatfield: np.uint16) -> np
 
 def main() -> None:
 
-    from configs.blackfly_configs import configs
+    from configs.spin_configs import configs
 
-    display_interval = 0.0 if configs['displayfps'] >= configs['fps'] else (1.0 / configs['displayfps'])
+    displayfps = float(configs.get("displayfps", 0) or 0)
+    capture_fps = float(configs.get("fps", 0) or 0)
+    if displayfps <= 0:
+        display_interval = 0.0
+    elif capture_fps > 0 and displayfps >= 0.8 * capture_fps:
+        display_interval = 0.0
+    else:
+        display_interval = 1.0 / displayfps
+    loop_interval = 1.0 / (2.0 * (capture_fps if capture_fps > 0 else 30.0))
 
-    res = configs['camera_res']
-    width, height = res[0], res[1]
     measure_time = 5.0
 
     depth = 14
 
-    data_cube = np.zeros((depth, height, width), dtype=np.uint8)
-    background = np.zeros((height, width), dtype=np.uint8)
-    flatfield = np.asarray((2**8) * np.ones((height, width)), dtype=np.uint16)
+    data_cube = None
+    background = None
+    flatfield = None
     inten = np.zeros(depth, dtype=np.uint16)
-    data_cube_corr = np.zeros((depth, height, width), dtype=np.uint16)
+    data_cube_corr = None
+    warned_dtype = False
 
     logging.basicConfig(level=logging.DEBUG)
-    logger = logging.getLogger('BlackflyProcHDF5')
+    logger = logging.getLogger('SpinnakerProcHDF5')
 
     from camera.streamer.h5storageserver import h5Server
 
@@ -72,10 +78,10 @@ def main() -> None:
     logger.info('Starting Storage Server: %s', output_dir / filename)
     hdf5.start()
 
-    from camera.capture.blackflycapture import blackflyCapture
+    from camera.capture.spincapture import spinCapture
 
     logger.info('Starting Capture')
-    camera = blackflyCapture(configs)
+    camera = spinCapture(configs)
     camera.start()
 
     window_name = 'Camera'
@@ -103,25 +109,55 @@ def main() -> None:
         while not stop:
             current_time = time.perf_counter()
 
-            while not camera.log.empty():
-                (level, msg) = camera.log.get_nowait()
-                logger.log(level, '%s', msg)
-            while not hdf5.log.empty():
-                (level, msg) = hdf5.log.get_nowait()
-                logger.log(level, '%s', msg)
-
-            try:
-                (frame_time, frame) = camera.capture.get(block=True, timeout=1.0)
-            except Empty:
+            # Pull frame (non-blocking)
+            if camera.buffer and camera.buffer.avail > 0:
+                frame, frame_time = camera.buffer.pull(copy=False)
+            else:
                 frame = None
+                frame_time = None
+
+            # Drain logs
+            try:
+                while not camera.log.empty():
+                    level, msg = camera.log.get_nowait()
+                    logger.log(level, "%s", msg)
+                while not hdf5.log.empty():
+                    level, msg = hdf5.log.get_nowait()
+                    logger.log(level, "%s", msg)
+            except Exception:
+                pass
 
             if frame is None:
+                remaining = loop_interval - (time.perf_counter() - current_time)
+                if remaining > 0:
+                    time.sleep(remaining)
                 continue
 
-            data_cube[frame_idx, :, :] = frame
+            if frame.dtype == np.uint8:
+                frame_u8 = frame
+            else:
+                if not warned_dtype:
+                    logger.warning("Processing expects uint8; downcasting frames for calibration preview.")
+                    warned_dtype = True
+                if np.issubdtype(frame.dtype, np.integer):
+                    shift = max(0, int(frame.dtype.itemsize * 8 - 8))
+                    frame_u8 = (frame >> shift).astype(np.uint8)
+                else:
+                    frame_u8 = np.clip(frame, 0, 255).astype(np.uint8)
+
+            if data_cube is None:
+                height, width = frame_u8.shape[:2]
+                data_cube = np.zeros((depth, height, width), dtype=np.uint8)
+                background = np.zeros((height, width), dtype=np.uint8)
+                flatfield = np.asarray((2**8) * np.ones((height, width)), dtype=np.uint16)
+                data_cube_corr = np.zeros((depth, height, width), dtype=np.uint16)
+                textLocation0 = (10, max(20, height - 60))
+                textLocation1 = (10, max(40, height - 20))
+
+            data_cube[frame_idx, :, :] = frame_u8
             frame_idx += 1
 
-            if frame_idx >= depth:
+            if frame_idx >= depth and data_cube is not None and background is not None and flatfield is not None and data_cube_corr is not None:
                 frame_idx = 0
                 num_cubes_generated += 1
 
@@ -157,8 +193,8 @@ def main() -> None:
             if (current_time - last_display) >= display_interval:
                 # display latest corrected preview (or raw frame if not yet computed)
                 display_frame = frame.copy()
-                cv2.putText(display_frame, f'Capture FPS:{getattr(camera, "measured_fps", float("nan"))} [Hz]', textLocation0, font, fontScale, fontColor, lineType)
-                cv2.putText(display_frame, f'Store CPS:{getattr(hdf5, "measured_cps", float("nan"))} [Hz]', textLocation1, font, fontScale, fontColor, lineType)
+                cv2.putText(display_frame, f'Capture FPS:{getattr(camera, "measured_fps", float("nan")):.1f} [Hz]', textLocation0, font, fontScale, fontColor, lineType)
+                cv2.putText(display_frame, f'Store CPS:{getattr(hdf5, "measured_cps", float("nan")):.1f} [Hz]', textLocation1, font, fontScale, fontColor, lineType)
                 cv2.imshow(window_name, display_frame)
 
                 key = cv2.waitKey(1)
@@ -171,10 +207,16 @@ def main() -> None:
                 last_display = current_time
                 num_frames_displayed += 1
 
+            remaining = loop_interval - (time.perf_counter() - current_time)
+            if remaining > 0:
+                time.sleep(remaining)
+
     finally:
         try:
             camera.stop()
             camera.join(timeout=2.0)
+            if hasattr(camera, "close"):
+                camera.close()
         except Exception:
             pass
         try:

@@ -1,0 +1,2 @@
+This software uses code of FFmpeg http://ffmpeg.org licensed under the LGPL v2.1 (http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html).
+The FFmpeg code can be found online at https://github.com/FFmpeg/FFmpeg/tree/5156578d1f486163d5b83f1d63246cd23d107933.

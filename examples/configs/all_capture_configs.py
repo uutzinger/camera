@@ -89,8 +89,9 @@ cv2capture_proc_configs = {
 
 # Generic GStreamer capture via PyGObject appsink (cross-platform)
 # ---------------------------------------------------------------------------
-# Backend: camera/capture/gcapture.py (gCapture)
-# This is the primary "direct GStreamer" backend (no OpenCV VideoCapture).
+# Backend: camera/capture/gcapture.py (gCapture) and camera/capture/gcaptureQt.py (gCaptureQt)
+# Preferred backend is GI/PyGObject appsink.
+# Fallback backend is OpenCV CAP_GSTREAMER when GI is unavailable.
 #
 # Source selection priority:
 #   1) gst_source_str / gst_source_pipeline (full custom source string)
@@ -128,7 +129,7 @@ gcapture_configs = {
 # Jetson Nano CSI capture via PyGObject appsink (nvarguscamerasrc default)
 # ---------------------------------------------------------------------------
 # Backend: camera/capture/nanocapture.py (nanoCapture)
-# Same overall shape as gCapture, but defaults to nvargus on Jetson.
+# Thin wrapper around gCapture with Jetson-focused defaults.
 
 nanocapture_configs = {
     'camera_res': (1280, 720),
@@ -222,11 +223,11 @@ rtpcapture_configs = {
 }
 
 
-# FLIR Blackfly capture via PySpin
+# FLIR Spinnaker capture via PySpin
 # ---------------------------------------------------------------------------
-# Backend: camera/capture/blackflycapture.py (blackflyCapture)
+# Backend: camera/capture/spincapture.py (spinCapture)
 
-blackfly_configs = {
+spin_configs = {
     ##############################################
     # Camera Settings
     ##############################################
@@ -249,4 +250,34 @@ blackfly_configs = {
     'output_res': (-1, -1),
     'flip': 0,
     'displayfps': 50,
+}
+
+
+# Basler pylon capture via pypylon
+# ---------------------------------------------------------------------------
+# Backend: camera/capture/pyloncapture.py (pylonCapture)
+
+pylon_configs = {
+    ##############################################
+    # Camera Settings
+    ##############################################
+    'camera_res': (720, 540),          # width & height (ROI)
+    'exposure': 1750,                  # microseconds; <=0 means auto depending on autoexposure
+    'autoexposure': 0,                 # -1 unchanged, 0 off, 1 on
+    'fps': 60,
+    'binning': (1, 1),                 # (horizontal, vertical)
+    'offset': (0, 0),                  # (x, y) ROI offset
+    'adc': -1,                         # camera dependent; leave default unless supported
+
+    # Triggering / IO
+    'trigout': -1,                     # -1 no trigger output, else line number
+    'ttlinv': False,                   # invert TTL logic
+    'trigin': -2,                      # -2 keep camera default, -1 software trigger, else line number
+
+    ##############################################
+    # Output / Display
+    ##############################################
+    'output_res': (-1, -1),
+    'flip': 0,
+    'displayfps': 30,
 }

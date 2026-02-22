@@ -55,7 +55,7 @@ def main():
         from camera.capture.nanocapture import nanoCapture
         camera = nanoCapture(configs, camera_index)
     else:
-        from camera.capture.cv2captureProc import cv2CaptureProc
+        from camera.capture.archive.cv2captureProc import cv2CaptureProc
         camera = cv2CaptureProc(configs, camera_index)
 
     print("Getting Images")

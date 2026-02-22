@@ -1,0 +1,242 @@
+FLIR Spinnaker® SDK License Agreement
+
+READ CAREFULLY: This is a legal agreement between you (an individual or a single entity) (“you”) and FLIR Systems 
+Inc. (“FLIR”).  Information contained in this software or document pertains to a Canadian product that is not 
+controlled by the Canadian Government.  Before installing and using the Spinnaker® Software Development Kit and any 
+updates to it that we may at our discretion provide to you (collectively, the "SDK"), you should read this agreement.  
+If you do not agree with all of the terms of this agreement, do not install or use the SDK.  FLIR may change this 
+agreement at any time and it is your responsibility to review the most updated version of it on FLIR’s website.  By 
+continuing to use the SDK following such changes, you agree to be bound by them.
+
+1.	Grant of License: Subject to the terms of this agreement, you are hereby granted a limited, terminable, 
+non-transferable, non-exclusive license and right to use the SDK only in conjunction with: (a) those FLIR cameras 
+listed at https://www.teledynevisionsolutions.com/products/spinnaker-sdk/ (as such list may be amended by FLIR at any
+time and from time to time) and owned by you; and (b) the images derived from such cameras. FLIR Systems processes
+your personal data when you install and use the SDK in accordance with the information notice posted at the end of
+this License Agreement.
+
+2.	Free and Open Source Components: Notwithstanding anything to the contrary herein, use, copying and distribution 
+of components of the SDK licensed under free and open source license agreements are governed solely by the terms of 
+those license agreements (which are contained in the electronic documentation for the SDK) and not this agreement.
+
+3.	Restrictions: Except as (and only if) explicitly permitted by Section 4 below, you will not, and will not 
+permit any third parties to: (a) copy the SDK, other than a reasonable number of backup copies for your own use only, 
+and such backup copies together with the original will be kept in your possession and control; (b) provide or disclose 
+the SDK to any third party; (c) alter, modify, reverse engineer, decompile or disassemble the SDK, or attempt to do any 
+of the foregoing; (d) grant sublicenses, leases, or any other rights in the SDK to any third party; or (e) remove, 
+alter or obscure any proprietary rights notices (including any copyright and trademark notices) on and in the SDK.
+
+4.	Additional OEM Rights: If you are an original equipment manufacturer, then in addition to the rights set out in 
+Section 1 above you are hereby granted a limited, terminable, non-transferable, non-exclusive license and right to use 
+the SDK for the sole additional purpose of incorporating the libraries found in the SDK (collectively, the 
+“Libraries”) into new products developed by you, in whole or in part, using the SDK (collectively, the 
+“Derivative Products”) provided that you: (a) ensure that the components of any Derivative Product that derive 
+functionality from any of the Libraries may only be used with FLIR products, including the SDK, and images derived from 
+such products; (b) may only redistribute drivers (.inf and .sys), dynamically linked libraries (.dll, .so and .cti), 
+executables (.exe) and documentation (.doc, .txt, .pdf and .chm) and only to the extent necessary to support your 
+Derivative Products.  For clarity, headers (.h), source (.c, .cpp,.cs and .vb) and statically linked libraries (.lib 
+and .a) cannot be redistributed; (c) will prohibit any, and ensure that there is no, redistribution of any of the 
+Libraries by any third party, including any end user customers; and (d) will include any FLIR and third party 
+proprietary rights legends or notices (including copyright and trademark notices), unaltered and unobscured, on all 
+Derivative Products.
+
+5.	Ownership:  FLIR and third parties are the owners of and retain title to all proprietary and intellectual 
+property rights (including all patent, copyright, trade secret and trademark rights) in and to the SDK.  You have no 
+right, title or interest in the SDK, except as specifically set forth herein, and no rights in any trade-marks of FLIR. 
+ All rights not explicitly granted herein are hereby reserved.
+
+6.	Indemnification:  You assume the entire risk relating to, and will indemnify, hold harmless and defend FLIR 
+from and against any claims, actions, lawsuits, or proceedings, and any losses, liabilities, damages and expenses 
+(including attorney’s fees and expenses) that arise or result from your activities under this agreement, including 
+the distribution or use of the SDK (including the Libraries) and/or the development, distribution or use of any 
+Derivative Product (including any intellectual property infringement claims relating thereto).
+
+7.	No Warranties:  Your use of the SDK is solely at your own risk.  The SDK is provided “as is” and “as 
+available” without warranty or condition of any kind, either express, implied or statutory, including implied 
+warranties of merchantability, fitness for a particular application or purpose, title and non-infringement, and FLIR 
+hereby expressly disclaims all such warranties and conditions.  Some jurisdictions do not allow the exclusion of 
+implied warranties, so the above exclusion may not apply to you.
+
+8.	Limitation of Liability:  Notwithstanding any other provision herein, to the maximum extent permitted by 
+applicable law, FLIR will not under any circumstances be liable for any direct, indirect, incidental, consequential, 
+punitive or special losses or damages (including damages for bodily injury or death, business interruption, loss or 
+corruption of business information or data, loss of opportunity, loss of privacy, cost of recovery, financial loss, 
+loss of revenue or loss of profits for any reason whatsoever) whether or not FLIR has been advised or should have been 
+aware of the possibility of any such losses or damage arising, and in no event will the aggregate and cumulative 
+liability of FLIR for any matters arising under this agreement or otherwise exceed $25.
+
+9.	Changes and Support:  FLIR may at its sole discretion elect to provide you with limited support services 
+related to the SDK for such period of time as FLIR at its sole discretion elects.  FLIR may change or cease to provide 
+the SDK and the limited Support at any time and from time to time without notice to you and that FLIR is not obligated 
+to provide the SDK or any support.  FLIR may use any technical information, feedback or ideas you provide to FLIR for 
+FLIR’s business purposes, including product support and development.
+
+10.	Termination: FLIR may terminate this agreement immediately on notice to you if you violate any of the terms of 
+this agreement.  FLIR may also terminate this agreement for convenience provided that 30 days notice is delivered to 
+you.  Any notice given by FLIR hereunder will be effective when sent by FLIR to the email address you provided to FLIR 
+when you registered for a download account.  On termination, for any reason, your rights hereunder will cease and you 
+must immediately return all copies of the SDK to FLIR and on termination for violation or default, you will be liable 
+to FLIR for all damages suffered as a result of the violation or default.  Sections 6-8, 10 and 12 will survive any 
+termination hereof.
+
+11.	Export Laws: This agreement involves products and/or technical data that may be controlled under laws and 
+regulations of the United States and other countries, including the United States Export Administration Regulations, or 
+any other applicable law, regulation, rule, guideline or order (collectively, “Export Laws”).  You will comply with 
+all Export Laws to ensure that the SDK is not exported, directly or indirectly, in contravention of the Export Laws.  
+You represent and warrant to FLIR that you are not a person barred from receiving the SDK under any Export Laws.
+
+12.	General: This agreement is the entire agreement between you and FLIR with respect to the subject matter of this 
+agreement.  If you are signing on behalf of an entity such as a corporation, you represent and warrant that you have 
+the authority to bind such entity.  This agreement and the rights granted hereunder are personal to you and you may not 
+assign this agreement to a third party without the prior written consent of FLIR.  This agreement is governed 
+exclusively by and will be enforced, construed, and interpreted exclusively in accordance with the laws of British 
+Columbia (“BC”) and the laws of Canada applicable in BC.  The courts of the Province of BC will have exclusive 
+jurisdiction over any dispute arising under this agreement.  You agree that termination and/or monetary damages may not 
+be a sufficient remedy if you breach this agreement and that FLIR will be entitled, without waiving any other rights or 
+remedies, to injunctive or equitable relief as may be deemed proper by a court of competent jurisdiction in the event 
+of a breach.  If FLIR does not exercise any legal right or remedy in this agreement or otherwise, this will not be 
+taken to be a formal waiver by FLIR of its rights, which rights will remain available to FLIR.  If any provision of 
+this agreement is construed to be illegal or invalid, the illegal or invalid provisions will be deemed stricken and 
+deleted herefrom to the same extent and effect as if never incorporated herein, but all other provisions hereof will 
+continue in full force and effect.
+
+Information regarding the protection of Personal Data of users located in the E.U.
+
+This information notice describes FLIR Systems, Inc.’s (“FLIR”) use of your personal data when you install and 
+use FLIR’s Software Development Kit (SDK) in conjunction with compatible FLIR cameras owned by you and the images 
+derived from such cameras.
+
+1.	Personal data we collect
+FLIR collects the following data during SDK installation/uninstallation, as well as during the execution of our camera 
+evaluation application (SpinView_WPF):
+• Product name
+• Product version
+• Operating system and architecture
+• IP Address and geographical location (which is being anonymized as per Google Analytics setting, see section 11 
+Google Analytics)
+• Data Source (internal from FLIR or external from customers)
+• Data related to your use of the SDK:
+  o Components selected for installation or uninstallation in the installer
+  o Timestamp for when installation or uninstallation occurred
+  o User interface features selected, updated or modified in the camera evaluation application
+  o Timestamp for when features in the camera evaluation application were selected, updated or modified
+
+2.	Purposes we process personal data for
+We process this personal data for the following purposes:
+• To provide services you have requested, and respond to any comments or complaints you may send us;
+• We monitor use of our products and services, and may use your information to help us monitor, improve and protect 
+our products, content, services and websites;
+• To comply with applicable laws and protection of our legitimate business interests and legal rights, including, but 
+not limited to, use in connection with legal claims, compliance, especially general trade compliance, regulatory, 
+investigative purposes (including disclosure of such information in connection with legal process or litigation).
+
+3.	Legal basis for the processing of personal data 
+Your personal data is processed based on the following legal basis:
+• Art. 6 para 1 (b) GDPR to provide the service offerings you have requested.
+• Art. 6 para 1 (f) GDPR to achieve research and analytic purposes to improve and further develop service offerings, 
+including but not limited to the service offerings.
+• Art. 6 para 1 (c) GDPR for legal compliance based on a legal obligation under EU or Member State law to which we 
+are subject.
+
+4.	Sharing personal data
+FLIR does not rent, sell or share your Personal Information unnecessarily, or without a clearly defined purpose, and 
+not without ensuring all the necessary protections are in place, to ensure FLIR meets all its legal obligations around 
+the storage, transmission and processing of Personal Information, as set out by all relevant legislations within the 
+markets that FLIR operates. When we share your Personal Information, we do not allow any third-party partners to use it 
+for their own marketing purposes. When we do share your Personal Information, you can be assured that it will only be 
+shared with third-party recipients who will protect your Personal Information as closely as FLIR does. We may share 
+your personal data for the above-mentioned purposes with the following third parties:
+
+• Affiliates: We may share your Personal Information with relevant Affiliates of FLIR so that they may assist you 
+locally with the sale of one of our products, service, support, training, or other tasks that need local 
+representation, or if sharing the data is necessary to making available the FLIR Site or FLIR Cloud Services to you.  
+We are also a global enterprise comprised of a group of companies operating internationally. This entails that business 
+functions handling Personal Information to achieve the purposes defined in this Privacy Policy are managed centrally or 
+only by some Affiliates. 
+FLIR’s internal access permissions are strictly controlled, and so FLIR also does not allow access to your Personal 
+Information by FLIR employees, unless the employee requires access to fulfill their role and responsibilities. All 
+companies in the FLIR group are bound, as required by law, to ensure that Personal Information is protected consistent 
+with EU standards as explained in section 7 “Transfer of personal data” below. 
+
+• Service Providers: Personal data may be shared with third party service providers, who will process it for the 
+purposes above. Such third parties include, but are not limited to, IT service, Cloud Storage service providers, Cloud 
+service providers, training providers, survey service providers, investigators, auditors and data hosting providers.
+
+• Government Authorities / Law Enforcement Officials: Personal data may be shared with government authorities and/or 
+law enforcement officials if required for the purposes above, if mandated by law or if required for the legal 
+protection of our legitimate interests in compliance with applicable laws.
+
+5.	Transferring personal data
+We are committed to maintaining the security of data, including personal data, and we have comprehensive corporate 
+policies regarding information security. We will protect personal data, regardless of whether it is inside or outside 
+the EU and regardless of whether it is processed by us or by third party service providers on our behalf.
+Where information is transferred out of the European Economic Area (E.E.A.), and where this is to an affiliate of ours 
+or to a third party in a country that is not subject to an adequacy decision by the E.U. Commission, data is in all 
+cases adequately protected under appropriate safeguards such as E.U. Commission approved standard contractual clauses, 
+an appropriate Privacy Shield certification or a vendor's Processor Binding Corporate Rules.
+
+6.	Your rights
+You may be entitled to ask us for a copy of your personal data, to correct it, erase or restrict its processing, or to 
+ask us to transfer some of this personal data to other organizations. You may also have rights to object to some 
+processing activities, such as the profiling we may perform for the purposes of direct marketing, and, where we have 
+asked for your consent to process your data, to withdraw this consent. These rights may be limited in some situations 
+– for example, where we can demonstrate that we have a legal requirement to process your data. In some instances, 
+this may mean that we are able to retain data even if you withdraw your consent. 
+Participating in the pre-release testing and providing feedback and receiving recommendations is entirely voluntary. 
+However, if you wish to participate in the testing , it is mandatory for you to provide certain information to allow us 
+to conduct a useful test in regard to its purpose (collecting user experience based on user profiles) or so that we can 
+comply with legal or contractual obligations: if such data is not provided, then we will not be able to manage our 
+contractual relationship, or to meet obligations placed on us. In all other cases, provision of requested personal data 
+is optional.
+
+7.	Contact options
+For any questions or concerns relating to this information notice, or our data protection practices, please contact us 
+at: FLIR Systems Trading Belgium BVBA, Luxemburgstraat 2, 2321 Meer, Belgium. Phone: +32 (0) 3665 5100; E-Mail: 
+PersonalDataManager@flir.com 
+
+8.	Data retention and deletion
+We will keep your personal data described in section 1 for 26 months to provide the Service Offerings you have 
+requested. Afterwards, we may retain data for an appropriate period to protect ourselves from legal claims, to 
+administer our business, or to the extent permitted by applicable law, which may require us to hold your personal data 
+for specific periods. We will delete your personal data, when you object to the processing in accordance with “What 
+rights to you have in relation to your data” (see above) or when we are obliged to delete it in accordance with an 
+obligation under applicable law.
+
+9.	Changes to this information notice
+This information notice may, from time to time, change. Such amendments might become necessary due to the need to keep 
+the information notice up to date, given changes in our business practice or in response to legislative changes, and 
+whether they are international or national changes, and may be made without prior notice. If there are any significant 
+changes made to the use of your personal data, which differs from that which was stated at the time your personal data 
+was collected, then we will notify you by e-mail to the e-mail address you have registered.
+
+10.	Cookies
+We use cookies within our App. Cookies are small text files sent by a web server to the App and saved locally on your 
+device. The cookie allows the server to uniquely identify the App. Cookies do not cause any harm to your device and do 
+not contain viruses. We use the following categories of cookies on our App:
+
+• Category 1: Strictly Necessary Cookies
+These cookies are essential in order to enable you to move around the App and use its features. Without these cookies, 
+services you have asked for such as remembering your login details or data provided cannot be provided. 
+
+• Category 2: Performance Cookies
+These cookies collect information on how people use our App. For example, we use Google Analytics cookies to help us 
+understand how users arrive at our site, browse or use our site and highlight areas where we can improve areas such as 
+navigation, App experience and marketing campaigns. The data stored by these cookies never shows personal details from 
+which your individual identity can be established. 
+
+• Category 3: Functionality Cookies
+These cookies remember choices you make such as the country you visit our App from, language and search parameters. 
+
+11.	Google Analytics
+Our installer and camera evaluation application uses Google Analytics, which is an analytics service provided by the 
+third party provider Google, Inc. (“Google”). Google Analytics is used for the purpose of evaluating your use of 
+our App, compiling reports on App activity and other services relating to website activity and internet usage. The 
+information generated by the cookie about your use of the App is usually transmitted to and stored by Google on servers 
+in the United States. This transfer is covered by Google’s Privacy Shield certification and a separate data 
+processing agreement that we have concluded with Google. In our installer and camera evaluation application, we have 
+also activated the IP anonymization feature provided by Google to help protect your privacy. This means that your IP 
+address will automatically be shortened after it is collected so it can no longer be connected to you and likewise your 
+geographical location will be interpreted by Google Analytics through the use of IP by enabling IP anonymization up to 
+city level (see https://support.google.com/analytics/answer/2763052?hl=en). For more information see 
+https://support.google.com/analytics/answer/6004245?ref_topic=2919631 (information on Google Analytics and data 
+privacy).

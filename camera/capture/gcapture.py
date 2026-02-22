@@ -22,6 +22,7 @@ import platform
 
 # Array
 import numpy as np
+import cv2
 
 # GStreamer (direct)
 try:
@@ -88,6 +89,12 @@ class gCapture(Thread):
         self.log             = Queue(maxsize=32)
         self.stopped         = True
         self.cam_lock        = Lock()
+        self.cam_open        = False
+        self._backend        = None  # 'gi' | 'opencv'
+        self.pipeline        = None
+        self.appsink         = None
+        self.source          = None
+        self.cam             = None
 
         # open up the camera
         self.open_cam()
@@ -120,9 +127,10 @@ class gCapture(Thread):
         num_frames = 0
         while not self.stopped:
             current_time = time.time()
+            img = None
 
-            # Get New Image
-            if self.appsink is not None:
+            # Preferred backend: GI + appsink
+            if self._backend == 'gi' and self.appsink is not None:
                 # GI bindings vary: prefer try_pull_sample, fall back to signal emit
                 try_pull = getattr(self.appsink, "try_pull_sample", None)
                 if callable(try_pull):
@@ -136,17 +144,27 @@ class gCapture(Thread):
                         img = None
                         if not self.log.full():
                             self.log.put_nowait((logging.ERROR, f"gcapture:Failed to convert sample to BGR: {exc}"))
-                    num_frames += 1
-                    self.frame_time = int(current_time * 1000)
 
-                    if (img is not None) and (not self.capture.full()):
-                        self.capture.put_nowait((current_time * 1000.0, img))
-                    else:
-                        if not self.log.full():
-                            self.log.put_nowait((logging.WARNING, "gcapture:Capture Queue is full!"))
+            # Fallback backend: OpenCV + CAP_GSTREAMER
+            if self._backend == 'opencv' and self.cam is not None:
+                try:
+                    with self.cam_lock:
+                        ret, frame = self.cam.read()
+                    if ret and frame is not None:
+                        img = frame
+                except Exception:
+                    img = None
+
+            if img is not None:
+                num_frames += 1
+                self.frame_time = int(current_time * 1000)
+                if not self.capture.full():
+                    self.capture.put_nowait((current_time * 1000.0, img))
                 else:
-                    # no sample available within timeout; loop again
-                    pass
+                    if not self.log.full():
+                        self.log.put_nowait((logging.WARNING, "gcapture:Capture Queue is full!"))
+            else:
+                time.sleep(0.001)
 
             # FPS calculation
             if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
@@ -318,7 +336,7 @@ class gCapture(Thread):
             if self._gst_element_has_property('ksvideosrc', 'device-index'):
                 device_str = f'device-index={int(camera_num)} '
             return (
-                'ksvideosrc '
+                'ksvideosrc name=src '
                 + device_str
                 + extra_props_str
                 + '! video/x-raw, '
@@ -333,7 +351,7 @@ class gCapture(Thread):
             if self._gst_element_has_property('dshowvideosrc', 'device-index'):
                 device_str = f'device-index={int(camera_num)} '
             return (
-                'dshowvideosrc '
+                'dshowvideosrc name=src '
                 + device_str
                 + extra_props_str
                 + '! video/x-raw, '
@@ -343,7 +361,7 @@ class gCapture(Thread):
 
         if source in ('libcamera', 'libcamerasrc'):
             return (
-                'libcamerasrc name=libcamerasrc{:d} '.format(camera_num)
+                'libcamerasrc name=src '
                 + extra_props_str
                 + '! video/x-raw, '
                 + 'width=(int){:d}, height=(int){:d}, '.format(capture_width, capture_height)
@@ -366,7 +384,7 @@ class gCapture(Thread):
                     exposure_props += 'aelock=true '
 
             return (
-                'nvarguscamerasrc sensor-id={:d} '.format(camera_num)
+                'nvarguscamerasrc name=src sensor-id={:d} '.format(camera_num)
                 + exposure_props
                 + extra_props_str
                 + '! video/x-raw(memory:NVMM), '
@@ -411,7 +429,7 @@ class gCapture(Thread):
                 # Request the device's native FPS at the source, then use videorate
                 # to throttle to the desired framerate if needed.
                 src = (
-                    'v4l2src device={:s} io-mode=2 '.format(device)
+                    'v4l2src name=src device={:s} io-mode=2 '.format(device)
                     + extra_props_str
                     + '! image/jpeg, '
                     + 'width=(int){:d}, height=(int){:d}, '.format(capture_width, capture_height)
@@ -428,7 +446,7 @@ class gCapture(Thread):
                 return src
 
             return (
-                'v4l2src device={:s} io-mode=2 '.format(device)
+                'v4l2src name=src device={:s} io-mode=2 '.format(device)
                 + extra_props_str
                 + '! video/x-raw, '
                 + 'width=(int){:d}, height=(int){:d}, '.format(capture_width, capture_height)
@@ -458,47 +476,92 @@ class gCapture(Thread):
         if not self.log.full():
             self.log.put_nowait((logging.INFO, self.gst))
 
-        if Gst is None:
-            if not self.log.full():
-                self.log.put_nowait((logging.CRITICAL, "gcapture:GStreamer python bindings (PyGObject) not available"))
-            self.pipeline = None
-            self.appsink = None
-            self.cam_open = False
-            return
+        self.close_cam()
+        self._backend = None
 
-        if not hasattr(self.__class__, "_gst_inited"):
-            Gst.init(None)
-            self.__class__._gst_inited = True
+        # Preferred backend: GI + appsink
+        if Gst is not None:
+            if not hasattr(self.__class__, "_gst_inited"):
+                Gst.init(None)
+                self.__class__._gst_inited = True
 
-        try:
-            self.pipeline = Gst.parse_launch(self.gst)
-            self.appsink = self.pipeline.get_by_name("appsink")
-            if self.appsink is None:
-                raise RuntimeError("appsink element not found in pipeline")
-
-            # Ensure low-latency behavior even if the pipeline string is edited
             try:
-                self.appsink.set_property("sync", False)
-                self.appsink.set_property("drop", True)
-                self.appsink.set_property("max-buffers", 1)
-                # BaseSink properties also available on appsink
-                if self.appsink.find_property("enable-last-sample") is not None:
-                    self.appsink.set_property("enable-last-sample", False)
-                if self.appsink.find_property("qos") is not None:
-                    self.appsink.set_property("qos", False)
-            except Exception:
-                pass
+                self.pipeline = Gst.parse_launch(self.gst)
+                self.appsink = self.pipeline.get_by_name("appsink")
+                if self.appsink is None:
+                    raise RuntimeError("appsink element not found in pipeline")
 
-            ret = self.pipeline.set_state(Gst.State.PLAYING)
-            self.cam_open = ret != Gst.StateChangeReturn.FAILURE
-        except Exception as exc:
-            self.pipeline = None
-            self.appsink = None
-            self.cam_open = False
+                try:
+                    self.source = self.pipeline.get_by_name("src")
+                except Exception:
+                    self.source = None
+
+                # Ensure low-latency behavior even if the pipeline string is edited
+                try:
+                    self.appsink.set_property("sync", False)
+                    self.appsink.set_property("drop", True)
+                    self.appsink.set_property("max-buffers", 1)
+                    if self.appsink.find_property("enable-last-sample") is not None:
+                        self.appsink.set_property("enable-last-sample", False)
+                    if self.appsink.find_property("qos") is not None:
+                        self.appsink.set_property("qos", False)
+                except Exception:
+                    pass
+
+                ret = self.pipeline.set_state(Gst.State.PLAYING)
+                self.cam_open = ret != Gst.StateChangeReturn.FAILURE
+                if self.cam_open:
+                    self._backend = 'gi'
+                    return
+                if not self.log.full():
+                    self.log.put_nowait((logging.WARNING, "gcapture:GI pipeline did not enter PLAYING, trying OpenCV fallback"))
+                # GI path opened but failed to transition to PLAYING; clean up
+                # before trying the OpenCV fallback.
+                try:
+                    self.pipeline.set_state(Gst.State.NULL)
+                except Exception:
+                    pass
+                self.pipeline = None
+                self.appsink = None
+                self.source = None
+            except Exception as exc:
+                if not self.log.full():
+                    self.log.put_nowait((logging.WARNING, f"gcapture:GI pipeline open failed: {exc}"))
+                self.pipeline = None
+                self.appsink = None
+                self.source = None
+
+        else:
             if not self.log.full():
-                self.log.put_nowait((logging.CRITICAL, f"gcapture:Failed to open GStreamer pipeline: {exc}"))
+                self.log.put_nowait((logging.INFO, "gcapture:PyGObject unavailable, trying OpenCV CAP_GSTREAMER"))
+
+        # Fallback backend: OpenCV + CAP_GSTREAMER
+        try:
+            self.cam = cv2.VideoCapture(self.gst, cv2.CAP_GSTREAMER)
+            self.cam_open = bool(self.cam is not None and self.cam.isOpened())
+            if self.cam_open:
+                self._backend = 'opencv'
+                if not self.log.full():
+                    self.log.put_nowait((logging.INFO, "gcapture:Using OpenCV CAP_GSTREAMER fallback"))
+                return
+        except Exception as exc:
+            if not self.log.full():
+                self.log.put_nowait((logging.WARNING, f"gcapture:OpenCV CAP_GSTREAMER open failed: {exc}"))
+            self.cam = None
+
+        self.cam_open = False
+        if not self.log.full():
+            self.log.put_nowait((logging.CRITICAL, "gcapture:Failed to open capture pipeline"))
 
     def close_cam(self):
+        if getattr(self, "cam", None) is not None:
+            try:
+                with self.cam_lock:
+                    self.cam.release()
+            except Exception:
+                pass
+        self.cam = None
+
         if getattr(self, "pipeline", None) is not None and Gst is not None:
             try:
                 self.pipeline.set_state(Gst.State.NULL)
@@ -506,6 +569,9 @@ class gCapture(Thread):
                 pass
         self.pipeline = None
         self.appsink = None
+        self.source = None
+        self.cam_open = False
+        self._backend = None
 
     def _sample_to_bgr(self, sample):
         """Convert a Gst.Sample (video/x-raw,format=BGR) into a NumPy array."""

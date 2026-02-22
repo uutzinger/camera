@@ -6,6 +6,7 @@ import cv2
 import logging
 import platform
 import time
+from queue import Empty
 
 # default camera starts at 0 by operating system
 camera_index = 0
@@ -67,16 +68,36 @@ while not camera.log.empty():
     (level, msg) = camera.log.get_nowait()
     logger.log(level, msg)
 camera.start()
+use_framebuffer = bool(getattr(camera, "buffer", None) is not None)
 
 # Initialize Variables
 last_rtp = time.time()
 stop = False
 
 while not stop:
-    (frame_time, frame) = camera.capture.get(block=True, timeout=None)
+    frame_time = None
+    frame = None
+
+    if use_framebuffer:
+        if camera.buffer is not None and camera.buffer.avail > 0:
+            frame, frame_time = camera.buffer.pull(copy=False)
+        else:
+            time.sleep(0.001)
+    else:
+        try:
+            (frame_time, frame) = camera.capture.get(timeout=0.25)
+        except Empty:
+            frame = None
+
     while not camera.log.empty():
         (level, msg) = camera.log.get_nowait()
         logger.log(level, msg)
+
+    if frame is None:
+        while not rtp.log.empty():
+            (level, msg) = rtp.log.get_nowait()
+            logger.log(level, msg)
+        continue
 
     current_time = time.time()
     if (current_time - last_rtp) >= rtp_interval:
@@ -84,6 +105,9 @@ while not stop:
 
         frame_rtp = frame.copy()
         cv2.putText(frame_rtp, "Capture FPS:{} [Hz]".format(camera.measured_fps), textLocation, font, fontScale, fontColor, lineType)
+
+        if not isinstance(frame_time, (int, float)):
+            frame_time = time.perf_counter() * 1000.0
 
         if not rtp.queue.full():
             rtp.queue.put_nowait((frame_time, frame_rtp))
@@ -103,6 +127,23 @@ while not stop:
         (level, msg) = rtp.log.get_nowait()
         logger.log(level, msg)
 
-camera.stop()
+try:
+    camera.stop()
+except Exception:
+    pass
+try:
+    camera.join(timeout=2.0)
+except Exception:
+    pass
+try:
+    if hasattr(camera, "close"):
+        camera.close(timeout=2.0)
+except Exception:
+    pass
+try:
+    if hasattr(camera, "close_cam"):
+        camera.close_cam()
+except Exception:
+    pass
 rtp.stop()
 cv2.destroyAllWindows()

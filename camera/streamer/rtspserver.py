@@ -13,7 +13,8 @@
 #     resolution =(width,height),
 #     fps        = fps,
 #     bitrate    = 2048,
-#     stream_uri = '/test')
+#     stream_uri = '/test',
+#     timestamp_unit='ms')
 #
 # rtsp.start()
 # cube = np.random.randint(0, 255, (height, width, depth), 'uint8')
@@ -31,7 +32,7 @@
 ###############################################################################
 
 # Multi Threading
-from threading import Thread, Event
+from threading import Thread, Event, current_thread
 from queue import Queue
 from queue import Empty
 
@@ -76,6 +77,7 @@ if GstRtspServer is not None:
             queue: Queue,
             log: Queue,
             stop_event: Event,
+            timestamp_unit: str = 'auto',
             **args,
         ):
             super(rtspFactory, self).__init__(**args)
@@ -90,6 +92,14 @@ if GstRtspServer is not None:
 
             self._number_frames = 0
             self._duration = int(Gst.SECOND / max(self._fps, 1))
+            self._last_pts = 0
+            self._first_input_ts_ns = None
+            unit = str(timestamp_unit).strip().lower()
+            if unit not in ('auto', 'ms', 's', 'ns'):
+                if not self.log.full():
+                    self.log.put_nowait((logging.WARNING, f"RTSP:invalid timestamp_unit '{timestamp_unit}', using 'auto'"))
+                unit = 'auto'
+            self._timestamp_unit = unit
 
             s_src  = 'appsrc name=source is-live=true block=true format=GST_FORMAT_TIME ' \
                      'caps=video/x-raw,format=BGR,width={},height={},framerate={}/1 '.format(self._res[0], self._res[1], self._fps)
@@ -100,6 +110,35 @@ if GstRtspServer is not None:
             self.pipeline_str = "( {}! queue max-size-buffers=1 name=q_enc {}! rtph264pay config-interval=1 name=pay0 pt=96 )".format(s_src, s_h264)
             if not self.log.full():
                 self.log.put_nowait((logging.DEBUG, "RTSP:create stream {}".format(self.pipeline_str)))
+
+        def _timestamp_to_ns(self, frame_time):
+            """Convert an incoming frame timestamp to nanoseconds."""
+            if not isinstance(frame_time, (int, float)):
+                return None
+
+            value = float(frame_time)
+            unit = self._timestamp_unit
+
+            if unit == 'ms':
+                return int(value * Gst.MSECOND)
+            if unit == 's':
+                return int(value * Gst.SECOND)
+            if unit == 'ns':
+                return int(value)
+
+            # auto:
+            # - >=1e14: already ns-like
+            # - >=1e11: epoch/perf timestamps in ms
+            # - >=1e8: epoch timestamps in seconds
+            # - otherwise default to ms (matches capture wrappers ts_ms)
+            abs_value = abs(value)
+            if abs_value >= 1.0e14:
+                return int(value)
+            if abs_value >= 1.0e11:
+                return int(value * Gst.MSECOND)
+            if abs_value >= 1.0e8:
+                return int(value * Gst.SECOND)
+            return int(value * Gst.MSECOND)
         
         def on_need_data(self, src, length):
             if self._stop_event.is_set():
@@ -134,13 +173,19 @@ if GstRtspServer is not None:
             buf.fill(0, data)
             buf.duration = self._duration
 
-            if isinstance(frame_time, (int, float)):
-                timestamp = int(frame_time * Gst.SECOND)
+            timestamp = self._timestamp_to_ns(frame_time)
+            if timestamp is not None:
+                if self._first_input_ts_ns is None:
+                    self._first_input_ts_ns = timestamp
+                timestamp = int(timestamp - self._first_input_ts_ns)
+                if timestamp < self._last_pts:
+                    timestamp = int(self._last_pts + self._duration)
             else:
                 timestamp = int(self._number_frames * self._duration)
 
             buf.pts = buf.dts = timestamp
             buf.offset = timestamp
+            self._last_pts = timestamp
             self._number_frames += 1
 
             retval = src.emit('push-buffer', buf)
@@ -154,10 +199,13 @@ if GstRtspServer is not None:
 
         def do_configure(self, rtsp_media):
             self._number_frames = 0
+            self._last_pts = 0
+            self._first_input_ts_ns = None
             appsrc = rtsp_media.get_element().get_child_by_name('source')
             appsrc.connect('need-data', self.on_need_data)
             
 class rtspServer(Thread):
+    _STOP_ITEM = (None, None)
             
     def __init__(
         self,
@@ -168,6 +216,7 @@ class rtspServer(Thread):
         host: str = '0.0.0.0',
         port: int = 8554,
         prefer_gi: bool = True,
+        timestamp_unit: str = 'auto',
         queue_size: int = 32,
         **args,
     ):
@@ -187,6 +236,11 @@ class rtspServer(Thread):
         self._host    = host
         self._port    = int(port)
         self._prefer_gi = bool(prefer_gi)
+        self._timestamp_unit = str(timestamp_unit).strip().lower()
+        if self._timestamp_unit not in ('auto', 'ms', 's', 'ns'):
+            self._timestamp_unit = 'auto'
+            if not self.log.full():
+                self.log.put_nowait((logging.WARNING, "RTSP:invalid timestamp_unit, falling back to 'auto'"))
 
         self._backend = None
         self._loop = None
@@ -201,7 +255,7 @@ class rtspServer(Thread):
         self._stop_event.set()
         try:
             if not self.queue.full():
-                self.queue.put_nowait((None, None))
+                self.queue.put_nowait(self._STOP_ITEM)
         except Exception:
             pass
 
@@ -216,25 +270,27 @@ class rtspServer(Thread):
                     except Exception:
                         pass
 
-        if self._backend == 'ffmpeg':
-            proc = getattr(self, '_ffmpeg_proc', None)
-            if proc is not None:
-                try:
-                    if proc.stdin is not None:
-                        proc.stdin.close()
-                except Exception:
-                    pass
-                try:
-                    proc.terminate()
-                except Exception:
-                    pass
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
+        if self.is_alive() and current_thread() is not self:
+            try:
+                self.join(timeout=2.0)
+            except Exception:
+                pass
+
+        self._cleanup_ffmpeg_proc()
 
     def close(self):
         self.stop()
+
+    def __del__(self):
+        """Best-effort finalizer for ffmpeg backend resources."""
+        try:
+            self._stop_event.set()
+        except Exception:
+            pass
+        try:
+            self._cleanup_ffmpeg_proc()
+        except Exception:
+            pass
 
     def run(self):
         if self._backend == 'gi':
@@ -248,7 +304,10 @@ class rtspServer(Thread):
             return
 
         if self._backend == 'ffmpeg':
-            self._ffmpeg_update_loop()
+            try:
+                self._ffmpeg_update_loop()
+            finally:
+                self._cleanup_ffmpeg_proc()
 
     def _open_stream(self, **args):
         """Choose backend once at open time.
@@ -258,6 +317,7 @@ class rtspServer(Thread):
         """
 
         self._backend = None
+        self._cleanup_ffmpeg_proc()
 
         if self._prefer_gi and (GstRtspServer is not None) and (Gst is not None) and (GLib is not None):
             try:
@@ -283,6 +343,7 @@ class rtspServer(Thread):
                     queue=self.queue,
                     log=self.log,
                     stop_event=self._stop_event,
+                    timestamp_unit=self._timestamp_unit,
                 )
                 self.factory.set_shared(True)
 
@@ -358,6 +419,50 @@ class rtspServer(Thread):
             if not self.log.full():
                 self.log.put_nowait((logging.CRITICAL, f"RTSP:Failed to start FFmpeg: {exc}"))
 
+    def _cleanup_ffmpeg_proc(self):
+        """Best-effort FFmpeg subprocess cleanup."""
+        proc = getattr(self, '_ffmpeg_proc', None)
+        self._ffmpeg_proc = None
+        if proc is None:
+            return
+
+        try:
+            if proc.stdin is not None:
+                proc.stdin.close()
+        except Exception:
+            pass
+
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+
+        try:
+            proc.wait(timeout=0.5)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            try:
+                proc.wait(timeout=0.5)
+            except Exception:
+                pass
+
+        try:
+            if proc.stderr is not None:
+                proc.stderr.close()
+        except Exception:
+            pass
+
+        t = getattr(self, '_ffmpeg_stderr_thread', None)
+        self._ffmpeg_stderr_thread = None
+        if t is not None and t.is_alive() and t is not current_thread():
+            try:
+                t.join(timeout=0.5)
+            except Exception:
+                pass
+
     def _start_ffmpeg_stderr_reader(self, proc, prefix: str):
         """Drain FFmpeg stderr in a background thread to prevent pipe blockage."""
 
@@ -400,7 +505,7 @@ class rtspServer(Thread):
 
             if item is None:
                 continue
-            if item == (None, None):
+            if item == self._STOP_ITEM:
                 break
 
             frame = None

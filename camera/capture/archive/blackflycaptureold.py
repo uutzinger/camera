@@ -1,12 +1,15 @@
 ###############################################################################
-# FLIR balckfly video capture
+# FLIR blackfly video capture
 #
 # Uses PySpin to capture images
 # Uses OpenCV to resize and rotate images
 #
 # Urs Utzinger
+# GPT-5.2 Codex
 #
-# 2025 Codereview and cleanup
+# Changes:
+# 2026 Core, Wrapper, Qt-Wrapper refactor
+# 2025 Code review and cleanup
 # 2022 Updated binning and frame format control
 # 2021 Trigger update, initialize, use only queue to access frames
 # 2020 Initial release
@@ -163,7 +166,8 @@ class blackflyCapture(Thread):
             image_result = None
             try:
                 with self.cam_lock:
-                    image_result = self.cam.GetNextImage(1000)  # timeout in ms, blocks until timeout
+                    # Keep timeout short so stop/reconfigure stays responsive.
+                    image_result = self.cam.GetNextImage(100)  # timeout in ms
 
                 if image_result is None:
                     continue
@@ -470,9 +474,9 @@ class blackflyCapture(Thread):
         """sets video capture resolution """
         if val is None: return
         if self.cam_open:
-            if len(val) > 1: # we have width x height
-                _tmp0 = max(self.cam.Width.GetMin(),  min(self.cam.Width.GetMax(),  val[0]))
-                _tmp1 = max(self.cam.Height.GetMin(), min(self.cam.Height.GetMax(), val[1]))
+            if isinstance(val, (tuple, list)) and len(val) > 1:  # width x height
+                _tmp0 = min(max(val[0], self.cam.Width.GetMin()), self.cam.Width.GetMax())
+                _tmp1 = min(max(val[1], self.cam.Height.GetMin()), self.cam.Height.GetMax())
                 val = (_tmp0, _tmp1)
                 if self.cam.Width.GetAccessMode() == PySpin.RW:
                     with self.cam_lock: self.cam.Width.SetValue(int(val[0]))
@@ -487,8 +491,8 @@ class blackflyCapture(Thread):
                     if not self.log.full(): self.log.put_nowait((logging.ERROR, "PySpin:Camera:Failed to set height to {}!".format(val[1])))
                     return
             else: # given only one value for resolution, make image square
-                val = max(self.cam.Width.GetMin(), min(self.cam.Width.GetMax(), val))
-                val = max(self.cam.Height.GetMin(), min(self.cam.Height.GetMax(), val))
+                val = min(max(val, self.cam.Width.GetMin()), self.cam.Width.GetMax())
+                val = min(max(val, self.cam.Height.GetMin()), self.cam.Height.GetMax())
                 if self.cam.Width.GetAccessMode() == PySpin.RW:
                     with self.cam_lock: self.cam.Width.SetValue(int(val))
                     if not self.log.full(): self.log.put_nowait((logging.INFO, "PySpin:Camera:Width:{}".format(val)))
@@ -517,9 +521,9 @@ class blackflyCapture(Thread):
         """sets sensor offset """
         if val is None: return
         if self.cam_open:
-            if len(val) > 1: # have horizontal and vertical
-                _tmp0 = max(min(self.cam.OffsetX.GetMin(), val[0]), self.cam.OffsetX.GetMax())
-                _tmp1 = max(min(self.cam.OffsetY.GetMin(), val[1]), self.cam.OffsetY.GetMax())
+            if isinstance(val, (tuple, list)) and len(val) > 1:  # horizontal and vertical
+                _tmp0 = min(max(val[0], self.cam.OffsetX.GetMin()), self.cam.OffsetX.GetMax())
+                _tmp1 = min(max(val[1], self.cam.OffsetY.GetMin()), self.cam.OffsetY.GetMax())
                 val = (_tmp0, _tmp1)
                 if self.cam.OffsetX.GetAccessMode() == PySpin.RW:
                     with self.cam_lock: self.cam.OffsetX.SetValue(int(val[0]))
@@ -534,8 +538,8 @@ class blackflyCapture(Thread):
                     if not self.log.full(): self.log.put_nowait((logging.ERROR, "PySpin:Camera:Failed to set Y offset to {}!".format(val[1])))
                     return
             else: # given only one value for offset
-                val = max(min(self.cam.OffsetX.GetMin(), val), self.cam.OffsetX.GetMax())
-                val = max(min(self.cam.OffsetY.GetMin(), val), self.cam.OffsetY.GetMax())
+                val = min(max(val, self.cam.OffsetX.GetMin()), self.cam.OffsetX.GetMax())
+                val = min(max(val, self.cam.OffsetY.GetMin()), self.cam.OffsetY.GetMax())
                 if self.cam.OffsetX.GetAccessMode() == PySpin.RW:
                     with self.cam_lock: self.cam.OffsetX.SetValue(int(val))
                     if not self.log.full(): self.log.put_nowait((logging.INFO, "PySpin:Camera:OffsetX:{}".format(val)))
@@ -564,8 +568,8 @@ class blackflyCapture(Thread):
         """sets sensor biginning """
         if val is None: return
         if self.cam_open:
-            if len(val) > 1: # have horizontal x vertical
-                _tmp0 = min(max(val[0], self.cam.BinningHorizontal.GetMin()), self.cam.BinningHorizontal.GetMax()) 
+            if isinstance(val, (tuple, list)) and len(val) > 1:  # horizontal x vertical
+                _tmp0 = min(max(val[0], self.cam.BinningHorizontal.GetMin()), self.cam.BinningHorizontal.GetMax())
                 _tmp1 = min(max(val[1], self.cam.BinningVertical.GetMin()), self.cam.BinningVertical.GetMax())
                 val = (_tmp0, _tmp1)
                 if self.cam.BinningHorizontal.GetAccessMode() == PySpin.RW:
@@ -581,18 +585,18 @@ class blackflyCapture(Thread):
                     if not self.log.full(): self.log.put_nowait((logging.ERROR, "PySpin:Camera:Failed to set vertical binning to {}!".format(val[1])))
                     return
             else: # given only one value for binning
-                _tmp0 = min(max(val[0], self.cam.BinningHorizontal.GetMin()), self.cam.BinningHorizontal.GetMax()) 
-                _tmp1 = min(max(val[1], self.cam.BinningVertical.GetMin()), self.cam.BinningVertical.GetMax()) 
+                _tmp0 = min(max(val, self.cam.BinningHorizontal.GetMin()), self.cam.BinningHorizontal.GetMax())
+                _tmp1 = min(max(val, self.cam.BinningVertical.GetMin()), self.cam.BinningVertical.GetMax())
                 val = (_tmp0, _tmp1)
                 if self.cam.BinningHorizontal.GetAccessMode() == PySpin.RW:
-                    with self.cam_lock: self.cam.BinningHorizontal.SetValue(int(val))
-                    if not self.log.full(): self.log.put_nowait((logging.INFO, "PySpin:Camera:BinningHorizontal:{}".format(val)))
+                    with self.cam_lock: self.cam.BinningHorizontal.SetValue(int(val[0]))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "PySpin:Camera:BinningHorizontal:{}".format(val[0])))
                 else:
                     if not self.log.full(): self.log.put_nowait((logging.ERROR, "PySpin:Camera:Failed to set horizontal binning to {}!".format(val)))
                     return
                 if self.cam.BinningVertical.GetAccessMode() == PySpin.RW:
-                    with self.cam_lock: self.cam.BinningVertical.SetValue(int(val))
-                    if not self.log.full(): self.log.put_nowait((logging.INFO, "PySpin:Camera:BinningVertical:{}".format(val)))
+                    with self.cam_lock: self.cam.BinningVertical.SetValue(int(val[1]))
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "PySpin:Camera:BinningVertical:{}".format(val[1])))
                 else:
                     if not self.log.full(): self.log.put_nowait((logging.ERROR, "PySpin:Camera:Failed to set vertical binning to {}!".format(val)))
                     return

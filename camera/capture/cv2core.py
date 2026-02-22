@@ -8,10 +8,8 @@
 # Changes:
 # 2026 Core, qt wrapper, non-qt wrapper
 # 2025 Improved exposure setting robustness across backends
-# 2022 Added access to more opencv camera properties
-#      Auto populates missing configs
-#      Access to opencv camera configs window
-# 2021 Initialize, Remove direct Frame acces (use only queue)
+# 2022 Added access to more opencv camera properties, auto populates missing configs
+# 2021 Initializitation updates and use of queue
 # 2019 Initial release, based on Bitbuckets FRC 4183 code
 ###############################################################################
 
@@ -19,9 +17,6 @@
 # Public API & Supported Config
 #
 # Class: cv2Core
-# This is a non-threaded, non-Qt core wrapper intended to be composed by:
-# - the threaded capture wrapper `piCamera2Capture`
-# - the Qt wrapper `piCamera2CaptureQt`
 #
 # Public methods:
 # - open_cam()         : Open and configure the camera, allocate frame buffer.
@@ -40,64 +35,55 @@
 #
 # Convenience properties:
 # - cam_open: bool         (camera open state)
-# - capturing: bool        (capture state flag)
 # - buffer: FrameBuffer    (allocated frame buffer, or None if closed)
 # - metadata: dict         (latest frame metadata)
 # - width / height / resolution / size
-#       (changing size/flip while capturing is discouraged;
-#        wrappers should ensure capture is paused first)
-# - exposure, gain, autoexposure, aemeteringmode, aeexposuremode
-# - autowb, awbmode, wbtemperature, colourgains
-# - afmode, lensposition
-# - brightness, contrast, saturation, sharpness, noisereductionmode
-# - fps
+# - exposure, gain, autoexposure, autowb
+# - fps, fourcc, buffer_count, flip
 #
 # Supported config parameters (configs dict):
 # -------------------------------------------
 #
 # Core capture / output:
-# - camera_res: tuple[int,int]      Main stream capture size (w,h)
-# - output_res: tuple[int,int]      If >0, prefer libcamera scaling for main;
-#                                   in raw mode, may trigger CPU resize
+# - camera_res: tuple[int,int]      Capture size (w,h)
+# - output_res: tuple[int,int]      Optional CPU resize target (applied in software)
 # - fps: float|int                  Requested framerate
-# - low_latency: bool               Hint to reduce buffering (core may request fewer libcamera buffers)
 # - buffersize: int                 FrameBuffer capacity (default: 32)
 # - buffer_overwrite: bool          If True, FrameBuffer overwrites oldest frames when full
 #
-# Stream selection:
-# - mode: str                       'main' (processed) or 'raw' (sensor Bayer)
-# - stream_policy: str              'default'|'maximize_fps_no_crop'|'maximize_fps_with_crop'|'maximize_fov'
-#
 # Formats:
-# - format: str                     Legacy/combined request (e.g. 'BGR3', 'YUY2', 'SRGGB8')
-# - fourcc: str                     Legacy FOURCC alternative
-# - main_format: str                Explicit main stream format override
-# - raw_format: str                 Explicit raw Bayer format override
-# - raw_res: tuple[int,int]         Requested raw sensor window size (w,h)
+# - format: str                     Desired raw stream format (e.g. 'YUYV', 'YUV420', 'SRGGB8')
+# - fourcc: str|int                 Desired FOURCC (e.g. 'MJPG', 'YUY2', 'YU12')
+# - convert_rgb: bool               If True (default), OpenCV backend converts to BGR.
+#                                   If False, request raw and convert in software using 'format'.
+# - convert_format: str             Target conversion format (default: 'BGR888')
 #
 # Controls (applied at open, and/or via properties/set_controls):
-# - exposure: int|float             Manual exposure in microseconds; <=0 leaves AE enabled
+# - exposure: float                 Manual exposure (backend-dependent)
 # - autoexposure: int               -1 leave unchanged, 0 AE off, 1 AE on
-# - aemeteringmode: int|str         0/1/2 or 'center'|'spot'|'matrix'
-# - autowb: int                     -1 leave unchanged, 0 AWB off, 1 AWB on
-# - awbmode: int|str                0..5 or 'auto'|'tungsten'|'fluorescent'|'indoor'|'daylight'|'cloudy'
+# - gain: float
+# - wb_temp: int
+# - autowb: int
 #
 # Low-level / advanced:
-# - buffer_count: int|None          Requested libcamera buffer_count (if supported)
-# - hw_transform: bool              Attempt libcamera hardware Transform for flip/rotation
+# - buffer_count: int|None          OpenCV CAP_PROP_BUFFERSIZE
 # - flip: int                       0..7 (same enum as cv2Capture)
 # - test_pattern: bool|str          Enable synthetic frame mode (for testing)
+#
+# Notes:
+# - By default OpenCV delivers BGR frames; conversions run only when
+#   convert_rgb=False or when convert_format requests RGB.
 ###############################################################################
 
 from __future__ import annotations
 
 from threading import Lock
-from time import time
-from typing import Optional, Tuple
-from queue import Queue # logging
+from queue import Queue  # logging
 import logging
 import math
 import sys
+import time
+from typing import TYPE_CHECKING
 
 import cv2
 
@@ -108,7 +94,10 @@ else:
 
 from .framebuffer import FrameBuffer
 
-# Static Functions
+
+# ------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------
 
 def as_int(value, default=-1) -> int:
     """Safe int conversion used for OpenCV camera properties."""
@@ -121,6 +110,7 @@ def as_int(value, default=-1) -> int:
     except Exception:
         return default
 
+
 def as_float(value, default=float("nan")) -> float:
     """Safe float conversion used for OpenCV camera properties."""
     try:
@@ -130,6 +120,58 @@ def as_float(value, default=float("nan")) -> float:
     except Exception:
         return default
 
+
+def decode_fourcc(val) -> str:
+    try:
+        return "".join([chr((int(val) >> 8 * i) & 0xFF) for i in range(4)])
+    except Exception:
+        return ""
+
+def probeCameras(numcams: int = 10) -> list[dict]:
+    '''
+    Scans cameras and returns default fourcc, width and height
+    '''
+    # check for up to 10 cameras
+    index = 0
+    arr = []
+    i = numcams
+    while i > 0:
+        cap = cv2.VideoCapture(index)
+        if cap.read()[0]:
+            tmp = cap.get(cv2.CAP_PROP_FOURCC)
+            fourcc = "".join([chr((int(tmp) >> 8 * i) & 0xFF) for i in range(4)])
+            width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            cap.release()
+            arr.append({"index": index, "fourcc": fourcc, "width": width, "height": height})
+        index += 1
+        i -= 1
+    return arr
+
+def findCamera(numcams: int = 10, fourccSig = "\x16\x00\x00\x00", widthSig: int=640, heightSig: int=480) -> int:
+    '''
+    Identifies camera with given default fourcc, width and height
+    '''
+    camprops = probeCameras(numcams)
+    score = 0
+    camera_index = 0
+    for i in range(len(camprops)):
+        try: found_fourcc = 1 if camprops[i]['fourcc'] == fourccSig else 0            
+        except: found_fourcc = 0
+        try: found_width = 1  if camprops[i]['width']  == widthSig  else 0
+        except: found_width =  0
+        try: found_height = 1 if camprops[i]['height'] == heightSig else 0   
+        except: found_height = 0
+        tmp = found_fourcc+found_width+found_height
+        if tmp > score:
+            score = tmp
+            camera_index = i
+    return camera_index
+    
+# ------------------------------------------------------------------
+# Core
+# ------------------------------------------------------------------
+
 class cv2Core:
     """
     Non-threaded OpenCV capture core.
@@ -137,13 +179,13 @@ class cv2Core:
     Public methods:
     - open_cam()
     - close_cam()
+    - capture_array()
     - apply_exposure_settings()
-    - opensettings()
 
     Properties:
-    - width, height, resolution
+    - width, height, resolution, size
     - exposure, autoexposure
-    - fps, fourcc, buffersize, buffer_couunt
+    - fps, fourcc, buffer_count
     - gain, wbtemperature, autowb
     """
 
@@ -160,21 +202,27 @@ class cv2Core:
         self._camera_num = int(camera_num)
         self.log = log_queue
 
-        # Populate desired settings from configuration file or function arguments
-        if exposure is not None:
-            self._exposure = exposure
-        else:
-            self._exposure = self._configs.get("exposure", -1.0)
+        # Normalize configs
+        try:
+            base_res = res if res is not None else self._configs.get("camera_res", (640, 480))
+            if isinstance(base_res, (list, tuple)) and len(base_res) >= 2:
+                base_res = (int(base_res[0]), int(base_res[1]))
+            else:
+                base_res = (640, 480)
+            self._configs.setdefault("camera_res", base_res)
+        except Exception:
+            self._configs.setdefault("camera_res", (640, 480))
 
-        if res is not None:
-            self._camera_res = res
-        else:
-            self._camera_res = self._configs.get("camera_res", (640, 480))
-
+        # Requested settings
+        self._exposure = exposure if exposure is not None else self._configs.get("exposure", -1.0)
+        self._camera_res = self._configs.get("camera_res", (640, 480))
         self._output_res = self._configs.get("output_res", (-1, -1))
         self._framerate = self._configs.get("fps", -1.0)
         self._flip_method = self._configs.get("flip", 0)
-        self._buffer_count = self._configs.get("buffer_count", 1)
+        if "buffer_count" in self._configs:
+            self._buffer_count = self._configs.get("buffer_count", 1)
+        else:
+            self._buffer_count = self._configs.get("buffersize", 1)
         self._fourcc = self._configs.get("fourcc", -1)
         self._autoexposure = self._configs.get("autoexposure", -1)
         self._gain = self._configs.get("gain", -1.0)
@@ -182,130 +230,104 @@ class cv2Core:
         self._autowb = self._configs.get("autowb", -1)
         self._settings = self._configs.get("settings", -1)
 
-        self._output_width = self._output_res[0]
-        self._output_height = self._output_res[1]
+        self._output_width = int(self._output_res[0])
+        self._output_height = int(self._output_res[1])
 
-        self.cam = None
-        self.cam_open = False
-        self.cam_lock = Lock()
+        self._capture_width = int(self._camera_res[0])
+        self._capture_height = int(self._camera_res[1])
 
-        Will need to add test pattern and opencv has some nice ones
-
-        # Synthetic/test pattern mode (bypasses Picamera2)
-        # - False/None: normal camera
-        # - True: enable with default pattern
-        # - str: pattern name ('gradient', 'checker', 'noise', 'static')
-        self._test_pattern = self._configs.get("test_pattern", False)
-        self._test_frame: np.ndarray | None = None
-        self._test_next_t: float = 0.0
-
-        # Conversion caching
-        self._convert_format = "BGR888"  # Default target format
-        self._cv2_conversion_code = None
-        self._needs_bit_depth_conversion = False
-        self._bit_depth_shift = 0
+        self._requested_format = str(self._configs.get("format", "")).upper()
+        self._convert_rgb = bool(self._configs.get("convert_rgb", True))
+        self._convert_format = str(self._configs.get("convert_format", "BGR888")).upper()
 
         # Frame Buffer management
         self._buffer_capacity = int(self._configs.get("buffersize", 32))
         self._buffer_overwrite = bool(self._configs.get("buffer_overwrite", True))
-        # not used here self._buffer_copy_on_pull = bool(self._configs.get("buffer_copy", False))
-        self._buffer = None
+        self._buffer: FrameBuffer | None = None
 
-        open_cam should occur here but we dont run the capture task
+        # Synthetic/test pattern mode
+        self._test_pattern = self._configs.get("test_pattern", False)
+        self._test_frame: np.ndarray | None = None
+        self._test_next_t: float = 0.0
 
-        # Init vars
-        self.frame_time   = 0.0
+        # Conversion settings
+        self._format: str | None = None
+        self._cv2_conversion_code = None
+        self._needs_bit_depth_conversion = False
+        self._bit_depth_shift = 0
+        self._needs_cpu_resize = False
+        self._needs_cpu_flip = False
+        self._needs_drop_alpha = False
+        self._is_yuv420 = False
+
+        # Runtime
+        self.cam = None
+        self.cam_open = False
+        self.cam_lock = Lock()
+        self._metadata: dict | None = None
+
+        # Stats
+        self.frame_time = 0.0
         self.measured_fps = 0.0
 
     # ------------------------------------------------------------------
-    # Capture
+    # Internal helpers
     # ------------------------------------------------------------------
 
-    def capture_array(self) -> tuple[np.ndarray | None, float | None]:
-        """Capture a single frame from the configured stream.
-
-        Returns (frame, ts_ms).
-
-        - frame: numpy array, or None on failure.
-        - ts_ms: best-effort timestamp in milliseconds.
-                This is a float to preserve sub-millisecond resolution.
-        """
-
-        # Synthetic path: generate frames without touching Picamera2
-        # ----------------------------------------------------------------------------
-        if self._test_pattern:
-            try:
-                with self.cam_lock:
-                    img = self._synthetic_frame()
-                ts_ms = time.perf_counter() * 1000.0
-                return img, ts_ms
-            except Exception as exc:
-                self._log(logging.WARNING, f"PiCam2:Synthetic capture failed: {exc}")
-                return None, None
-
-        # Actual Picamera2 capture path
-        # --------------------------------------------------------------------------
-
+    def _log(self, level: int, message: str) -> None:
+        if self.log is None:
+            return
         try:
-                
-            with self.cam_lock:
-                ret, img = self.cam.read()
+            if not self.log.full():
+                self.log.put_nowait((level, message))
+        except Exception:
+            pass
 
-            if ret or img is None:
-                return None, None
+    @staticmethod
+    def _is_raw_format(fmt: str | None) -> bool:
+        if not fmt:
+            return False
+        fmt_u = str(fmt).upper()
+        return fmt_u.startswith(("SRGGB", "SBGGR", "SGBRG", "SGRBG"))
 
-            ts_ms = time.perf_counter() * 1000.0
+    def _map_fourcc_format(self, fmt: str | int | None) -> str:
+        if fmt is None:
+            return ""
+        if isinstance(fmt, int):
+            fmt_s = decode_fourcc(fmt)
+        else:
+            fmt_s = str(fmt)
+        fmt_u = fmt_s.strip().upper()
+        if not fmt_u:
+            return ""
 
-            # Apply color conversion (uses cached conversion code)
-            # Single consolidated try-except for all conversions
+        # Common mappings (FOURCC -> normalized format)
+        mapping = {
+            "BGR3": "BGR888",
+            "RGB3": "RGB888",
+            "BGRA": "XBGR8888",
+            "RGBA": "XRGB8888",
+            "YUY2": "YUYV",
+            "YUYV": "YUYV",
+            "YV12": "YUV420",
+            "YU12": "YUV420",
+            "I420": "YUV420",
+            "MJPG": "MJPEG",
+            "MJPEG": "MJPEG",
+            "GRAY": "GRAY8",
+            "GREY": "GRAY8",
+        }
+        return mapping.get(fmt_u, fmt_u)
 
-            Need to fix the color conversion logic here
+    def _normalize_format(self, fmt: str | None, fourcc: str | int | None) -> str:
+        mapped = self._map_fourcc_format(fmt) if fmt else ""
+        if mapped:
+            return mapped
+        if fourcc not in (None, "", -1):
+            return self._map_fourcc_format(fourcc)
+        return ""
 
-            code = self._cv2_conversion_code
-            if code is not None:
-                img = cv2.cvtColor(img, code)
-                
-                # Apply bit depth conversion if needed
-                if self._needs_bit_depth_conversion:
-                    shift = self._bit_depth_shift
-                    if shift > 0:
-                        img = (img >> shift).astype(np.uint8)
-
-            # Drop alpha channel if needed
-            if self._needs_drop_alpha:
-                img = img[:, :, :3]
-        
-            # CPU resize if needed
-            if self._needs_cpu_resize:
-                img = cv2.resize(img, self._output_res)
-
-            # CPU flip/rotation if needed
-            flip = self._flip_method
-            if self._needs_cpu_flip:
-                if flip == 1:  # ccw 90
-                    img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                elif flip == 2:  # rot 180
-                    img = cv2.rotate(img, cv2.ROTATE_180)
-                elif flip == 3:  # cw 90
-                    img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
-                elif flip == 4:  # horizontal
-                    img = cv2.flip(img, 1)
-                elif flip == 5:  # upright diagonal
-                    img = cv2.flip(cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
-                elif flip == 6:  # vertical
-                    img = cv2.flip(img, 0)
-                elif flip == 7:  # upperleft diagonal
-                    img = cv2.transpose(img)
-            return img, ts_ms
-
-        except Exception as exc:
-            self._log(logging.WARNING, f"PiCam2:Capture failed: {exc}")
-            return None, None
-
-    Need to figure out how to convert this to cv2
-
-    def _set_color_format(self, fmt: str | None):
-        """Set and analyze the requested format string."""
+    def _set_color_format(self, fmt: str | None) -> None:
         try:
             fmt_upper = (fmt or "").upper()
         except Exception:
@@ -313,60 +335,55 @@ class cv2Core:
 
         self._format = fmt_upper if fmt_upper else None
         self._is_yuv420 = fmt_upper == "YUV420"
-        non_alpha = set(self._supported_main_color_formats()) - {"XBGR8888", "XRGB8888"}
-        self._needs_drop_alpha = bool(fmt_upper) and (not self._is_raw_format(fmt_upper)) and (fmt_upper not in non_alpha)
-        
-        if fmt_upper and self._needs_drop_alpha:
-            self._log(logging.INFO, f"PiCam2:Dropping alpha channel for {fmt_upper} frames")
-        
-        # Pre-compute conversion settings
+        self._needs_drop_alpha = fmt_upper in ("XRGB8888", "XBGR8888")
         self._update_conversion_settings()
 
-    def _update_conversion_settings(self):
-        """Pre-compute and cache color conversion settings.
-        
-        Called whenever _format or _convert_format changes.
-        """
+    def _check_bit_depth_conversion(self, src_fmt: str, to_fmt: str) -> bool:
+        if to_fmt not in ("BGR888", "RGB888"):
+            return False
+        bit_depth = 16
+        for cand in (16, 14, 12, 10):
+            if str(cand) in src_fmt:
+                bit_depth = cand
+                break
+        self._bit_depth_shift = max(0, bit_depth - 8)
+        return self._bit_depth_shift > 0
+
+    def _update_conversion_settings(self) -> None:
         fmt = (self._format or "").upper()
         to = (self._convert_format or "BGR888").upper()
-        
-        # Reset conversion state
+
         self._cv2_conversion_code = None
         self._needs_bit_depth_conversion = False
         self._bit_depth_shift = 0
-        
+
         if not fmt:
             return
-        
-        # Check if no conversion needed
+
         if (fmt == "BGR888" and to == "BGR888") or (fmt == "RGB888" and to == "RGB888"):
             return
-        
-        # Simple BGR<->RGB swaps
+
         if fmt == "BGR888" and to == "RGB888":
             self._cv2_conversion_code = cv2.COLOR_BGR2RGB
             return
         if fmt == "RGB888" and to == "BGR888":
             self._cv2_conversion_code = cv2.COLOR_RGB2BGR
             return
-        
-        # 32-bit formats with alpha
+
         if fmt == "XBGR8888":
             self._cv2_conversion_code = cv2.COLOR_RGBA2BGR if to == "BGR888" else cv2.COLOR_RGBA2RGB
             return
         if fmt == "XRGB8888":
             self._cv2_conversion_code = cv2.COLOR_BGRA2BGR if to == "BGR888" else cv2.COLOR_BGRA2RGB
             return
-        
-        # YUV formats
+
         if fmt == "YUV420":
             self._cv2_conversion_code = cv2.COLOR_YUV2BGR_I420 if to == "BGR888" else cv2.COLOR_YUV2RGB_I420
             return
         if fmt == "YUYV":
             self._cv2_conversion_code = cv2.COLOR_YUV2BGR_YUY2 if to == "BGR888" else cv2.COLOR_YUV2RGB_YUY2
             return
-        
-        # Bayer/RAW formats
+
         if fmt.startswith("SRGGB"):
             self._cv2_conversion_code = cv2.COLOR_BAYER_RG2BGR if to == "BGR888" else cv2.COLOR_BAYER_RG2RGB
             self._needs_bit_depth_conversion = self._check_bit_depth_conversion(fmt, to)
@@ -384,101 +401,117 @@ class cv2Core:
             self._needs_bit_depth_conversion = self._check_bit_depth_conversion(fmt, to)
             return
 
-    def _check_bit_depth_conversion(self, src_fmt: str, to_fmt: str) -> bool:
-        """Check if bit depth conversion is needed and compute shift value."""
-        if to_fmt not in ("BGR888", "RGB888"):
-            return False
-        
-        # Determine source bit depth from format string
-        bit_depth = 16
-        for cand in (16, 14, 12, 10):
-            if str(cand) in src_fmt:
-                bit_depth = cand
-                break
-        
-        self._bit_depth_shift = max(0, bit_depth - 8)
-        return self._bit_depth_shift > 0
-
-    @property
-    def convert_format(self) -> str:
-        """Target format for automatic conversion (default: BGR888)."""
-        return self._convert_format
-
-    @convert_format.setter
-    def convert_format(self, value: str):
-        """Set target conversion format and update conversion settings."""
-        if value is None:
-            return
-        try:
-            fmt = str(value).upper()
-        except Exception:
-            return
-        
-        if fmt != self._convert_format:
-            self._convert_format = fmt
-            self._update_conversion_settings()
-
-    @property
-    def flip(self) -> int:
-        """Flip/rotation enum (0..7), same convention as cv2Capture."""
-        try:
-            return int(self._flip_method)
-        except Exception:
-            return 0
-
-    @flip.setter
-    def flip(self, value) -> None:
-        """Set camera flip/rotation. If camera is open and not capturing, will close and reopen. Logs this action."""
-        if value is None:
-            self._log(logging.ERROR, "flip value cannot be None")
-            return
-
-        try:
-            f = int(value)
-        except (ValueError, TypeError) as exc:
-            self._log(logging.ERROR, f"Invalid flip value: {exc}")
-            return
-        if f < 0 or f > 7:
-            self._log(logging.ERROR, "flip must be in range 0..7")
-            return
-
-        self._flip_method = f
-        try:
-            self._configs["flip"] = f
-        except Exception:
-            pass
+    def _effective_output_size(self) -> tuple[int, int]:
+        if self._output_width > 0 and self._output_height > 0:
+            w, h = self._output_width, self._output_height
+        else:
+            w, h = self._capture_width, self._capture_height
+        if self._flip_method in (1, 3, 5, 7):
+            return (h, w)
+        return (w, h)
 
     # ------------------------------------------------------------------
-    # Lifecycle
+    # Capture
     # ------------------------------------------------------------------
 
-    def _log(self, level: int, message: str) -> None:
-        if self.log is None:
-            return
-        try:
-            if not self.log.full():
-                self.log.put_nowait((level, message))
-        except Exception:
-            pass
+    def capture_array(self) -> tuple[np.ndarray | None, float | None]:
+        """Capture a single frame from the configured stream."""
 
-    def open_cam(self) -> None:
-        """
-        Open the camera and apply configuration properties.
-        """
+        # Synthetic path
+        if self._test_pattern:
+            try:
+                with self.cam_lock:
+                    img = self._synthetic_frame()
+                ts_ms = time.perf_counter() * 1000.0
+                self._metadata = {"Timestamp": ts_ms, "Synthetic": True}
+                return img, ts_ms
+            except Exception as exc:
+                self._log(logging.WARNING, f"CV2:Synthetic capture failed: {exc}")
+                return None, None
+
+        if not self.cam_open or self.cam is None:
+            return None, None
+
+        try:
+            with self.cam_lock:
+                ret, img = self.cam.read()
+            if (not ret) or (img is None):
+                return None, None
+
+            ts_ms = time.perf_counter() * 1000.0
+
+            # Apply conversion if needed
+            code = self._cv2_conversion_code
+            if code is not None:
+                img = cv2.cvtColor(img, code)
+                if self._needs_bit_depth_conversion:
+                    shift = self._bit_depth_shift
+                    if shift > 0:
+                        img = (img >> shift).astype(np.uint8)
+
+            if self._needs_drop_alpha and img.ndim == 3 and img.shape[2] > 3:
+                img = img[:, :, :3]
+
+            if self._needs_cpu_resize:
+                img = cv2.resize(img, (self._output_width, self._output_height))
+
+            if self._needs_cpu_flip:
+                flip = self._flip_method
+                if flip == 1:
+                    img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                elif flip == 2:
+                    img = cv2.rotate(img, cv2.ROTATE_180)
+                elif flip == 3:
+                    img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+                elif flip == 4:
+                    img = cv2.flip(img, 1)
+                elif flip == 5:
+                    img = cv2.flip(cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE), 1)
+                elif flip == 6:
+                    img = cv2.flip(img, 0)
+                elif flip == 7:
+                    img = cv2.transpose(img)
+
+            self._metadata = {"Timestamp": ts_ms}
+            return img, ts_ms
+
+        except Exception as exc:
+            self._log(logging.WARNING, f"CV2:Capture failed: {exc}")
+            return None, None
+
+    # ------------------------------------------------------------------
+    # Open / Close
+    # ------------------------------------------------------------------
+
+    def open_cam(self) -> bool:
+        """Open the camera and apply configuration properties."""
 
         # Always clear buffer before (re)opening
         self._buffer = None
 
         if self._test_pattern:
             try:
-                self.cam =None
+                self.cam = None
                 self.cam_open = True
+                self._set_color_format("BGR888")
+                self._needs_cpu_resize = False
+                self._needs_cpu_flip = bool(self._flip_method != 0)
+
+                w, h = self._effective_output_size()
+                self._buffer = FrameBuffer(
+                    capacity=self._buffer_capacity,
+                    frame_shape=(h, w, 3),
+                    dtype=np.uint8,
+                    overwrite=self._buffer_overwrite,
+                )
+                self._log(logging.INFO, f"CV2:Synthetic mode enabled pattern={self._test_pattern}")
                 return True
             except Exception as exc:
                 self._log(logging.CRITICAL, f"CV2:Failed to open synthetic camera: {exc}")
                 self.cam = None
                 self.cam_open = False
                 return False
+
         try:
             if sys.platform.startswith("win"):
                 self.cam = cv2.VideoCapture(self._camera_num, apiPreference=cv2.CAP_DSHOW)
@@ -490,21 +523,20 @@ class cv2Core:
                 self.cam = cv2.VideoCapture(self._camera_num, apiPreference=cv2.CAP_ANY)
 
             self.cam_open = bool(self.cam.isOpened()) if self.cam is not None else False
-
             if not self.cam_open:
                 self._log(logging.CRITICAL, "CV2:Failed to open camera!")
-                return
+                return False
 
             # Apply settings to camera
-            self.resolution     = self._camera_res
-            self.fps            = self._framerate
-            self.buffer_count     = self._buffer_count
-            self.fourcc         = self._fourcc
-            self.gain           = self._gain
-            self.wbtemperature  = self._wbtemp
-            self.autowb         = self._autowb
+            self.resolution = self._camera_res
+            self.fps = self._framerate
+            self.buffer_count = self._buffer_count
+            self.fourcc = self._fourcc
+            self.gain = self._gain
+            self.wbtemperature = self._wbtemp
+            self.autowb = self._autowb
 
-            # Exposure settings are backend-dependent; apply with robust helper.
+            # Exposure settings are backend-dependent
             self.apply_exposure_settings()
 
             if self._settings > -1:
@@ -512,18 +544,52 @@ class cv2Core:
                 if not ok:
                     self._log(logging.WARNING, "CV2:CAP_PROP_SETTINGS not supported by this backend/OS")
 
-            # Update records
+            # Request raw frames if desired
+            if not self._convert_rgb:
+                self._set_prop(cv2.CAP_PROP_CONVERT_RGB, 0.0)
+
+            # Refresh actual settings
             self._camera_res = self.resolution
-            self._exposure = self.exposure
-            self._buffer_count = self.buffer_count
+            self._capture_width, self._capture_height = self._camera_res
             self._framerate = self.fps
             self._autoexposure = self.autoexposure
             self._fourcc = self.fourcc
-            self._fourcc_str = self.decode_fourcc(self._fourcc)
+            self._fourcc_str = decode_fourcc(self._fourcc)
             self._gain = self.gain
             self._wbtemperature = self.wbtemperature
             self._autowb = self.autowb
-        except:
+
+            # Determine format + conversion strategy
+            if self._convert_rgb:
+                fmt = "BGR888"
+            else:
+                fmt = self._normalize_format(self._requested_format, self._fourcc)
+                if not fmt:
+                    fmt = "BGR888"
+
+            self._set_color_format(fmt)
+
+            # CPU resize/flip handling
+            self._needs_cpu_resize = (self._output_width > 0 and self._output_height > 0)
+            self._needs_cpu_flip = (self._flip_method != 0)
+
+            # Allocate FrameBuffer for processed frames (BGR by default)
+            w, h = self._effective_output_size()
+            self._buffer = FrameBuffer(
+                capacity=self._buffer_capacity,
+                frame_shape=(h, w, 3),
+                dtype=np.uint8,
+                overwrite=self._buffer_overwrite,
+            )
+
+            self._log(
+                logging.INFO,
+                f"CV2:Open summary size={self._camera_res[0]}x{self._camera_res[1]} "
+                f"format={self._format} fourcc={self._fourcc_str} "
+                f"convert_rgb={self._convert_rgb} output={w}x{h}",
+            )
+            return True
+        except Exception:
             self._log(logging.CRITICAL, "CV2:Exception during camera open!")
             self.cam = None
             self.cam_open = False
@@ -538,6 +604,7 @@ class cv2Core:
                     cam.release()
                 self.cam = None
                 self.cam_open = False
+                self._buffer = None
         except Exception:
             pass
 
@@ -546,16 +613,7 @@ class cv2Core:
     # ------------------------------------------------------------------
 
     def apply_exposure_settings(self) -> None:
-        """Apply exposure and autoexposure in a robust, backend-tolerant way.
-
-        Semantics:
-        - If self._exposure > 0: request manual exposure (disable AE first), then set exposure.
-        - If self._exposure <= 0: do not force exposure; optionally request AE depending on self._autoexposure.
-        - If self._autoexposure == -1: do not touch AE.
-
-        Notes:
-        - CAP_PROP_AUTO_EXPOSURE values are not portable. We try common candidates and verify via read-back.
-        """
+        """Apply exposure and autoexposure in a robust, backend-tolerant way."""
         if not self.cam_open:
             return
 
@@ -569,7 +627,6 @@ class cv2Core:
         except Exception:
             requested_ae = -1
 
-        # Determine desired AE mode.
         manual_requested = requested_exposure is not None and requested_exposure > 0
         if manual_requested:
             desired_ae_mode = "manual"
@@ -579,11 +636,9 @@ class cv2Core:
             else:
                 desired_ae_mode = "auto" if requested_ae > 0 else "manual"
 
-        # Apply AE mode first (important when setting manual exposure)
         if desired_ae_mode in ("auto", "manual"):
             self._try_set_autoexposure(desired_ae_mode)
 
-        # Apply manual exposure only when requested
         if manual_requested:
             ok = self._set_prop(cv2.CAP_PROP_EXPOSURE, requested_exposure)
             readback = self._get_prop(cv2.CAP_PROP_EXPOSURE)
@@ -630,12 +685,7 @@ class cv2Core:
     # ------------------------------------------------------------------
 
     def _synthetic_frame(self) -> np.ndarray:
-        """Generate a synthetic frame matching the configured main-stream format.
-
-        This bypasses camera and is intended for profiling the wrapper thread
-        + FrameBuffer behavior without camera/libcamera overhead.
-        """
-        # Pace generation if a framerate was requested.
+        """Generate a synthetic frame matching the configured main-stream format."""
         try:
             fr = float(self._framerate or 0.0)
         except Exception:
@@ -646,7 +696,6 @@ class cv2Core:
             now = time.perf_counter()
             if self._test_next_t <= 0.0:
                 self._test_next_t = now
-            # Sleep until the next frame time.
             dt = self._test_next_t - now
             if dt > 0:
                 time.sleep(dt)
@@ -663,12 +712,10 @@ class cv2Core:
         except Exception:
             pat_s = "gradient"
 
-        # Static frame cache for non-noise patterns.
         if self._test_frame is not None and pat_s not in ("noise",):
             return self._test_frame
 
         if pat_s in ("static", "gradient"):
-            # Simple horizontal gradient in B,G,R.
             x = np.linspace(0, 255, w, dtype=np.uint8)
             r = np.tile(x, (h, 1))
             g = np.tile(np.uint8(255) - x, (h, 1))
@@ -682,47 +729,38 @@ class cv2Core:
         elif pat_s in ("noise", "random"):
             base_bgr = np.random.randint(0, 256, (h, w, 3), dtype=np.uint8)
         else:
-            # Default: mid-gray
             base_bgr = np.full((h, w, 3), 127, dtype=np.uint8)
 
         fmt = (self._format or "BGR888").upper()
-
         if fmt == "BGR888":
             frame = np.ascontiguousarray(base_bgr)
         elif fmt == "RGB888":
             frame = np.ascontiguousarray(base_bgr[:, :, ::-1])
         elif fmt == "XRGB8888":
-            # Per our convert() comment: XRGB8888 appears as BGRA in Python
             alpha = np.full((h, w, 1), 255, dtype=np.uint8)
             frame = np.ascontiguousarray(np.concatenate((base_bgr, alpha), axis=2))
         elif fmt == "XBGR8888":
-            # Per our convert() comment: XBGR8888 appears as RGBA in Python
             rgb = np.ascontiguousarray(base_bgr[:, :, ::-1])
             alpha = np.full((h, w, 1), 255, dtype=np.uint8)
             frame = np.ascontiguousarray(np.concatenate((rgb, alpha), axis=2))
         elif fmt == "YUV420":
-            # Match cv2.COLOR_YUV2*I420 expectations: (H*3/2, W) uint8
             try:
                 frame = cv2.cvtColor(base_bgr, cv2.COLOR_BGR2YUV_I420)
                 frame = np.ascontiguousarray(frame)
             except Exception:
                 frame = np.ascontiguousarray(base_bgr)
         elif fmt == "YUYV":
-            # Match cv2.COLOR_YUV2*YUY2 expectations: (H, W, 2) uint8
             try:
                 frame = cv2.cvtColor(base_bgr, cv2.COLOR_BGR2YUV_YUY2)
                 frame = np.ascontiguousarray(frame)
             except Exception:
                 frame = np.ascontiguousarray(base_bgr)
         else:
-            # Unknown/unsupported synthetic format; fall back to BGR888.
             frame = np.ascontiguousarray(base_bgr)
 
-        # Cache static patterns.
         if pat_s not in ("noise",):
             self._test_frame = frame
         return frame
-
 
     # ------------------------------------------------------------------
     # Settings dialog
@@ -740,15 +778,21 @@ class cv2Core:
     # ------------------------------------------------------------------
 
     @property
+    def buffer(self) -> FrameBuffer | None:
+        return self._buffer
+
+    @property
+    def metadata(self) -> dict:
+        return self._metadata or {}
+
+    @property
     def width(self) -> int:
-        """returns the camera frame width."""
         if self.cam_open:
             return as_int(self._get_prop(cv2.CAP_PROP_FRAME_WIDTH), default=-1)
         return -1
 
     @width.setter
     def width(self, val) -> None:
-        """ sets video capture width """
         if (val is None) or (val == -1):
             self._log(logging.WARNING, f"CV2:Width not changed to {val}")
             return
@@ -762,14 +806,12 @@ class cv2Core:
 
     @property
     def height(self) -> int:
-        """ returns the camera frame height. """
         if self.cam_open:
             return as_int(self._get_prop(cv2.CAP_PROP_FRAME_HEIGHT), default=-1)
         return -1
 
     @height.setter
     def height(self, val) -> None:
-        """ sets video capture height """
         if (val is None) or (val == -1):
             self._log(logging.WARNING, f"CV2:Height not changed:{val}")
             return
@@ -783,7 +825,6 @@ class cv2Core:
 
     @property
     def resolution(self) -> tuple[int, int]:
-        """ returns the camera frame resolution as (width, height). """
         if self.cam_open:
             return (
                 as_int(self._get_prop(cv2.CAP_PROP_FRAME_WIDTH), default=-1),
@@ -809,6 +850,61 @@ class cv2Core:
             self._log(logging.INFO, f"CV2:Resolution:{self._camera_res[0]}x{self._camera_res[1]}")
         else:
             self._log(logging.CRITICAL, "CV2:Failed to set Resolution, camera not open!")
+
+    @property
+    def size(self) -> tuple[int, int]:
+        return (int(self._capture_width), int(self._capture_height))
+
+    @size.setter
+    def size(self, value) -> None:
+        if not isinstance(value, (tuple, list)) or len(value) != 2:
+            self._log(logging.ERROR, "size must be a (width, height) tuple")
+            return
+        try:
+            width, height = int(value[0]), int(value[1])
+        except (ValueError, TypeError) as exc:
+            self._log(logging.ERROR, f"Invalid size values: {exc}")
+            return
+        if width <= 0 or height <= 0:
+            self._log(logging.ERROR, "size must be positive")
+            return
+
+        self._capture_width = width
+        self._capture_height = height
+        self._camera_res = (width, height)
+
+        if self.cam_open:
+            self._log(logging.INFO, f"CV2:Reopening camera to apply new size {width}x{height}")
+            self.close_cam()
+            self.open_cam()
+
+    # Camera flip/rotation
+    @property
+    def flip(self) -> int:
+        try:
+            return int(self._flip_method)
+        except Exception:
+            return 0
+
+    @flip.setter
+    def flip(self, value) -> None:
+        if value is None:
+            self._log(logging.ERROR, "flip value cannot be None")
+            return
+        try:
+            f = int(value)
+        except (ValueError, TypeError) as exc:
+            self._log(logging.ERROR, f"Invalid flip value: {exc}")
+            return
+        if f < 0 or f > 7:
+            self._log(logging.ERROR, "flip must be in range 0..7")
+            return
+        self._flip_method = f
+        try:
+            self._configs["flip"] = f
+        except Exception:
+            pass
+        self._needs_cpu_flip = (self._flip_method != 0)
 
     @property
     def exposure(self):
@@ -841,14 +937,6 @@ class cv2Core:
 
     @autoexposure.setter
     def autoexposure(self, val) -> None:
-        """sets auto exposure.
-
-        Supported inputs:
-        - -1: don't change
-        - 0: request manual exposure mode (best-effort)
-        - 1: request auto exposure mode (best-effort)
-        - any other number: passed through to CAP_PROP_AUTO_EXPOSURE directly
-        """
         if val is None:
             self._log(logging.WARNING, f"CV2:Skipping set Autoexposure to:{val}")
             return
@@ -896,20 +984,14 @@ class cv2Core:
         else:
             self._log(logging.CRITICAL, "CV2:Failed to set FPS, camera not open!")
 
-    @staticmethod
-    def decode_fourcc(val):
-        return "".join([chr((int(val) >> 8 * i) & 0xFF) for i in range(4)])
-
     @property
     def fourcc(self):
-        """ returns video encoding format in camera """
         if self.cam_open:
             return as_int(self._get_prop(cv2.CAP_PROP_FOURCC), default=-1)
-        return "None"
+        return -1
 
     @fourcc.setter
     def fourcc(self, val) -> None:
-        """ sets video encoding gormat in camera """
         if (val is None) or (val == -1):
             self._log(logging.WARNING, f"CV2:Skipping set FOURCC to:{val}")
             return
@@ -917,14 +999,14 @@ class cv2Core:
             if isinstance(val, str):
                 if self._set_prop(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(val[0], val[1], val[2], val[3])):
                     self._fourcc = self._get_prop(cv2.CAP_PROP_FOURCC)
-                    self._fourcc_str = self.decode_fourcc(self._fourcc)
+                    self._fourcc_str = decode_fourcc(self._fourcc)
                     self._log(logging.INFO, f"CV2:FOURCC is:{self._fourcc_str}")
                 else:
                     self._log(logging.ERROR, f"CV2:Failed to set FOURCC to:{val}")
             else:
                 if self._set_prop(cv2.CAP_PROP_FOURCC, val):
                     self._fourcc = as_int(self._get_prop(cv2.CAP_PROP_FOURCC), default=-1)
-                    self._fourcc_str = self.decode_fourcc(self._fourcc)
+                    self._fourcc_str = decode_fourcc(self._fourcc)
                     self._log(logging.INFO, f"CV2:FOURCC is:{self._fourcc_str}")
                 else:
                     self._log(logging.ERROR, f"CV2:Failed to set FOURCC to:{val}")
@@ -933,14 +1015,12 @@ class cv2Core:
 
     @property
     def buffer_count(self):
-        """ returns the camera buffer size. """
         if self.cam_open:
             return as_int(self._get_prop(cv2.CAP_PROP_BUFFERSIZE), default=-1)
         return float("nan")
 
     @buffer_count.setter
     def buffer_count(self, val) -> None:
-        """ sets the camera buffer size. """
         if val is None or val < 0:
             self._log(logging.WARNING, f"CV2:Skipping set Buffersize to:{val}")
             return
@@ -956,14 +1036,12 @@ class cv2Core:
 
     @property
     def gain(self):
-        """ returns the camera gain. """
         if self.cam_open:
             return as_int(self._get_prop(cv2.CAP_PROP_GAIN), default=-1)
         return float("nan")
 
     @gain.setter
     def gain(self, val) -> None:
-        """ sets the camera gain. """
         if val is None or val < 0:
             self._log(logging.WARNING, f"CV2:Skipping set Gain to:{val}")
             return
@@ -979,14 +1057,12 @@ class cv2Core:
 
     @property
     def wbtemperature(self):
-        """ returns the camera whitebalance temperature. """
         if self.cam_open:
             return as_int(self._get_prop(cv2.CAP_PROP_WB_TEMPERATURE), default=-1)
         return float("nan")
 
     @wbtemperature.setter
     def wbtemperature(self, val) -> None:
-        """ sets the camera whitebalance temperature. """
         if val is None or val < 0:
             self._log(logging.WARNING, f"CV2:Skipping set WB_TEMPERATURE to:{val}")
             return
@@ -1021,6 +1097,118 @@ class cv2Core:
         else:
             self._log(logging.CRITICAL, "CV2:Failed to set auto whitebalance, camera not open!")
 
+    # ------------------------------------------------------------------
+    # Controls & metadata access
+    # ------------------------------------------------------------------
+
+    def get_control(self, name: str):
+        if not name:
+            return None
+        key = str(name).strip()
+        mapping = {
+            "ExposureTime": self.exposure,
+            "Exposure": self.exposure,
+            "FrameRate": self.fps,
+            "FPS": self.fps,
+            "Gain": self.gain,
+            "AutoExposure": self.autoexposure,
+            "AeEnable": self.autoexposure,
+            "AutoWB": self.autowb,
+            "WBTemperature": self.wbtemperature,
+            "FourCC": self.fourcc,
+            "Width": self.width,
+            "Height": self.height,
+            "Resolution": self.resolution,
+            "Timestamp": (self._metadata or {}).get("Timestamp"),
+        }
+        return mapping.get(key, None)
+
+    def set_controls(self, controls: dict) -> bool:
+        if not isinstance(controls, dict):
+            return False
+        ok_any = False
+        for key, val in controls.items():
+            k = str(key).strip()
+            try:
+                if k in ("ExposureTime", "Exposure"):
+                    self.exposure = val
+                elif k in ("FrameRate", "FPS"):
+                    self.fps = val
+                elif k in ("Gain",):
+                    self.gain = val
+                elif k in ("AutoExposure", "AeEnable"):
+                    self.autoexposure = val
+                elif k in ("AutoWB",):
+                    self.autowb = val
+                elif k in ("WBTemperature",):
+                    self.wbtemperature = val
+                elif k in ("FourCC",):
+                    self.fourcc = val
+                elif k in ("Resolution", "Size"):
+                    self.size = val
+                elif k in ("Flip",):
+                    self.flip = val
+                else:
+                    continue
+                ok_any = True
+            except Exception:
+                continue
+        return ok_any
+
+    def get_supported_main_color_formats(self) -> list[str]:
+        formats = set()
+        formats.add("BGR888")
+        if self._convert_format:
+            formats.add(self._convert_format)
+        if self._requested_format:
+            formats.add(self._map_fourcc_format(self._requested_format))
+        if self._fourcc not in (-1, None, ""):
+            formats.add(self._map_fourcc_format(self._fourcc))
+        return sorted(f for f in formats if f)
+
+    def get_supported_raw_color_formats(self) -> list[str]:
+        formats = []
+        for fmt in self.get_supported_main_color_formats():
+            if self._is_raw_format(fmt):
+                formats.append(fmt)
+        return formats
+
+    def get_supported_main_options(self):
+        return [
+            {
+                "size": (self._capture_width, self._capture_height),
+                "format": self._format or "BGR888",
+                "fps": self._framerate,
+            }
+        ]
+
+    def get_supported_raw_options(self):
+        if self._is_raw_format(self._format):
+            return [
+                {
+                    "size": (self._capture_width, self._capture_height),
+                    "format": self._format,
+                    "fps": self._framerate,
+                }
+            ]
+        return []
+
+    def log_stream_options(self) -> None:
+        try:
+            supported = self.get_supported_main_color_formats()
+            self._log(logging.INFO, f"CV2:Configured format={self._format}, supported={supported}")
+        except Exception:
+            pass
+        try:
+            main_opts = self.get_supported_main_options()
+            self._log(logging.INFO, f"CV2:Main options={main_opts}")
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Backend property helpers
+    # ------------------------------------------------------------------
+
     def _set_prop(self, prop_id, value) -> bool:
         if not self.cam_open:
             return False
@@ -1039,4 +1227,5 @@ class cv2Core:
             except Exception:
                 return float("nan")
 
-__all__ = ["cv2Core", "as_int", "as_float"]
+
+__all__ = ["cv2Core", "as_int", "as_float", "decode_fourcc"]

@@ -8,9 +8,12 @@ Supports:
 - USB and laptop internal webcams (OpenCV)
 - RTSP/RTP network streams (GStreamer or FFmpeg fallback)
 - MIPI CSI cameras (Raspberry Pi Picamera2/libcamera, Jetson Nano)
-- Teledyne/FLIR Blackfly (PySpin)
+- Teledyne/FLIR Spinnaker cameras (PySpin)
+- Basler cameras (pypylon)
 
-Optional storage helpers for HDF5, TIFF, AVI, MKV.
+Storage helpers for HDF5, TIFF, AVI, MKV.
+
+Processing helpers for temporal filtering, background subtraction, and binning.
 
 Full documentation (configs, backends, examples): `README.md <https://github.com/uutzinger/camera/blob/master/README.md>`_.
 
@@ -26,7 +29,6 @@ Quickstart (OpenCV webcam)
 
 .. code-block:: python
 
-   import logging
    import time
    import cv2
    from camera.capture.cv2capture import cv2Capture
@@ -47,8 +49,16 @@ Quickstart (OpenCV webcam)
    display_interval = 1.0 / configs["displayfps"]
    stop = False
    while cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) >= 0 and not stop:
+       frame = None
+       if camera.buffer and camera.buffer.avail > 0:
+           frame, _ts_ms = camera.buffer.pull(copy=False)
+       elif camera.capture is not None:
+           _ts_ms, frame = camera.capture.get(block=True, timeout=0.25)
+
+       if frame is None:
+           continue
+
        current_time = time.perf_counter()
-       frame_time, frame = camera.capture.get(block=True, timeout=None)
        if (current_time - last_display) >= display_interval:
            frame_display = frame.copy()
            cv2.putText(frame_display, f"Capture FPS:{camera.measured_fps:.1f} [Hz]", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 1)
@@ -79,4 +89,3 @@ Frame delivery model:
        frame, ts_ms = camera.buffer.pull(copy=False)
 
 The Qt wrapper does not emit a per-frame signal; GUI code typically polls via a ``QTimer``.
-

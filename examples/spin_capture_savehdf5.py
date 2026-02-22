@@ -1,5 +1,5 @@
 ##########################################################################
-# Blackfly capture + store cubes to HDF5 (no display)
+# Spinnaker capture + store cubes to HDF5 (no display)
 #
 # Notes
 # - Collects 14 frames into a cube and writes each cube as a dataset to HDF5.
@@ -15,7 +15,6 @@ import platform
 import time
 from datetime import datetime
 from pathlib import Path
-from queue import Empty
 
 import numpy as np
 
@@ -27,13 +26,15 @@ def _default_output_dir() -> Path:
 
 def main() -> None:
 
-    data_cube = np.zeros((14, 540, 720), dtype=np.uint8)
+    depth = 14
 
     # Camera configuration file
-    from configs.blackfly_configs import configs
+    from configs.spin_configs import configs
+    capture_fps = float(configs.get("fps", 0) or 0)
+    loop_interval = 1.0 / (2.0 * (capture_fps if capture_fps > 0 else 30.0))
 
     logging.basicConfig(level=logging.DEBUG)
-    logger = logging.getLogger('BlackflyHDF5')
+    logger = logging.getLogger('SpinnakerHDF5')
 
     from camera.streamer.h5storageserver import h5Server
 
@@ -45,37 +46,53 @@ def main() -> None:
     logger.info('Starting Storage Server: %s', output_dir / filename)
     hdf5.start()
 
-    from camera.capture.blackflycapture import blackflyCapture
+    from camera.capture.spincapture import spinCapture
 
     logger.info('Starting Capture')
-    camera = blackflyCapture(configs)
+    camera = spinCapture(configs)
     camera.start()
 
+    data_cube = None
     frame_idx = 0
     num_cubes_sent = 0
     num_cubes_received = 0
-    last_time = time.time()
+    last_time = time.perf_counter()
 
     try:
         while True:
-            current_time = time.time()
+            current_time = time.perf_counter()
 
-            while not camera.log.empty():
-                (level, msg) = camera.log.get_nowait()
-                logger.log(level, '%s', msg)
-            while not hdf5.log.empty():
-                (level, msg) = hdf5.log.get_nowait()
-                logger.log(level, '%s', msg)
+            # Pull frame (non-blocking)
+            if camera.buffer and camera.buffer.avail > 0:
+                frame, frame_time = camera.buffer.pull(copy=False)
+            else:
+                frame = None
+                frame_time = None
 
+            # Drain logs
             try:
-                (frame_time, frame) = camera.capture.get(block=True, timeout=1.0)
-            except Empty:
+                while not camera.log.empty():
+                    level, msg = camera.log.get_nowait()
+                    logger.log(level, "%s", msg)
+                while not hdf5.log.empty():
+                    level, msg = hdf5.log.get_nowait()
+                    logger.log(level, "%s", msg)
+            except Exception:
+                pass
+
+            if frame is None:
+                remaining = loop_interval - (time.perf_counter() - current_time)
+                if remaining > 0:
+                    time.sleep(remaining)
                 continue
 
-            data_cube[frame_idx, :, :] = frame
+            if data_cube is None:
+                data_cube = np.zeros((depth, *frame.shape), dtype=frame.dtype)
+
+            data_cube[frame_idx, ...] = frame
             frame_idx += 1
 
-            if frame_idx >= 14:
+            if frame_idx >= depth:
                 frame_idx = 0
                 num_cubes_received += 1
 
@@ -92,12 +109,18 @@ def main() -> None:
                 num_cubes_received = 0
                 num_cubes_sent = 0
 
+            remaining = loop_interval - (time.perf_counter() - current_time)
+            if remaining > 0:
+                time.sleep(remaining)
+
     except KeyboardInterrupt:
         pass
     finally:
         try:
             camera.stop()
             camera.join(timeout=2.0)
+            if hasattr(camera, "close"):
+                camera.close()
         except Exception:
             pass
         try:

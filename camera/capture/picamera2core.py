@@ -67,6 +67,7 @@
 # - main_format: str                Explicit main stream format override
 # - raw_format: str                 Explicit raw Bayer format override
 # - raw_res: tuple[int,int]         Requested raw sensor window size (w,h)
+# - convert_format: str             Target conversion format for main stream (default: 'BGR888')
 #
 # Controls (applied at open, and/or via properties/set_controls):
 # - exposure: int|float             Manual exposure in microseconds; <=0 leaves AE enabled

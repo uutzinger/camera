@@ -139,40 +139,40 @@ class rtpServer(Thread):
         """run the thread"""
         last_time = time.time()
         num_frames = 0
-        
-        while not self.stopped:
-            try:
-                item = self.queue.get(timeout=0.25)
-            except Empty:
-                item = None
+        try:
+            while not self.stopped:
+                try:
+                    item = self.queue.get(timeout=0.25)
+                except Empty:
+                    item = None
 
-            if item is None:
-                pass
-            elif item == self._STOP_ITEM:
-                break
-            else:
-                frame = None
-                if isinstance(item, tuple) and len(item) == 2:
-                    _, frame = item
+                if item is None:
+                    pass
+                elif item == self._STOP_ITEM:
+                    break
                 else:
-                    frame = item
+                    frame = None
+                    if isinstance(item, tuple) and len(item) == 2:
+                        _, frame = item
+                    else:
+                        frame = item
 
-                if frame is not None:
-                    try:
-                        self._write_frame(frame)
-                        num_frames += 1
-                    except Exception as exc:
-                        if not self.log.full():
-                            self.log.put_nowait((logging.ERROR, f"RTP:Write failed: {exc}"))
+                    if frame is not None:
+                        try:
+                            self._write_frame(frame)
+                            num_frames += 1
+                        except Exception as exc:
+                            if not self.log.full():
+                                self.log.put_nowait((logging.ERROR, f"RTP:Write failed: {exc}"))
 
-            # RTP through put calculation
-            current_time = time.time()
-            if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
-                self.measured_cps = num_frames/5.0
-                if not self.log.full(): self.log.put_nowait((logging.INFO, "RTP:FPS:{}".format(self.measured_cps)))
-                last_time = current_time
-                num_frames = 0
-
+                # RTP through put calculation
+                current_time = time.time()
+                if (current_time - last_time) >= 5.0: # update frame rate every 5 secs
+                    self.measured_cps = num_frames/5.0
+                    if not self.log.full(): self.log.put_nowait((logging.INFO, "RTP:FPS:{}".format(self.measured_cps)))
+                    last_time = current_time
+                    num_frames = 0
+        finally:
             self._close_stream()
 
     def _open_stream(self):
@@ -351,6 +351,8 @@ class rtpServer(Thread):
             except Exception:
                 pass
         self._ffmpeg_proc = None
+        self.rtp_open = False
+        self._backend = None
 
     def _write_frame(self, frame):
         """Write one frame to the active backend."""
