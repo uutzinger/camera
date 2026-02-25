@@ -8,6 +8,7 @@
   - [Capture modules](#capture-modules)
   - [Camera Configuration](#camera-configuration)
   - [Example Programs](#example-programs)
+  - [Release Helper Script](#release-helper-script)
   - [Changes](#changes)
 
 ## Overview
@@ -266,6 +267,20 @@ You need to set the proper config file in the program. You should not need to ed
 - 1280x720, 30fps
 - 620x480, 30fps
 - 960x540, 30fps
+
+## Release Helper Script
+
+Use `scripts/release.sh` to build and optionally install/upload/tag.
+Release version is read from `camera/__version__.py`.
+
+Examples:
+
+- build only: `scripts/release.sh --clean`
+- build + install wheel: `scripts/release.sh --clean --install`
+- build + commit + tag: `scripts/release.sh --clean --commit --tag`
+- build + commit + tag + push: `scripts/release.sh --clean --commit --tag --push`
+- build + upload TestPyPI: `scripts/release.sh --clean --upload-testpypi`
+- build + upload PyPI: `scripts/release.sh --clean --upload-pypi`
 
 ## Changes
 

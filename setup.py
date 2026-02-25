@@ -3,18 +3,17 @@
 #
 # This is a python install script written for camera python package.
 
-import io
-import os
-import sys
+from pathlib import Path
 
-from setuptools import setup, find_packages
+from setuptools import setup
 
-here = os.path.abspath(os.path.dirname(__file__))
+HERE = Path(__file__).resolve().parent
 
-# Import the README and use it as the long-description.
-# Note: this will only work if 'README.md' is present in your MANIFEST.in file!
-with io.open(os.path.join(here, "README.rst"), encoding="utf-8") as f:
-    long_description = f.read()
+about = {}
+exec((HERE / "camera" / "__version__.py").read_text(encoding="utf-8"), about)
+PACKAGE_VERSION = about["__version__"]
+
+long_description = (HERE / "README.rst").read_text(encoding="utf-8")
 
 setup(
 
@@ -23,10 +22,10 @@ setup(
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # http://packaging.python.org/en/latest/tutorial.html#version
-    version='1.3.3',
+    version=PACKAGE_VERSION,
 
-    description=("Python wrapper for USB, spin, Raspi, Jetson Nano cameras. "  
-                 "Works on Windows, Raspian (inlc Bullseye), JetsonNano, MacOS"   ),
+    description=("Python wrapper for USB, spin, Raspi, Jetson Nano cameras. "
+                 "Works on Windows, Raspian (incl Bullseye), JetsonNano, MacOS"),
 
     # The project's main homepage.
     url='https://github.com/uutzinger/camera',
@@ -65,9 +64,6 @@ setup(
         # Indicate who your project is intended for
         'Intended Audience :: Developers',
         'Topic :: Multimedia :: Video :: Capture',
-
-        # Pick your license as you wish (should match "license" above)
-        'License :: OSI Approved :: MIT License',
 
         # Specify the Python versions you support here. In particular, ensure
         # that you indicate whether you support Python 2, Python 3 or both.

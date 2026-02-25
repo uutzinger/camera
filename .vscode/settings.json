@@ -7,5 +7,6 @@
     "cSpell.words": [
         "unthrottled"
     ],
-    "chatgpt.openOnStartup": true
+    "chatgpt.openOnStartup": true,
+    "python-envs.pythonProjects": []
 }

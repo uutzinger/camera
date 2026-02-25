@@ -11,7 +11,12 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "justMyCode": false
+            "justMyCode": false,
+            "env": {
+                "LD_LIBRARY_PATH": "/home/uutzinger/Python/pyqt6/lib/python3.10/site-packages/PyQt6/Qt6/lib:/home/uutzinger/Python/pyqt6/lib:${env:LD_LIBRARY_PATH}"
+            }
+            "python": "/home/uutzinger/Python/pyqt6/bin/python"
+            "python.defaultInterpreterPath": "/home/uutzinger/Python/pyqt6/bin/python"
         }
     ]
 }
